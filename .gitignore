@@ -1,0 +1,19 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Env / secrets
+.env
+*.local
+
+# Claude Code local settings (personal, machine-specific)
+.claude/settings.local.json
+
+# Node / dashboard
+node_modules
+dashboard/dist
+dashboard/.vite
+
+# OS
+.DS_Store
+Thumbs.db

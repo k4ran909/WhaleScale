@@ -1,0 +1,13 @@
+[package]
+name = "ws-agent-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "whalescale"
+# rlib for in-crate tests; cdylib/staticlib for mobile + native linking.
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+ws-agent-core = { path = "../agent-core" }

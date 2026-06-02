@@ -1,0 +1,8 @@
+[package]
+name = "ws-stun"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rand.workspace = true

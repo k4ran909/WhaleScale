@@ -1,0 +1,11 @@
+[package]
+name = "ws-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+ipnet.workspace = true

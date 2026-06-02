@@ -1,0 +1,18 @@
+[package]
+name = "ws-agent-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "whalescale"
+path = "src/main.rs"
+
+[dependencies]
+ws-agent-core = { path = "../agent-core" }
+ws-proto = { path = "../proto" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
