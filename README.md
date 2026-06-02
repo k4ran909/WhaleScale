@@ -49,6 +49,11 @@ dashboard in React.
   ephemeral / require-approval / expiry flags; the raw key is shown once and only its hash
   is stored (plus a non-secret prefix for listings, tested `authkeys::generate_key`). This
   replaces the dev-only `/dev/bootstrap` for real device onboarding.
+- **Team / user management** ✅ list members, invite users, change roles, and remove users
+  from the dashboard (`GET /admin/tenants/:id/users`, `PATCH /admin/users/:id/role`,
+  `DELETE /admin/users/:id`). RBAC is enforced by pure, tested helpers (`users::can_change_role`,
+  `users::can_delete_user`): only an owner may grant/modify the owner role, and the **last owner
+  can never be demoted or removed** (no org lock-out). UI gates controls by the caller's role.
 - **Phase 5 — ACL policy engine** ✅ Tailscale-style allow rules (`groups`, `tag:`/`group:`/
   user/`*` selectors), enforced in the network-map builder (a peer is visible only if a rule
   permits either direction; no policy = allow-all), validated `GET/PUT /admin/.../acl` API,

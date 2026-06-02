@@ -9,6 +9,7 @@ const NAV = [
   { to: "/authkeys", label: "Auth Keys" },
   { to: "/latency", label: "Latency" },
   { to: "/acl", label: "ACL Policy" },
+  { to: "/team", label: "Team" },
   { to: "/audit", label: "Audit Log" },
 ];
 

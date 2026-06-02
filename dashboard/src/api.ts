@@ -142,6 +142,60 @@ export async function saveAcl(tenantId: string, doc: unknown): Promise<string | 
   return body.error ?? `HTTP ${res.status}`;
 }
 
+// --- team / users ---------------------------------------------------------
+
+export type Role = "owner" | "admin" | "member";
+
+export type User = {
+  id: string;
+  email: string;
+  role: Role;
+  created_at: string;
+};
+
+export async function fetchUsers(tenantId: string): Promise<User[]> {
+  if (DEMO) return demoUsers;
+  return get<User[]>(`/admin/tenants/${tenantId}/users`);
+}
+
+/** Extract the coordinator's `{ error }` message from a failed response. */
+async function errorText(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null);
+  return (body && body.error) || `HTTP ${res.status}`;
+}
+
+export async function createUser(
+  tenantId: string,
+  body: { email: string; password: string; role: Role },
+): Promise<void> {
+  if (DEMO) return;
+  const res = await fetch(`/api/admin/tenants/${tenantId}/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+}
+
+export async function updateUserRole(userId: string, role: Role): Promise<void> {
+  if (DEMO) return;
+  const res = await fetch(`/api/admin/users/${userId}/role`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  if (DEMO) return;
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await errorText(res));
+}
+
 // --- auth keys ------------------------------------------------------------
 
 export type AuthKey = {
@@ -241,6 +295,12 @@ const demoLatency: LatencyEntry[] = [
 const demoAudit: AuditEntry[] = [
   { action: "device.enroll", target: "d4", created_at: new Date(Date.now() - 3600_000).toISOString() },
   { action: "device.enroll", target: "d3", created_at: new Date(Date.now() - 7200_000).toISOString() },
+];
+
+const demoUsers: User[] = [
+  { id: "u1", email: "owner@dev", role: "owner", created_at: new Date(Date.now() - 30 * 86400_000).toISOString() },
+  { id: "u2", email: "rohit@thapar.edu", role: "admin", created_at: new Date(Date.now() - 10 * 86400_000).toISOString() },
+  { id: "u3", email: "intern@dev", role: "member", created_at: new Date(Date.now() - 2 * 86400_000).toISOString() },
 ];
 
 const demoAuthKeys: AuthKey[] = [

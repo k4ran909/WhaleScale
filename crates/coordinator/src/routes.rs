@@ -26,7 +26,15 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/me", get(handlers::auth::me))
         .route(
             "/admin/tenants/:tenant_id/users",
-            post(handlers::auth::create_user),
+            get(handlers::users::list_users).post(handlers::auth::create_user),
+        )
+        .route(
+            "/admin/users/:user_id/role",
+            axum::routing::patch(handlers::users::update_role),
+        )
+        .route(
+            "/admin/users/:user_id",
+            axum::routing::delete(handlers::users::delete_user),
         )
         // Admin API (consumed by the dashboard; requires an AdminSession)
         .route("/admin/tenants", get(handlers::admin::list_tenants))

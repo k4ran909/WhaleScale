@@ -6,4 +6,5 @@ pub mod endpoints;
 pub mod enroll;
 pub mod netmap;
 pub mod stats;
+pub mod users;
 pub mod ws;

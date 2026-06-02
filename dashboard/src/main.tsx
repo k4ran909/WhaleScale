@@ -6,6 +6,7 @@ import App from "./App";
 import Devices from "./pages/Devices";
 import NetworkMap from "./pages/NetworkMap";
 import AuthKeys from "./pages/AuthKeys";
+import Team from "./pages/Team";
 import AclEditor from "./pages/AclEditor";
 import Latency from "./pages/Latency";
 import AuditLog from "./pages/AuditLog";
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
       { path: "authkeys", element: <AuthKeys /> },
       { path: "latency", element: <Latency /> },
       { path: "acl", element: <AclEditor /> },
+      { path: "team", element: <Team /> },
       { path: "audit", element: <AuditLog /> },
     ],
   },
