@@ -43,8 +43,12 @@ dashboard in React.
 - **Phase 4 — Dashboard MVP** ✅ admin API (`/admin/tenants`, `/admin/tenants/:id/devices`,
   `/admin/devices/:id`, audit), React dashboard with org switcher, live device table
   (status, overlay IP, direct/relay, last-seen, remove), React Flow topology graph, and
-  audit log. Run with `VITE_DEMO=1 pnpm dev` to preview without a backend. *Remaining:*
-  admin auth (Phase 5), per-link latency metrics.
+  audit log. Run with `VITE_DEMO=1 pnpm dev` to preview without a backend.
+- **Auth-key management** ✅ admins generate/list/revoke pre-auth keys from the dashboard
+  (`GET/POST /admin/tenants/:id/authkeys`, `POST /admin/authkeys/:id/revoke`) — reusable /
+  ephemeral / require-approval / expiry flags; the raw key is shown once and only its hash
+  is stored (plus a non-secret prefix for listings, tested `authkeys::generate_key`). This
+  replaces the dev-only `/dev/bootstrap` for real device onboarding.
 - **Phase 5 — ACL policy engine** ✅ Tailscale-style allow rules (`groups`, `tag:`/`group:`/
   user/`*` selectors), enforced in the network-map builder (a peer is visible only if a rule
   permits either direction; no policy = allow-all), validated `GET/PUT /admin/.../acl` API,

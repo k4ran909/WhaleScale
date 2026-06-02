@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom"
 import App from "./App";
 import Devices from "./pages/Devices";
 import NetworkMap from "./pages/NetworkMap";
+import AuthKeys from "./pages/AuthKeys";
 import AclEditor from "./pages/AclEditor";
 import Latency from "./pages/Latency";
 import AuditLog from "./pages/AuditLog";
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/devices" replace /> },
       { path: "devices", element: <Devices /> },
       { path: "network", element: <NetworkMap /> },
+      { path: "authkeys", element: <AuthKeys /> },
       { path: "latency", element: <Latency /> },
       { path: "acl", element: <AclEditor /> },
       { path: "audit", element: <AuditLog /> },

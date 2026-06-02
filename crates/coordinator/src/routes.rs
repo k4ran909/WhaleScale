@@ -54,6 +54,14 @@ pub fn router(state: AppState) -> Router {
             "/admin/devices/:device_id/approve",
             post(handlers::admin::approve_device),
         )
+        .route(
+            "/admin/tenants/:tenant_id/authkeys",
+            get(handlers::authkeys::list_auth_keys).post(handlers::authkeys::create_auth_key),
+        )
+        .route(
+            "/admin/authkeys/:key_id/revoke",
+            post(handlers::authkeys::revoke_auth_key),
+        )
         // Dev-only bootstrap (removed in Phase 5)
         .route("/dev/bootstrap", post(handlers::dev::bootstrap))
         .layer(TraceLayer::new_for_http())

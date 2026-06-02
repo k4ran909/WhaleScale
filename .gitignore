@@ -13,6 +13,7 @@
 node_modules
 dashboard/dist
 dashboard/.vite
+*.tsbuildinfo
 
 # OS
 .DS_Store

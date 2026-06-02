@@ -6,6 +6,7 @@ import { useAuth } from "./AuthContext";
 const NAV = [
   { to: "/devices", label: "Devices" },
   { to: "/network", label: "Network Map" },
+  { to: "/authkeys", label: "Auth Keys" },
   { to: "/latency", label: "Latency" },
   { to: "/acl", label: "ACL Policy" },
   { to: "/audit", label: "Audit Log" },

@@ -142,6 +142,69 @@ export async function saveAcl(tenantId: string, doc: unknown): Promise<string | 
   return body.error ?? `HTTP ${res.status}`;
 }
 
+// --- auth keys ------------------------------------------------------------
+
+export type AuthKey = {
+  id: string;
+  key_prefix: string | null;
+  reusable: boolean;
+  ephemeral: boolean;
+  require_approval: boolean;
+  used_count: number;
+  revoked: boolean;
+  expires_at: string | null;
+  created_at: string;
+};
+
+export type CreateAuthKeyReq = {
+  reusable: boolean;
+  ephemeral: boolean;
+  require_approval: boolean;
+  expires_in_days: number | null;
+};
+
+export type CreatedAuthKey = {
+  id: string;
+  auth_key: string;
+  expires_at: string | null;
+};
+
+export async function fetchAuthKeys(tenantId: string): Promise<AuthKey[]> {
+  if (DEMO) return demoAuthKeys;
+  return get<AuthKey[]>(`/admin/tenants/${tenantId}/authkeys`);
+}
+
+export async function createAuthKey(
+  tenantId: string,
+  req: CreateAuthKeyReq,
+): Promise<CreatedAuthKey> {
+  if (DEMO) {
+    return {
+      id: crypto.randomUUID(),
+      auth_key: `ws-${crypto.randomUUID().replace(/-/g, "").slice(0, 48)}`,
+      expires_at: req.expires_in_days
+        ? new Date(Date.now() + req.expires_in_days * 86400_000).toISOString()
+        : null,
+    };
+  }
+  const res = await fetch(`/api/admin/tenants/${tenantId}/authkeys`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`create auth key: HTTP ${res.status}`);
+  return res.json() as Promise<CreatedAuthKey>;
+}
+
+export async function revokeAuthKey(keyId: string): Promise<void> {
+  if (DEMO) return;
+  const res = await fetch(`/api/admin/authkeys/${keyId}/revoke`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`revoke auth key: HTTP ${res.status}`);
+}
+
 // --- demo data ------------------------------------------------------------
 
 const demoTenants: Tenant[] = [
@@ -178,4 +241,10 @@ const demoLatency: LatencyEntry[] = [
 const demoAudit: AuditEntry[] = [
   { action: "device.enroll", target: "d4", created_at: new Date(Date.now() - 3600_000).toISOString() },
   { action: "device.enroll", target: "d3", created_at: new Date(Date.now() - 7200_000).toISOString() },
+];
+
+const demoAuthKeys: AuthKey[] = [
+  { id: "k1", key_prefix: "ws-1a2b3c4d", reusable: true, ephemeral: false, require_approval: false, used_count: 3, revoked: false, expires_at: null, created_at: new Date(Date.now() - 5 * 86400_000).toISOString() },
+  { id: "k2", key_prefix: "ws-9f8e7d6c", reusable: false, ephemeral: true, require_approval: true, used_count: 1, revoked: false, expires_at: new Date(Date.now() + 60 * 86400_000).toISOString(), created_at: new Date(Date.now() - 2 * 86400_000).toISOString() },
+  { id: "k3", key_prefix: "ws-deadbeef", reusable: false, ephemeral: false, require_approval: false, used_count: 1, revoked: true, expires_at: null, created_at: new Date(Date.now() - 12 * 86400_000).toISOString() },
 ];
