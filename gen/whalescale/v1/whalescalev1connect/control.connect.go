@@ -35,18 +35,28 @@ const (
 const (
 	// ControlServiceRegisterProcedure is the fully-qualified name of the ControlService's Register RPC.
 	ControlServiceRegisterProcedure = "/whalescale.v1.ControlService/Register"
+	// ControlServiceUpdateNodeProcedure is the fully-qualified name of the ControlService's UpdateNode
+	// RPC.
+	ControlServiceUpdateNodeProcedure = "/whalescale.v1.ControlService/UpdateNode"
 	// ControlServiceGetNetworkMapProcedure is the fully-qualified name of the ControlService's
 	// GetNetworkMap RPC.
 	ControlServiceGetNetworkMapProcedure = "/whalescale.v1.ControlService/GetNetworkMap"
+	// ControlServiceStreamNetworkMapProcedure is the fully-qualified name of the ControlService's
+	// StreamNetworkMap RPC.
+	ControlServiceStreamNetworkMapProcedure = "/whalescale.v1.ControlService/StreamNetworkMap"
 )
 
 // ControlServiceClient is a client for the whalescale.v1.ControlService service.
 type ControlServiceClient interface {
 	// Register enrolls a new node using a pre-auth key.
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
-	// GetNetworkMap returns the calling node and its visible peers.
-	// Requires "Authorization: Bearer <node_token>".
+	// UpdateNode reports the agent's current keys, endpoints and host info.
+	UpdateNode(context.Context, *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error)
+	// GetNetworkMap returns a one-shot network map.
 	GetNetworkMap(context.Context, *connect.Request[v1.GetNetworkMapRequest]) (*connect.Response[v1.GetNetworkMapResponse], error)
+	// StreamNetworkMap sends the full network map on connect and again every
+	// time it changes. While the stream is open the node counts as online.
+	StreamNetworkMap(context.Context, *connect.Request[v1.StreamNetworkMapRequest]) (*connect.ServerStreamForClient[v1.StreamNetworkMapResponse], error)
 }
 
 // NewControlServiceClient constructs a client for the whalescale.v1.ControlService service. By
@@ -66,10 +76,22 @@ func NewControlServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(controlServiceMethods.ByName("Register")),
 			connect.WithClientOptions(opts...),
 		),
+		updateNode: connect.NewClient[v1.UpdateNodeRequest, v1.UpdateNodeResponse](
+			httpClient,
+			baseURL+ControlServiceUpdateNodeProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("UpdateNode")),
+			connect.WithClientOptions(opts...),
+		),
 		getNetworkMap: connect.NewClient[v1.GetNetworkMapRequest, v1.GetNetworkMapResponse](
 			httpClient,
 			baseURL+ControlServiceGetNetworkMapProcedure,
 			connect.WithSchema(controlServiceMethods.ByName("GetNetworkMap")),
+			connect.WithClientOptions(opts...),
+		),
+		streamNetworkMap: connect.NewClient[v1.StreamNetworkMapRequest, v1.StreamNetworkMapResponse](
+			httpClient,
+			baseURL+ControlServiceStreamNetworkMapProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("StreamNetworkMap")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -77,8 +99,10 @@ func NewControlServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // controlServiceClient implements ControlServiceClient.
 type controlServiceClient struct {
-	register      *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
-	getNetworkMap *connect.Client[v1.GetNetworkMapRequest, v1.GetNetworkMapResponse]
+	register         *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
+	updateNode       *connect.Client[v1.UpdateNodeRequest, v1.UpdateNodeResponse]
+	getNetworkMap    *connect.Client[v1.GetNetworkMapRequest, v1.GetNetworkMapResponse]
+	streamNetworkMap *connect.Client[v1.StreamNetworkMapRequest, v1.StreamNetworkMapResponse]
 }
 
 // Register calls whalescale.v1.ControlService.Register.
@@ -86,18 +110,32 @@ func (c *controlServiceClient) Register(ctx context.Context, req *connect.Reques
 	return c.register.CallUnary(ctx, req)
 }
 
+// UpdateNode calls whalescale.v1.ControlService.UpdateNode.
+func (c *controlServiceClient) UpdateNode(ctx context.Context, req *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error) {
+	return c.updateNode.CallUnary(ctx, req)
+}
+
 // GetNetworkMap calls whalescale.v1.ControlService.GetNetworkMap.
 func (c *controlServiceClient) GetNetworkMap(ctx context.Context, req *connect.Request[v1.GetNetworkMapRequest]) (*connect.Response[v1.GetNetworkMapResponse], error) {
 	return c.getNetworkMap.CallUnary(ctx, req)
+}
+
+// StreamNetworkMap calls whalescale.v1.ControlService.StreamNetworkMap.
+func (c *controlServiceClient) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.StreamNetworkMapRequest]) (*connect.ServerStreamForClient[v1.StreamNetworkMapResponse], error) {
+	return c.streamNetworkMap.CallServerStream(ctx, req)
 }
 
 // ControlServiceHandler is an implementation of the whalescale.v1.ControlService service.
 type ControlServiceHandler interface {
 	// Register enrolls a new node using a pre-auth key.
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
-	// GetNetworkMap returns the calling node and its visible peers.
-	// Requires "Authorization: Bearer <node_token>".
+	// UpdateNode reports the agent's current keys, endpoints and host info.
+	UpdateNode(context.Context, *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error)
+	// GetNetworkMap returns a one-shot network map.
 	GetNetworkMap(context.Context, *connect.Request[v1.GetNetworkMapRequest]) (*connect.Response[v1.GetNetworkMapResponse], error)
+	// StreamNetworkMap sends the full network map on connect and again every
+	// time it changes. While the stream is open the node counts as online.
+	StreamNetworkMap(context.Context, *connect.Request[v1.StreamNetworkMapRequest], *connect.ServerStream[v1.StreamNetworkMapResponse]) error
 }
 
 // NewControlServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -113,18 +151,34 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 		connect.WithSchema(controlServiceMethods.ByName("Register")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controlServiceUpdateNodeHandler := connect.NewUnaryHandler(
+		ControlServiceUpdateNodeProcedure,
+		svc.UpdateNode,
+		connect.WithSchema(controlServiceMethods.ByName("UpdateNode")),
+		connect.WithHandlerOptions(opts...),
+	)
 	controlServiceGetNetworkMapHandler := connect.NewUnaryHandler(
 		ControlServiceGetNetworkMapProcedure,
 		svc.GetNetworkMap,
 		connect.WithSchema(controlServiceMethods.ByName("GetNetworkMap")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controlServiceStreamNetworkMapHandler := connect.NewServerStreamHandler(
+		ControlServiceStreamNetworkMapProcedure,
+		svc.StreamNetworkMap,
+		connect.WithSchema(controlServiceMethods.ByName("StreamNetworkMap")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/whalescale.v1.ControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ControlServiceRegisterProcedure:
 			controlServiceRegisterHandler.ServeHTTP(w, r)
+		case ControlServiceUpdateNodeProcedure:
+			controlServiceUpdateNodeHandler.ServeHTTP(w, r)
 		case ControlServiceGetNetworkMapProcedure:
 			controlServiceGetNetworkMapHandler.ServeHTTP(w, r)
+		case ControlServiceStreamNetworkMapProcedure:
+			controlServiceStreamNetworkMapHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -138,6 +192,14 @@ func (UnimplementedControlServiceHandler) Register(context.Context, *connect.Req
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.Register is not implemented"))
 }
 
+func (UnimplementedControlServiceHandler) UpdateNode(context.Context, *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.UpdateNode is not implemented"))
+}
+
 func (UnimplementedControlServiceHandler) GetNetworkMap(context.Context, *connect.Request[v1.GetNetworkMapRequest]) (*connect.Response[v1.GetNetworkMapResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.GetNetworkMap is not implemented"))
+}
+
+func (UnimplementedControlServiceHandler) StreamNetworkMap(context.Context, *connect.Request[v1.StreamNetworkMapRequest], *connect.ServerStream[v1.StreamNetworkMapResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.StreamNetworkMap is not implemented"))
 }

@@ -1,0 +1,241 @@
+package engine
+
+import (
+	"bufio"
+	"context"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+
+	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
+	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
+	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/server"
+	"github.com/k4ran909/whalescale/internal/store"
+)
+
+type testNet struct {
+	t       *testing.T
+	url     string
+	authKey string
+	log     *slog.Logger
+}
+
+func newTestNet(t *testing.T, policyJSON string) *testNet {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if os.Getenv("WS_TEST_LOG") != "" {
+		log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+
+	dir := t.TempDir()
+	st, err := store.Open(ctx, filepath.Join(dir, "ws.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	st.CreateUser(ctx, "alice")
+	st.CreateUser(ctx, "bob")
+	_, keyA, _ := st.CreatePreAuthKey(ctx, "alice", true, false, time.Hour)
+
+	stunPC, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policyFile string
+	if policyJSON != "" {
+		policyFile = filepath.Join(dir, "policy.json")
+		os.WriteFile(policyFile, []byte(policyJSON), 0o600)
+	}
+
+	hs := httptest.NewUnstartedServer(nil)
+	hs.Start()
+	t.Cleanup(hs.Close)
+	srv, err := server.New(st, server.Config{
+		PublicURL: hs.URL, STUN: []string{stunPC.LocalAddr().String()}, PolicyFile: policyFile, Log: log,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hs.Config.Handler = srv.Handler()
+	go srv.ServeSTUN(ctx, stunPC)
+	return &testNet{t: t, url: hs.URL, authKey: keyA, log: log}
+}
+
+// node registers a node the way 'ws login' does and starts an engine.
+func (n *testNet) node(name string, forceRelay bool) *Engine {
+	t := n.t
+	t.Helper()
+	mk, _ := clientstate.NewMachineKey()
+	st := &clientstate.State{ServerURL: n.url, MachineKey: mk}
+	pub, _ := st.PublicKey()
+	api := whalescalev1connect.NewControlServiceClient(httpClientForTest(), n.url)
+	resp, err := api.Register(context.Background(), connect.NewRequest(&v1.RegisterRequest{
+		AuthKey: n.authKey, MachineKey: pub, Hostname: name, Os: runtime.GOOS,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.NodeToken, st.NodeID, st.NodeName = resp.Msg.NodeToken, resp.Msg.Node.Id, resp.Msg.Node.Name
+
+	e, err := New(Options{State: st, Userspace: true, Log: n.log.With("node", name),
+		IncludeLoopback: true, ForceRelay: forceRelay})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(e.Close)
+	select {
+	case <-e.Ready():
+	case <-time.After(10 * time.Second):
+		t.Fatalf("%s: no network map", name)
+	}
+	return e
+}
+
+func selfIP(e *Engine) netip.Addr {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	s, _ := selfAddrs(e.netmap.Self)
+	return s.v4
+}
+
+// waitPath waits until e reports the wanted path to peer.
+func waitPath(t *testing.T, e *Engine, peer, want string) PeerStatus {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		for _, p := range e.Status().Peers {
+			if p.Name == peer && p.Path == want {
+				return p
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %s path to %s: %+v", want, peer, e.Status().Peers)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// echo listens on e's mesh address and echoes one line per connection.
+func echo(t *testing.T, e *Engine, port uint16) {
+	t.Helper()
+	ln, err := e.Net().ListenTCPAddrPort(netip.AddrPortFrom(selfIP(e), port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				io.WriteString(c, "echo: "+line)
+			}()
+		}
+	}()
+}
+
+func roundTrip(from, to *Engine, port uint16, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	c, err := from.Net().DialContextTCPAddrPort(ctx, netip.AddrPortFrom(selfIP(to), port))
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(timeout))
+	if _, err := io.WriteString(c, "hi\n"); err != nil {
+		return err
+	}
+	line, err := bufio.NewReader(c).ReadString('\n')
+	if err != nil {
+		return err
+	}
+	if line != "echo: hi\n" {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+func TestDirectPath(t *testing.T) {
+	n := newTestNet(t, "")
+	a := n.node("node-a", false)
+	b := n.node("node-b", false)
+
+	ps := waitPath(t, a, "node-b", "direct")
+	t.Logf("node-a -> node-b direct via %s (%v)", ps.Addr, ps.Latency)
+	waitPath(t, b, "node-a", "direct")
+
+	echo(t, b, 8080)
+	if err := roundTrip(a, b, 8080, 10*time.Second); err != nil {
+		t.Fatalf("TCP over direct path: %v", err)
+	}
+
+	// MagicDNS, resolved through the tunnel by node-a's own resolver.
+	addrs, err := a.Net().LookupContextHost(context.Background(), "node-b.whale.internal")
+	if err != nil || !slices.Contains(addrs, selfIP(b).String()) {
+		t.Fatalf("MagicDNS lookup = %v, %v", addrs, err)
+	}
+
+	r, err := a.Ping(context.Background(), "node-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("disco ping: %+v", r)
+}
+
+func TestRelayFallback(t *testing.T) {
+	n := newTestNet(t, "")
+	a := n.node("relay-a", true)
+	b := n.node("relay-b", true)
+
+	waitPath(t, a, "relay-b", "relay")
+	echo(t, b, 9000)
+	if err := roundTrip(a, b, 9000, 15*time.Second); err != nil {
+		t.Fatalf("TCP over relay: %v", err)
+	}
+	for _, p := range a.Status().Peers {
+		if p.Path != "relay" {
+			t.Fatalf("expected relay-only path, got %+v", p)
+		}
+	}
+}
+
+func TestPolicyEnforced(t *testing.T) {
+	// Only pol-b may open connections to pol-a; not the other way round.
+	n := newTestNet(t, `{"acls":[{"action":"accept","src":["node:pol-b"],"dst":["node:pol-a:*"]}]}`)
+	a := n.node("pol-a", false)
+	b := n.node("pol-b", false)
+	waitPath(t, a, "pol-b", "direct")
+
+	echo(t, a, 7000)
+	echo(t, b, 7000)
+	if err := roundTrip(b, a, 7000, 10*time.Second); err != nil {
+		t.Fatalf("allowed direction failed: %v", err)
+	}
+	if err := roundTrip(a, b, 7000, 2*time.Second); err == nil {
+		t.Fatal("pol-a reached pol-b, but the policy forbids it")
+	}
+}
+
+func httpClientForTest() *http.Client { return &http.Client{Timeout: 10 * time.Second} }

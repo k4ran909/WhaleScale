@@ -29,7 +29,7 @@ func TestRegisterAndNetworkMap(t *testing.T) {
 	_, key, _ := st.CreatePreAuthKey(ctx, "alice", true, false, time.Hour)
 
 	mux := http.NewServeMux()
-	mux.Handle(whalescalev1connect.NewControlServiceHandler(New(st, slog.New(slog.NewTextHandler(io.Discard, nil)))))
+	mux.Handle(whalescalev1connect.NewControlServiceHandler(New(st, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{})))
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	c := whalescalev1connect.NewControlServiceClient(srv.Client(), srv.URL)

@@ -78,6 +78,23 @@ func TestRegisterFlow(t *testing.T) {
 	if n2.Name != "my-laptop-1" || n2.IPv4.String() != "100.64.0.2" {
 		t.Fatalf("node2 = %s %s", n2.Name, n2.IPv4)
 	}
+	// Names are unique across users too.
+	s.CreateUser(ctx, "bob")
+	_, bobKey, _ := s.CreatePreAuthKey(ctx, "bob", false, false, time.Hour)
+	n3, _, err := s.RegisterNode(ctx, RegisterParams{AuthKey: bobKey, MachineKey: "mk3", Hostname: "my-laptop"})
+	if err != nil || n3.Name != "my-laptop-2" {
+		t.Fatalf("node3 = %+v, %v", n3, err)
+	}
+	changed, err := s.UpdateNodeInfo(ctx, n1.ID, NodeInfo{NodeKey: "nk1", DiscoKey: "dk1", Endpoints: []string{"1.2.3.4:41641"}, OS: "windows"})
+	if err != nil || !changed {
+		t.Fatalf("UpdateNodeInfo = %v, %v", changed, err)
+	}
+	if changed, _ := s.UpdateNodeInfo(ctx, n1.ID, NodeInfo{NodeKey: "nk1", DiscoKey: "dk1", Endpoints: []string{"1.2.3.4:41641"}, OS: "windows"}); changed {
+		t.Fatal("identical update reported a change")
+	}
+	if _, err := s.UpdateNodeInfo(ctx, n2.ID, NodeInfo{NodeKey: "nk1"}); !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("duplicate node key: got %v", err)
+	}
 	if _, _, err := s.RegisterNode(ctx, RegisterParams{AuthKey: reusable, MachineKey: "mk2", Hostname: "dup"}); !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("duplicate machine key: got %v", err)
 	}
@@ -91,6 +108,9 @@ func TestRegisterFlow(t *testing.T) {
 	}
 
 	nodes, err := s.ListNodes(ctx, "alice")
+	if err == nil && (len(nodes[0].Endpoints) != 1 || nodes[0].NodeKey != "nk1") {
+		t.Fatalf("node1 info not persisted: %+v", nodes[0])
+	}
 	if err != nil || len(nodes) != 2 {
 		t.Fatalf("ListNodes = %d, %v", len(nodes), err)
 	}

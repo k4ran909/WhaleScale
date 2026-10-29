@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -64,6 +65,9 @@ type Node struct {
 	Ephemeral  bool
 	CreatedAt  time.Time
 	LastSeen   time.Time
+	NodeKey    string
+	DiscoKey   string
+	Endpoints  []string
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -280,7 +284,7 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 		return nil, "", fmt.Errorf("machine key: %w", ErrAlreadyExists)
 	}
 
-	name, err := uniqueNodeName(ctx, tx, uid, sanitizeHostname(p.Hostname))
+	name, err := uniqueNodeName(ctx, tx, sanitizeHostname(p.Hostname))
 	if err != nil {
 		return nil, "", err
 	}
@@ -313,7 +317,7 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 		IPv4: v4, IPv6: v6, OS: p.OS, Ephemeral: ephemeral, CreatedAt: now, LastSeen: now}, token, nil
 }
 
-const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen`
+const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints`
 
 // NodeByToken authenticates a node token and bumps last_seen.
 func (s *Store) NodeByToken(ctx context.Context, token string) (*Node, error) {
@@ -357,6 +361,44 @@ func (s *Store) ListNodes(ctx context.Context, user string) ([]Node, error) {
 	return out, rows.Err()
 }
 
+// NodeInfo is what an agent reports about itself after registering.
+type NodeInfo struct {
+	NodeKey   string
+	DiscoKey  string
+	Endpoints []string
+	OS        string
+}
+
+// UpdateNodeInfo stores agent-reported keys and endpoints. It reports
+// whether anything changed, so callers can skip redundant map updates.
+func (s *Store) UpdateNodeInfo(ctx context.Context, id uint64, info NodeInfo) (bool, error) {
+	if info.Endpoints == nil {
+		info.Endpoints = []string{}
+	}
+	eps, err := json.Marshal(info.Endpoints)
+	if err != nil {
+		return false, err
+	}
+	if info.NodeKey != "" {
+		var other int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE node_key = ? AND id != ?`, info.NodeKey, id).Scan(&other); err != nil {
+			return false, err
+		}
+		if other > 0 {
+			return false, fmt.Errorf("node key: %w", ErrAlreadyExists)
+		}
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE nodes SET node_key = ?, disco_key = ?, endpoints = ?, os = ?, last_seen = ?
+		WHERE id = ? AND (node_key != ? OR disco_key != ? OR endpoints != ? OR os != ?)`,
+		info.NodeKey, info.DiscoKey, string(eps), info.OS, time.Now().Unix(), id,
+		info.NodeKey, info.DiscoKey, string(eps), info.OS)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 func (s *Store) DeleteNode(ctx context.Context, id uint64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM nodes WHERE id = ?`, id)
 	if err != nil {
@@ -381,8 +423,13 @@ func scanNode(r scanner) (*Node, error) {
 	var n Node
 	var v4, v6 string
 	var created, seen int64
-	if err := r.Scan(&n.ID, &n.UserID, &n.User, &n.Name, &n.MachineKey, &v4, &v6, &n.OS, &n.Ephemeral, &created, &seen); err != nil {
+	var eps string
+	if err := r.Scan(&n.ID, &n.UserID, &n.User, &n.Name, &n.MachineKey, &v4, &v6, &n.OS, &n.Ephemeral, &created, &seen,
+		&n.NodeKey, &n.DiscoKey, &eps); err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal([]byte(eps), &n.Endpoints); err != nil {
+		return nil, fmt.Errorf("node %d endpoints: %w", n.ID, err)
 	}
 	n.IPv4, _ = netip.ParseAddr(v4)
 	n.IPv6, _ = netip.ParseAddr(v6)
@@ -445,11 +492,13 @@ func sanitizeHostname(h string) string {
 	return h
 }
 
-func uniqueNodeName(ctx context.Context, q querier, uid uint64, base string) (string, error) {
+// uniqueNodeName picks a name unique across all users, because MagicDNS names
+// are <node>.<suffix>.
+func uniqueNodeName(ctx context.Context, q querier, base string) (string, error) {
 	name := base
 	for i := 1; ; i++ {
 		var n int
-		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE user_id = ? AND name = ?`, uid, name).Scan(&n); err != nil {
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE name = ?`, name).Scan(&n); err != nil {
 			return "", err
 		}
 		if n == 0 {
@@ -474,4 +523,12 @@ func randHex(n int) (string, error) {
 
 func isUniqueErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// Fingerprint changes whenever nodes are added or removed, including by
+// admin commands run against the database while the server is up.
+func (s *Store) Fingerprint(ctx context.Context) (string, error) {
+	var count, sum int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(id), 0) FROM nodes`).Scan(&count, &sum)
+	return fmt.Sprintf("%d/%d", count, sum), err
 }

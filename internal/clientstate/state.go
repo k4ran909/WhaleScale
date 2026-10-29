@@ -16,9 +16,11 @@ import (
 type State struct {
 	ServerURL  string `json:"server_url"`
 	MachineKey string `json:"machine_key"` // X25519 private key, base64
-	NodeToken  string `json:"node_token,omitempty"`
-	NodeID     uint64 `json:"node_id,omitempty"`
-	NodeName   string `json:"node_name,omitempty"`
+	// NodeKey is the WireGuard private key, base64. Created by wsd on first run.
+	NodeKey   string `json:"node_key,omitempty"`
+	NodeToken string `json:"node_token,omitempty"`
+	NodeID    uint64 `json:"node_id,omitempty"`
+	NodeName  string `json:"node_name,omitempty"`
 }
 
 // DefaultPath is $WHALESCALE_STATE, else <user config dir>/whalescale/state.json.

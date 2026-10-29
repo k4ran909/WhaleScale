@@ -20,6 +20,7 @@ import (
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/localapi"
 	"github.com/k4ran909/whalescale/internal/version"
 )
 
@@ -27,7 +28,9 @@ const usage = `ws - Whalescale client
 
 Usage:
   ws login  --server URL [--authkey KEY] [--hostname NAME]
-  ws status [--json]
+  ws status [--json]          peers and the path to each (direct / relay)
+  ws ping [-c N] NAME         disco ping; shows whether the reply came direct or via relay
+  ws netcheck [--json]        public address, NAT type, relay reachability
   ws logout
   ws version
 
@@ -46,6 +49,10 @@ func main() {
 		err = cmdLogin(args)
 	case "status":
 		err = cmdStatus(args)
+	case "ping":
+		err = cmdPing(args)
+	case "netcheck":
+		err = cmdNetcheck(args)
 	case "logout":
 		err = cmdLogout(args)
 	case "version", "--version":
@@ -134,22 +141,76 @@ func cmdLogin(args []string) error {
 	return nil
 }
 
-func cmdStatus(args []string) error {
-	fs := flag.NewFlagSet("status", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "print the network map as JSON")
-	fs.Parse(args)
-
+func loadState() (*clientstate.State, string, error) {
 	path, err := clientstate.DefaultPath()
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	st, err := clientstate.Load(path)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if st == nil || st.NodeToken == "" {
-		return errors.New("not logged in; run 'ws login'")
+		return nil, "", errors.New("not logged in; run 'ws login'")
 	}
+	return st, path, nil
+}
+
+func cmdStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	fs.Parse(args)
+
+	st, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	lc := localapi.NewClient(localapi.SocketPath(path))
+	s, err := lc.Status()
+	if errors.Is(err, localapi.ErrNotRunning) {
+		fmt.Fprintln(os.Stderr, "wsd is not running; showing the server's view (no path info)")
+		return serverStatus(st, *asJSON)
+	}
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(s)
+	}
+	if s.Self == nil {
+		fmt.Println("wsd is running but has no network map yet")
+		if s.LastError != "" {
+			fmt.Println("last error:", s.LastError)
+		}
+		return nil
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "\tNAME\tADDRESS\tUSER\tOS\tPATH\tLATENCY")
+	fmt.Fprintf(tw, "*\t%s\t%s\t%s\t%s\t-\t-\n", s.Self.Name, first(s.Self.Addresses), s.Self.User, s.Self.Os)
+	for _, p := range s.Peers {
+		path, lat := p.Path, "-"
+		switch {
+		case !p.Online:
+			path = "offline"
+		case p.Path == "direct":
+			path = "direct " + p.Addr
+			lat = p.Latency.Round(10 * time.Microsecond).String()
+		}
+		fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\n", p.Name, first(p.Addresses), p.User, p.OS, path, lat)
+	}
+	tw.Flush()
+	relay := "disconnected"
+	if s.RelayConnected {
+		relay = "connected"
+	}
+	fmt.Printf("\nrelay %s (%s)  ·  %d peer(s)  ·  * = this node\n", relay, s.RelayURL, len(s.Peers))
+	if s.LastError != "" {
+		fmt.Println("last error:", s.LastError)
+	}
+	return nil
+}
+
+func serverStatus(st *clientstate.State, asJSON bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	req := connect.NewRequest(&v1.GetNetworkMapRequest{})
@@ -158,24 +219,109 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return fmt.Errorf("get network map: %w", err)
 	}
-	if *asJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(resp.Msg)
+	if asJSON {
+		return printJSON(resp.Msg)
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "\tNAME\tUSER\tADDRESSES\tOS\tLAST SEEN")
+	fmt.Fprintln(tw, "\tNAME\tUSER\tADDRESSES\tOS\tONLINE")
 	row := func(mark string, n *v1.Node) {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", mark, n.Name, n.User, strings.Join(n.Addresses, ", "), n.Os,
-			n.LastSeen.AsTime().Local().Format(time.DateTime))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\n", mark, n.Name, n.User, strings.Join(n.Addresses, ", "), n.Os, n.Online)
 	}
 	row("*", resp.Msg.Self)
 	for _, p := range resp.Msg.Peers {
 		row("", p)
 	}
 	tw.Flush()
-	fmt.Printf("\nserver %s  ·  %d peer(s)  ·  * = this node\n", st.ServerURL, len(resp.Msg.Peers))
 	return nil
+}
+
+func cmdPing(args []string) error {
+	fs := flag.NewFlagSet("ping", flag.ExitOnError)
+	count := fs.Int("c", 5, "number of pings (0 = until a direct path is found, max 30)")
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		return errors.New("usage: ws ping [-c N] NAME|FQDN|IP")
+	}
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	lc := localapi.NewClient(localapi.SocketPath(path))
+	n := *count
+	if n <= 0 {
+		n = 30
+	}
+	for i := 0; i < n; i++ {
+		r, err := lc.Ping(fs.Arg(0))
+		if errors.Is(err, localapi.ErrNotRunning) {
+			return errors.New("wsd is not running; start it first")
+		}
+		if err != nil {
+			fmt.Println("timeout:", err)
+		} else if r.Via == "direct" {
+			fmt.Printf("pong from %s via %s in %v\n", r.Peer, r.Addr, r.Latency.Round(10*time.Microsecond))
+			if *count <= 0 {
+				return nil
+			}
+		} else {
+			fmt.Printf("pong from %s via relay in %v\n", r.Peer, r.Latency.Round(10*time.Microsecond))
+		}
+		if i < n-1 {
+			time.Sleep(time.Second)
+		}
+	}
+	return nil
+}
+
+func cmdNetcheck(args []string) error {
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	r, err := localapi.NewClient(localapi.SocketPath(path)).Netcheck()
+	if errors.Is(err, localapi.ErrNotRunning) {
+		return errors.New("wsd is not running; start it first")
+	}
+	if err != nil {
+		return err
+	}
+	if len(args) > 0 && args[0] == "--json" {
+		return printJSON(r)
+	}
+	fmt.Printf("UDP port:      %d\n", r.Port)
+	if len(r.Mapped) == 0 {
+		fmt.Println("STUN:          no response (UDP may be blocked; traffic will use the relay)")
+	}
+	for srv, m := range r.Mapped {
+		fmt.Printf("STUN %-21s you are %s\n", srv+":", m)
+	}
+	switch {
+	case len(r.Mapped) < 2:
+		fmt.Println("NAT type:      unknown (needs two STUN ports; run the server with --stun-listen :3478,:3479)")
+	case r.MappingVariesByDest:
+		fmt.Println("NAT type:      symmetric (mapping varies by destination): direct paths are unlikely, expect relay")
+	default:
+		fmt.Println("NAT type:      endpoint-independent mapping: hole punching should work")
+	}
+	fmt.Printf("relay:         connected=%v\n", r.RelayConnected)
+	fmt.Println("endpoints:")
+	for _, ep := range r.Endpoints {
+		fmt.Println("  ", ep)
+	}
+	return nil
+}
+
+func printJSON(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func first(ss []string) string {
+	if len(ss) == 0 {
+		return "-"
+	}
+	return ss[0]
 }
 
 func cmdLogout(args []string) error {

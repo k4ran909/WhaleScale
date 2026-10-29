@@ -168,6 +168,7 @@ The research below (sources at the end) found these recurring problems in Tailsc
 - STUN + hole punching, relay (TCP/WS) fallback
 - Basic ACLs, MagicDNS, CLI (`up`, `down`, `status`, `ping`, `netcheck`)
 - **Done when:** 3 PCs (Windows + Linux + one behind CGNAT) ping each other by name, and `ws status` shows direct vs relay
+- **Status (2026-10-30):** built and passing in-process end-to-end tests (direct path, relay-only, policy). Still open: the real 3-PC/CGNAT run, OS TUN mode on real machines, `ws up/down` (moved to Phase 2 with service install), and kernel WireGuard on Linux (wireguard-go everywhere for now).
 
 ### Phase 2: Usable product (4–6 weeks)
 - Web console (nodes, users, keys, policy editor with lint)

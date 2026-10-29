@@ -12,23 +12,28 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
 
-	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
-	"github.com/k4ran909/whalescale/internal/control"
+	"github.com/k4ran909/whalescale/internal/policy"
+	"github.com/k4ran909/whalescale/internal/server"
 	"github.com/k4ran909/whalescale/internal/store"
+	"github.com/k4ran909/whalescale/internal/stun"
 	"github.com/k4ran909/whalescale/internal/version"
 )
 
 const usage = `whalescale - self-hosted mesh VPN server
 
 Usage:
-  whalescale serve      [--listen :8080] [--db PATH] [--tls-cert F --tls-key F]
+  whalescale serve      [--listen :8080] [--public-url URL] [--stun-listen :3478]
+                        [--policy FILE] [--dns-suffix whale.internal] [--tls-cert F --tls-key F]
+  whalescale policy     check FILE
   whalescale users      create NAME | list
   whalescale preauthkeys create --user NAME [--reusable] [--ephemeral] [--expiration 24h]
   whalescale preauthkeys list | expire PREFIX
@@ -56,6 +61,8 @@ func main() {
 		err = cmdNodes(args)
 	case "migrate":
 		err = cmdMigrate(args)
+	case "policy":
+		err = cmdPolicy(args)
 	case "version", "--version":
 		fmt.Println("whalescale", version.String())
 	case "help", "-h", "--help":
@@ -94,6 +101,10 @@ func newFlags(name string) (*flag.FlagSet, *string) {
 func cmdServe(args []string) error {
 	fs, db := newFlags("serve")
 	listen := fs.String("listen", ":8080", "address to listen on")
+	publicURL := fs.String("public-url", "", "URL nodes use to reach this server (default: http://<listen>)")
+	stunListen := fs.String("stun-listen", ":3478", "comma-separated UDP addresses for STUN; two ports let nodes detect symmetric NAT; empty disables")
+	dnsSuffix := fs.String("dns-suffix", "whale.internal", "MagicDNS domain suffix")
+	policyFile := fs.String("policy", "", "access policy file (JSON); default allows all traffic")
 	certFile := fs.String("tls-cert", "", "TLS certificate file (PEM)")
 	keyFile := fs.String("tls-key", "", "TLS private key file (PEM)")
 	st, err := openStore(fs, db, args)
@@ -110,37 +121,65 @@ func cmdServe(args []string) error {
 	if !tlsOn && !isLoopback(*listen) {
 		log.Warn("serving without TLS on a non-loopback address: auth keys and node tokens travel in cleartext. Use --tls-cert/--tls-key or a TLS reverse proxy.")
 	}
-
-	mux := http.NewServeMux()
-	path, handler := whalescalev1connect.NewControlServiceHandler(control.New(st, log))
-	mux.Handle(path, handler)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := st.SchemaVersion(r.Context()); err != nil {
-			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
-			return
+	if *publicURL == "" {
+		host := *listen
+		if strings.HasPrefix(host, ":") {
+			host = "127.0.0.1" + host
 		}
-		fmt.Fprintln(w, "ok")
-	})
+		scheme := "http"
+		if tlsOn {
+			scheme = "https"
+		}
+		*publicURL = scheme + "://" + host
+	}
+	pu, err := url.Parse(*publicURL)
+	if err != nil || pu.Hostname() == "" {
+		return fmt.Errorf("bad --public-url %q", *publicURL)
+	}
 
-	srv := &http.Server{
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var stunAdvertise []string
+	for _, a := range splitList(*stunListen) {
+		pc, err := net.ListenPacket("udp", a)
+		if err != nil {
+			return fmt.Errorf("stun listen %s: %w", a, err)
+		}
+		_, port, _ := net.SplitHostPort(pc.LocalAddr().String())
+		stunAdvertise = append(stunAdvertise, net.JoinHostPort(pu.Hostname(), port))
+		go func() {
+			if err := stun.Serve(ctx, pc, log); err != nil {
+				log.Error("stun", "err", err)
+			}
+		}()
+	}
+
+	srv, err := server.New(st, server.Config{
+		PublicURL: *publicURL, STUN: stunAdvertise, DNSSuffix: *dnsSuffix, PolicyFile: *policyFile, Log: log,
+	})
+	if err != nil {
+		return err
+	}
+	go srv.Watch(ctx, 5*time.Second)
+
+	hs := &http.Server{
 		Addr:              *listen,
-		Handler:           mux,
+		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("whalescale listening", "addr", *listen, "tls", tlsOn, "db", *db, "version", version.Version)
+		log.Info("whalescale listening", "addr", *listen, "public_url", *publicURL, "stun", stunAdvertise,
+			"tls", tlsOn, "db", *db, "version", version.Version)
 		if tlsOn {
-			errc <- srv.ListenAndServeTLS(*certFile, *keyFile)
+			errc <- hs.ListenAndServeTLS(*certFile, *keyFile)
 		} else {
-			errc <- srv.ListenAndServe()
+			errc <- hs.ListenAndServe()
 		}
 	}()
 	select {
@@ -151,7 +190,51 @@ func cmdServe(args []string) error {
 	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	return hs.Shutdown(shutdownCtx)
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func cmdPolicy(args []string) error {
+	if len(args) < 2 || args[0] != "check" {
+		return errors.New("usage: whalescale policy check FILE [--db PATH]")
+	}
+	fs, db := newFlags("policy check")
+	file := args[1]
+	if err := fs.Parse(args[2:]); err != nil {
+		return err
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	p, err := policy.Parse(b)
+	if err != nil {
+		return err
+	}
+	var names []string
+	if st, err := store.Open(context.Background(), *db); err == nil {
+		if users, err := st.ListUsers(context.Background()); err == nil {
+			for _, u := range users {
+				names = append(names, u.Name)
+			}
+		}
+		st.Close()
+	}
+	warnings := p.Lint(names)
+	for _, w := range warnings {
+		fmt.Println("warning:", w)
+	}
+	fmt.Printf("%s: ok (%d acl rules, %d groups, %d warnings)\n", file, len(p.ACLs), len(p.Groups), len(warnings))
+	return nil
 }
 
 func isLoopback(addr string) bool {

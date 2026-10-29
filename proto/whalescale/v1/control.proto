@@ -8,28 +8,41 @@ option go_package = "github.com/k4ran909/whalescale/gen/whalescale/v1;whalescale
 
 // ControlService is the API that agents (wsd) and the ws CLI talk to.
 //
-// Phase 0: registration with a pre-auth key returns a node token that
-// authenticates later calls as a bearer token. Phase 1 replaces the token
-// with a Noise handshake bound to the machine key.
+// Registration with a pre-auth key returns a node token that authenticates
+// every later call as "Authorization: Bearer <node_token>". A Noise handshake
+// bound to the machine key replaces the token in a later phase.
 service ControlService {
   // Register enrolls a new node using a pre-auth key.
   rpc Register(RegisterRequest) returns (RegisterResponse);
-  // GetNetworkMap returns the calling node and its visible peers.
-  // Requires "Authorization: Bearer <node_token>".
+  // UpdateNode reports the agent's current keys, endpoints and host info.
+  rpc UpdateNode(UpdateNodeRequest) returns (UpdateNodeResponse);
+  // GetNetworkMap returns a one-shot network map.
   rpc GetNetworkMap(GetNetworkMapRequest) returns (GetNetworkMapResponse);
+  // StreamNetworkMap sends the full network map on connect and again every
+  // time it changes. While the stream is open the node counts as online.
+  rpc StreamNetworkMap(StreamNetworkMapRequest) returns (stream StreamNetworkMapResponse);
 }
 
 message Node {
   uint64 id = 1;
   string name = 2;
   string user = 3;
-  // X25519 public key, base64 (std encoding).
+  // X25519 public key, base64 (std encoding). Long-lived machine identity.
   string machine_key = 4;
   repeated string addresses = 5;
   string os = 6;
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp last_seen = 8;
   bool ephemeral = 9;
+  // WireGuard public key, base64. Empty until the agent first reports it.
+  string node_key = 10;
+  // Public key for authenticated path-discovery messages, base64.
+  string disco_key = 11;
+  // Candidate UDP endpoints (ip:port) the node can be reached on.
+  repeated string endpoints = 12;
+  bool online = 13;
+  // Fully qualified MagicDNS name, e.g. "laptop.whale.internal".
+  string fqdn = 14;
 }
 
 message RegisterRequest {
@@ -45,9 +58,57 @@ message RegisterResponse {
   string node_token = 2;
 }
 
+message UpdateNodeRequest {
+  string node_key = 1;
+  string disco_key = 2;
+  repeated string endpoints = 3;
+  string os = 4;
+}
+
+message UpdateNodeResponse {}
+
 message GetNetworkMapRequest {}
 
 message GetNetworkMapResponse {
   Node self = 1;
   repeated Node peers = 2;
+}
+
+message StreamNetworkMapRequest {}
+
+message StreamNetworkMapResponse {
+  // Empty on keep-alive messages.
+  NetworkMap network_map = 1;
+  bool keep_alive = 2;
+}
+
+message NetworkMap {
+  Node self = 1;
+  // Only peers this node may talk to (in either direction) under the policy.
+  repeated Node peers = 2;
+  DNSConfig dns = 3;
+  // Relay endpoints, e.g. "wss://ws.example.com/relay".
+  repeated string relays = 4;
+  // STUN servers as host:port.
+  repeated string stun = 5;
+  // Inbound packet filter for this node. Empty list means deny all inbound.
+  repeated FilterRule packet_filter = 6;
+  // Monotonic map version, for logging and debugging.
+  uint64 version = 7;
+}
+
+message DNSConfig {
+  // Domain suffix for MagicDNS names, e.g. "whale.internal".
+  string suffix = 1;
+}
+
+// FilterRule allows traffic from any of src_prefixes to this node's ports.
+message FilterRule {
+  repeated string src_prefixes = 1;
+  repeated PortRange ports = 2;
+}
+
+message PortRange {
+  uint32 first = 1;
+  uint32 last = 2;
 }
