@@ -5,15 +5,19 @@ go 1.27.0
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/coder/websocket v1.8.13
+	github.com/coreos/go-oidc/v3 v3.11.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
+	golang.org/x/oauth2 v0.30.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
 	google.golang.org/protobuf v1.36.6
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.38.2
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

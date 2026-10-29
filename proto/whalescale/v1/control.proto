@@ -12,8 +12,13 @@ option go_package = "github.com/k4ran909/whalescale/gen/whalescale/v1;whalescale
 // every later call as "Authorization: Bearer <node_token>". A Noise handshake
 // bound to the machine key replaces the token in a later phase.
 service ControlService {
-  // Register enrolls a new node using a pre-auth key.
+  // Register enrolls a new node. With an auth_key it completes at once.
+  // Without one (and with OIDC configured) it returns an auth_url for the
+  // user to open; the client then calls WaitRegistration.
   rpc Register(RegisterRequest) returns (RegisterResponse);
+  // WaitRegistration blocks (up to about a minute) until a browser login
+  // started by Register completes. Retry on DEADLINE_EXCEEDED.
+  rpc WaitRegistration(WaitRegistrationRequest) returns (WaitRegistrationResponse);
   // UpdateNode reports the agent's current keys, endpoints and host info.
   rpc UpdateNode(UpdateNodeRequest) returns (UpdateNodeResponse);
   // GetNetworkMap returns a one-shot network map.
@@ -21,6 +26,9 @@ service ControlService {
   // StreamNetworkMap sends the full network map on connect and again every
   // time it changes. While the stream is open the node counts as online.
   rpc StreamNetworkMap(StreamNetworkMapRequest) returns (stream StreamNetworkMapResponse);
+  // ReportStatus shares the agent's view of its paths, for the console's
+  // topology view and server metrics. Kept in memory only.
+  rpc ReportStatus(ReportStatusRequest) returns (ReportStatusResponse);
 }
 
 message Node {
@@ -43,6 +51,12 @@ message Node {
   bool online = 13;
   // Fully qualified MagicDNS name, e.g. "laptop.whale.internal".
   string fqdn = 14;
+  // Approved subnet routes this node serves (exit routes excluded).
+  repeated string routes = 15;
+  // Routes the node offers, approved or not.
+  repeated string advertised_routes = 16;
+  // Approved to act as an exit node.
+  bool exit_node = 17;
 }
 
 message RegisterRequest {
@@ -56,6 +70,18 @@ message RegisterResponse {
   Node node = 1;
   // Secret used to authenticate this node. Shown only once.
   string node_token = 2;
+  // Set when the user must finish logging in in a browser.
+  string auth_url = 3;
+  string registration_id = 4;
+}
+
+message WaitRegistrationRequest {
+  string registration_id = 1;
+}
+
+message WaitRegistrationResponse {
+  Node node = 1;
+  string node_token = 2;
 }
 
 message UpdateNodeRequest {
@@ -63,6 +89,9 @@ message UpdateNodeRequest {
   string disco_key = 2;
   repeated string endpoints = 3;
   string os = 4;
+  // Subnets (and 0.0.0.0/0, ::/0 for an exit node) this node offers.
+  // They take effect once an admin approves them.
+  repeated string advertised_routes = 5;
 }
 
 message UpdateNodeResponse {}
@@ -102,13 +131,32 @@ message DNSConfig {
   string suffix = 1;
 }
 
-// FilterRule allows traffic from any of src_prefixes to this node's ports.
+// FilterRule allows traffic from any of src_prefixes to the ports. With
+// dst_prefixes empty it covers this node's own addresses; otherwise it
+// covers those prefixes (subnets this node routes).
 message FilterRule {
   repeated string src_prefixes = 1;
   repeated PortRange ports = 2;
+  repeated string dst_prefixes = 3;
 }
 
 message PortRange {
   uint32 first = 1;
   uint32 last = 2;
 }
+
+message PathReport {
+  string from_node = 1;
+  string to_node = 2;
+  // "direct", "relay" or "none".
+  string path = 3;
+  string addr = 4;
+  double latency_ms = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message ReportStatusRequest {
+  repeated PathReport paths = 1;
+}
+
+message ReportStatusResponse {}

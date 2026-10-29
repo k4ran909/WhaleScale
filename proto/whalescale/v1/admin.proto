@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package whalescale.v1;
+
+import "google/protobuf/timestamp.proto";
+import "whalescale/v1/control.proto";
+
+option go_package = "github.com/k4ran909/whalescale/gen/whalescale/v1;whalescalev1";
+
+// AdminService manages the network. Callers authenticate with an API key
+// ("Authorization: Bearer wsapi-...") or a web console session cookie.
+service AdminService {
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc DeleteNode(DeleteNodeRequest) returns (DeleteNodeResponse);
+
+  rpc ListPreAuthKeys(ListPreAuthKeysRequest) returns (ListPreAuthKeysResponse);
+  rpc CreatePreAuthKey(CreatePreAuthKeyRequest) returns (CreatePreAuthKeyResponse);
+  rpc ExpirePreAuthKey(ExpirePreAuthKeyRequest) returns (ExpirePreAuthKeyResponse);
+
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+  // CheckPolicy validates a policy without applying it.
+  rpc CheckPolicy(CheckPolicyRequest) returns (CheckPolicyResponse);
+  rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse);
+
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+  rpc SetRouteApproved(SetRouteApprovedRequest) returns (SetRouteApprovedResponse);
+
+  // GetTopology returns the paths each online node reports to its peers.
+  rpc GetTopology(GetTopologyRequest) returns (GetTopologyResponse);
+
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+  rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
+}
+
+message WhoAmIRequest {}
+message WhoAmIResponse {
+  // "api-key" or "oidc".
+  string method = 1;
+  string identity = 2;
+  bool oidc_enabled = 3;
+}
+
+message User {
+  uint64 id = 1;
+  string name = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+  uint32 node_count = 5;
+}
+
+message ListUsersRequest {}
+message ListUsersResponse { repeated User users = 1; }
+message CreateUserRequest { string name = 1; }
+message CreateUserResponse { User user = 1; }
+message DeleteUserRequest { string name = 1; }
+message DeleteUserResponse {}
+
+message ListNodesRequest { string user = 1; }
+message ListNodesResponse { repeated Node nodes = 1; }
+message DeleteNodeRequest { uint64 id = 1; }
+message DeleteNodeResponse {}
+
+message PreAuthKey {
+  uint64 id = 1;
+  string prefix = 2;
+  string user = 3;
+  bool reusable = 4;
+  bool ephemeral = 5;
+  bool used = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+  bool valid = 9;
+}
+
+message ListPreAuthKeysRequest {}
+message ListPreAuthKeysResponse { repeated PreAuthKey keys = 1; }
+message CreatePreAuthKeyRequest {
+  string user = 1;
+  bool reusable = 2;
+  bool ephemeral = 3;
+  // Validity in seconds; 0 means 24 hours.
+  uint64 expiration_seconds = 4;
+}
+message CreatePreAuthKeyResponse {
+  PreAuthKey key = 1;
+  // The secret, shown only once.
+  string secret = 2;
+}
+message ExpirePreAuthKeyRequest { string prefix = 1; }
+message ExpirePreAuthKeyResponse {}
+
+message GetPolicyRequest {}
+message GetPolicyResponse {
+  string policy = 1;
+  // "default" (allow all), "database" or "file".
+  string source = 2;
+  // False when the policy comes from a file passed with --policy.
+  bool editable = 3;
+}
+message CheckPolicyRequest { string policy = 1; }
+message CheckPolicyResponse {
+  repeated string errors = 1;
+  repeated string warnings = 2;
+}
+message SetPolicyRequest { string policy = 1; }
+message SetPolicyResponse { repeated string warnings = 1; }
+
+message Route {
+  uint64 node_id = 1;
+  string node_name = 2;
+  string prefix = 3;
+  bool approved = 4;
+  // True for 0.0.0.0/0 and ::/0.
+  bool exit_node = 5;
+}
+message ListRoutesRequest {}
+message ListRoutesResponse { repeated Route routes = 1; }
+message SetRouteApprovedRequest {
+  uint64 node_id = 1;
+  string prefix = 2;
+  bool approved = 3;
+}
+message SetRouteApprovedResponse {}
+
+message GetTopologyRequest {}
+message GetTopologyResponse { repeated PathReport paths = 1; }
+
+message APIKey {
+  uint64 id = 1;
+  string prefix = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  google.protobuf.Timestamp last_used = 5;
+  bool valid = 6;
+}
+message ListAPIKeysRequest {}
+message ListAPIKeysResponse { repeated APIKey keys = 1; }
+message CreateAPIKeyRequest { uint64 expiration_seconds = 1; }
+message CreateAPIKeyResponse {
+  APIKey key = 1;
+  string secret = 2;
+}
+message ExpireAPIKeyRequest { string prefix = 1; }
+message ExpireAPIKeyResponse {}

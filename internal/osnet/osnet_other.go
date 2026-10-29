@@ -3,7 +3,9 @@
 package osnet
 
 import (
+	"errors"
 	"fmt"
+	"net/netip"
 	"runtime"
 )
 
@@ -12,3 +14,10 @@ func apply(Config) error {
 }
 
 func cleanup(Config) error { return nil }
+
+func addRoute(string, netip.Prefix) error { return errors.ErrUnsupported }
+func delRoute(string, netip.Prefix) error { return errors.ErrUnsupported }
+
+func startRouter(string, netip.Prefix, netip.Prefix) (*Router, error) {
+	return nil, errors.ErrUnsupported
+}

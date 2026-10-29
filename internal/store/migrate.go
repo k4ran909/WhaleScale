@@ -110,3 +110,22 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&v)
 	return v, err
 }
+
+// Inspect reports a database's schema version and the latest this binary
+// knows, without applying migrations (for 'whalescale doctor').
+func Inspect(ctx context.Context, path string) (current, latest int, err error) {
+	ms, err := loadMigrations()
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(ms) > 0 {
+		latest = ms[len(ms)-1].version
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return 0, latest, err
+	}
+	defer db.Close()
+	err = db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current)
+	return current, latest, err
+}

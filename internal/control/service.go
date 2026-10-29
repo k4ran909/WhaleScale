@@ -3,7 +3,9 @@ package control
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/netip"
@@ -29,6 +31,10 @@ type Config struct {
 	DNSSuffix string
 	Relays    []string // e.g. wss://ws.example.com/relay
 	STUN      []string // host:port
+	// PublicURL is used to build browser login links.
+	PublicURL string
+	// OIDC reports whether browser login is configured.
+	OIDC bool
 }
 
 type Service struct {
@@ -36,14 +42,41 @@ type Service struct {
 	log   *slog.Logger
 	cfg   Config
 
-	policyMu sync.RWMutex
-	policy   *policy.Policy
+	policyMu     sync.RWMutex
+	policy       *policy.Policy
+	policyText   string
+	policySource string // "default", "database" or "file"
 
 	version atomic.Uint64
 
-	mu     sync.Mutex
-	subs   map[uint64]map[chan struct{}]bool // node ID -> stream wake-ups
-	online map[uint64]int
+	mu      sync.Mutex
+	subs    map[uint64]map[chan struct{}]bool // node ID -> stream wake-ups
+	online  map[uint64]int
+	paths   map[uint64]pathSet // node ID -> latest report
+	pending map[string]*pendingReg
+
+	stats Stats
+}
+
+type pathSet struct {
+	reports []*v1.PathReport
+	at      time.Time
+}
+
+// Stats are counters exported as metrics.
+type Stats struct {
+	Registrations atomic.Uint64
+	MapsSent      atomic.Uint64
+}
+
+// pendingReg is a node registration waiting for a browser login.
+type pendingReg struct {
+	params  store.RegisterParams
+	created time.Time
+	done    chan struct{}
+	node    *store.Node
+	token   string
+	err     error
 }
 
 var _ whalescalev1connect.ControlServiceHandler = (*Service)(nil)
@@ -52,18 +85,27 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 	if cfg.DNSSuffix == "" {
 		cfg.DNSSuffix = "whale.internal"
 	}
-	svc := &Service{store: s, log: log, cfg: cfg, policy: policy.AllowAll(),
-		subs: map[uint64]map[chan struct{}]bool{}, online: map[uint64]int{}}
+	svc := &Service{store: s, log: log, cfg: cfg, policy: policy.AllowAll(), policySource: "default",
+		subs: map[uint64]map[chan struct{}]bool{}, online: map[uint64]int{},
+		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}}
 	svc.version.Store(1)
 	return svc
 }
 
 // SetPolicy swaps in a new policy and pushes fresh maps to every node.
-func (s *Service) SetPolicy(p *policy.Policy) {
+// source is "default", "database" or "file"; text is shown in the console.
+func (s *Service) SetPolicy(p *policy.Policy, text, source string) {
 	s.policyMu.Lock()
-	s.policy = p
+	s.policy, s.policyText, s.policySource = p, text, source
 	s.policyMu.Unlock()
 	s.NotifyAll()
+}
+
+// Policy returns the active policy's text and source.
+func (s *Service) Policy() (text, source string) {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+	return s.policyText, s.policySource
 }
 
 // NotifyAll wakes every open stream to send a new network map.
@@ -83,11 +125,11 @@ func (s *Service) NotifyAll() {
 
 func (s *Service) Register(ctx context.Context, req *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
 	m := req.Msg
-	if m.AuthKey == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("auth_key is required"))
-	}
 	if err := validateKey(m.MachineKey); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("machine_key: "+err.Error()))
+	}
+	if m.AuthKey == "" {
+		return s.startBrowserRegistration(m)
 	}
 	node, token, err := s.store.RegisterNode(ctx, store.RegisterParams{
 		AuthKey:    m.AuthKey,
@@ -108,8 +150,151 @@ func (s *Service) Register(ctx context.Context, req *connect.Request[v1.Register
 		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
 	s.log.Info("node registered", "id", node.ID, "name", node.Name, "user", node.User, "ipv4", node.IPv4)
+	s.stats.Registrations.Add(1)
 	s.NotifyAll()
 	return connect.NewResponse(&v1.RegisterResponse{Node: s.toProto(node), NodeToken: token}), nil
+}
+
+const pendingTTL = 10 * time.Minute
+
+func (s *Service) startBrowserRegistration(m *v1.RegisterRequest) (*connect.Response[v1.RegisterResponse], error) {
+	if !s.cfg.OIDC {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("auth_key is required (this server has no browser login configured)"))
+	}
+	id, err := randomID()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	s.mu.Lock()
+	for k, p := range s.pending {
+		if time.Since(p.created) > pendingTTL {
+			delete(s.pending, k)
+		}
+	}
+	if len(s.pending) > 1000 {
+		s.mu.Unlock()
+		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many pending logins"))
+	}
+	s.pending[id] = &pendingReg{
+		params:  store.RegisterParams{MachineKey: m.MachineKey, Hostname: m.Hostname, OS: truncate(m.Os, 32)},
+		created: time.Now(), done: make(chan struct{}),
+	}
+	s.mu.Unlock()
+	return connect.NewResponse(&v1.RegisterResponse{
+		AuthUrl:        strings.TrimRight(s.cfg.PublicURL, "/") + "/auth/node?id=" + id,
+		RegistrationId: id,
+	}), nil
+}
+
+// CompleteRegistration finishes a browser login for a pending registration.
+func (s *Service) CompleteRegistration(ctx context.Context, id string, userID uint64) (*store.Node, error) {
+	s.mu.Lock()
+	p := s.pending[id]
+	s.mu.Unlock()
+	if p == nil || time.Since(p.created) > pendingTTL {
+		return nil, errors.New("this login link has expired; run 'ws login' again")
+	}
+	select {
+	case <-p.done:
+		return p.node, p.err
+	default:
+	}
+	p.node, p.token, p.err = s.store.RegisterNodeForUser(ctx, userID, p.params)
+	close(p.done)
+	if p.err == nil {
+		s.log.Info("node registered via browser", "name", p.node.Name, "user", p.node.User)
+		s.stats.Registrations.Add(1)
+		s.NotifyAll()
+	}
+	return p.node, p.err
+}
+
+// PendingExists reports whether a registration id is waiting for login.
+func (s *Service) PendingExists(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.pending[id]
+	return p != nil && time.Since(p.created) < pendingTTL
+}
+
+func (s *Service) WaitRegistration(ctx context.Context, req *connect.Request[v1.WaitRegistrationRequest]) (*connect.Response[v1.WaitRegistrationResponse], error) {
+	s.mu.Lock()
+	p := s.pending[req.Msg.RegistrationId]
+	s.mu.Unlock()
+	if p == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("unknown or expired registration"))
+	}
+	t := time.NewTimer(50 * time.Second)
+	defer t.Stop()
+	select {
+	case <-p.done:
+	case <-t.C:
+		return nil, connect.NewError(connect.CodeDeadlineExceeded, errors.New("still waiting for browser login"))
+	case <-ctx.Done():
+		return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+	}
+	s.mu.Lock()
+	delete(s.pending, req.Msg.RegistrationId)
+	s.mu.Unlock()
+	if p.err != nil {
+		if errors.Is(p.err, store.ErrAlreadyExists) {
+			return nil, connect.NewError(connect.CodeAlreadyExists, p.err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, errors.New("registration failed"))
+	}
+	return connect.NewResponse(&v1.WaitRegistrationResponse{Node: s.toProto(p.node), NodeToken: p.token}), nil
+}
+
+func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error) {
+	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	if err != nil {
+		return nil, err
+	}
+	reports := req.Msg.Paths
+	if len(reports) > 1000 {
+		reports = reports[:1000]
+	}
+	now := timestamppb.Now()
+	for _, r := range reports {
+		r.FromNode, r.UpdatedAt = self.Name, now
+	}
+	s.mu.Lock()
+	s.paths[self.ID] = pathSet{reports: reports, at: time.Now()}
+	s.mu.Unlock()
+	return connect.NewResponse(&v1.ReportStatusResponse{}), nil
+}
+
+// Topology returns recent path reports from online nodes.
+func (s *Service) Topology() []*v1.PathReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []*v1.PathReport
+	for id, ps := range s.paths {
+		if s.online[id] == 0 || time.Since(ps.at) > 2*time.Minute {
+			continue
+		}
+		out = append(out, ps.reports...)
+	}
+	return out
+}
+
+// OnlineCount reports how many nodes hold a map stream.
+func (s *Service) OnlineCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.online)
+}
+
+// Stats exposes counters for metrics.
+func (s *Service) Stats() *Stats { return &s.stats }
+
+func randomID() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error) {
@@ -131,9 +316,22 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bad endpoint "+ep))
 		}
 	}
+	mesh6, _ := s.store.IPv6Prefix(ctx)
+	routes, err := parseAdvertised(m.AdvertisedRoutes, mesh6)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	changed, err := s.store.UpdateNodeInfo(ctx, self.ID, store.NodeInfo{
 		NodeKey: m.NodeKey, DiscoKey: m.DiscoKey, Endpoints: m.Endpoints, OS: truncate(m.Os, 32),
 	})
+	if err == nil {
+		var rc bool
+		rc, err = s.store.SetAdvertisedRoutes(ctx, self.ID, routes)
+		if rc {
+			s.log.Info("node routes changed", "name", self.Name, "advertised", routes)
+		}
+		changed = changed || rc
+	}
 	if errors.Is(err, store.ErrAlreadyExists) {
 		return nil, connect.NewError(connect.CodeAlreadyExists, err)
 	}
@@ -197,6 +395,7 @@ func (s *Service) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.
 		if err != nil {
 			return err
 		}
+		s.stats.MapsSent.Add(1)
 		return stream.Send(&v1.StreamNetworkMapResponse{NetworkMap: nm})
 	}
 	if err := send(); err != nil {
@@ -231,7 +430,7 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 	var self *store.Node
 	for i := range all {
 		n := &all[i]
-		pnodes[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}}
+		pnodes[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}, Routes: n.Routes}
 		if n.ID == selfID {
 			self = n
 		}
@@ -262,6 +461,9 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		fr := &v1.FilterRule{}
 		for _, p := range r.Src {
 			fr.SrcPrefixes = append(fr.SrcPrefixes, p.String())
+		}
+		for _, p := range r.Dst {
+			fr.DstPrefixes = append(fr.DstPrefixes, p.String())
 		}
 		for _, pr := range r.Ports {
 			fr.Ports = append(fr.Ports, &v1.PortRange{First: uint32(pr.First), Last: uint32(pr.Last)})
@@ -296,6 +498,33 @@ func (s *Service) authenticate(ctx context.Context, header string) (*store.Node,
 	return n, nil
 }
 
+var meshRange4 = netip.MustParsePrefix("100.64.0.0/10")
+
+// parseAdvertised validates routes a node offers. Routes into the mesh's own
+// ranges would loop traffic back into the tunnel, so they are refused.
+func parseAdvertised(ss []string, mesh6 netip.Prefix) ([]netip.Prefix, error) {
+	if len(ss) > 64 {
+		return nil, errors.New("too many advertised routes")
+	}
+	var out []netip.Prefix
+	for _, s := range ss {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, errors.New("bad advertised route " + s)
+		}
+		p = p.Masked()
+		if p.Bits() > 0 {
+			for _, m := range []netip.Prefix{meshRange4, mesh6} {
+				if m.IsValid() && m.Overlaps(p) {
+					return nil, errors.New("advertised route " + s + " overlaps the mesh's own address range")
+				}
+			}
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func validateKey(k string) error {
 	b, err := base64.StdEncoding.DecodeString(k)
 	if err != nil || len(b) != 32 {
@@ -315,20 +544,35 @@ func (s *Service) toProto(n *store.Node) *v1.Node {
 	s.mu.Lock()
 	online := s.online[n.ID] > 0
 	s.mu.Unlock()
+	var routes, advertised []string
+	exit := false
+	for _, r := range n.Routes {
+		if r.Bits() == 0 {
+			exit = true
+		} else {
+			routes = append(routes, r.String())
+		}
+	}
+	for _, r := range n.AdvertisedRoutes {
+		advertised = append(advertised, r.String())
+	}
 	return &v1.Node{
-		Id:         n.ID,
-		Name:       n.Name,
-		User:       n.User,
-		MachineKey: n.MachineKey,
-		Addresses:  []string{n.IPv4.String(), n.IPv6.String()},
-		Os:         n.OS,
-		CreatedAt:  timestamppb.New(n.CreatedAt),
-		LastSeen:   timestamppb.New(n.LastSeen),
-		Ephemeral:  n.Ephemeral,
-		NodeKey:    n.NodeKey,
-		DiscoKey:   n.DiscoKey,
-		Endpoints:  n.Endpoints,
-		Online:     online,
-		Fqdn:       n.Name + "." + s.cfg.DNSSuffix,
+		Routes:           routes,
+		AdvertisedRoutes: advertised,
+		ExitNode:         exit,
+		Id:               n.ID,
+		Name:             n.Name,
+		User:             n.User,
+		MachineKey:       n.MachineKey,
+		Addresses:        []string{n.IPv4.String(), n.IPv6.String()},
+		Os:               n.OS,
+		CreatedAt:        timestamppb.New(n.CreatedAt),
+		LastSeen:         timestamppb.New(n.LastSeen),
+		Ephemeral:        n.Ephemeral,
+		NodeKey:          n.NodeKey,
+		DiscoKey:         n.DiscoKey,
+		Endpoints:        n.Endpoints,
+		Online:           online,
+		Fqdn:             n.Name + "." + s.cfg.DNSSuffix,
 	}
 }

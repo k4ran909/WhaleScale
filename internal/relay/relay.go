@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -36,6 +37,21 @@ type Server struct {
 
 	mu      sync.Mutex
 	clients map[key.Public]*client
+
+	packets, bytes, dropped atomic.Uint64
+}
+
+// Stats is a snapshot of relay counters.
+type Stats struct {
+	Clients                 int
+	Packets, Bytes, Dropped uint64
+}
+
+func (s *Server) Stats() Stats {
+	s.mu.Lock()
+	n := len(s.clients)
+	s.mu.Unlock()
+	return Stats{Clients: n, Packets: s.packets.Load(), Bytes: s.bytes.Load(), Dropped: s.dropped.Load()}
 }
 
 type client struct {
@@ -100,13 +116,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		peer := s.clients[dst]
 		s.mu.Unlock()
 		if peer == nil {
+			s.dropped.Add(1)
 			continue
 		}
 		// Reuse the buffer: overwrite the dst key with the src key.
 		copy(msg[:32], k[:])
 		select {
 		case peer.out <- msg:
+			s.packets.Add(1)
+			s.bytes.Add(uint64(len(msg) - 32))
 		default: // peer is slow; drop rather than block everyone
+			s.dropped.Add(1)
 		}
 	}
 }

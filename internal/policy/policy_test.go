@@ -83,3 +83,38 @@ func TestLint(t *testing.T) {
 		t.Fatalf("lint = %s", w)
 	}
 }
+
+func TestRoutedSubnets(t *testing.T) {
+	lan := netip.MustParsePrefix("192.168.1.0/24")
+	nodes := []Node{
+		{ID: 1, Name: "laptop", User: "bob", Addrs: []netip.Addr{netip.MustParseAddr("100.64.0.1")}},
+		{ID: 2, Name: "router", User: "alice", Addrs: []netip.Addr{netip.MustParseAddr("100.64.0.2")}, Routes: []netip.Prefix{lan}},
+	}
+	p, err := Parse([]byte(`{"acls":[{"action":"accept","src":["bob"],"dst":["192.168.1.10/32:22"]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := p.Compile(nodes)
+	rules := c.Rules[2]
+	if len(rules) != 1 || len(rules[0].Dst) != 1 || rules[0].Dst[0] != netip.MustParsePrefix("192.168.1.10/32") {
+		t.Fatalf("router rules = %+v", rules)
+	}
+	if !c.Peers[1][2] {
+		t.Fatal("laptop must see the router to reach the subnet")
+	}
+	// A user selector grants the router's own addresses, not its subnet.
+	p, _ = Parse([]byte(`{"acls":[{"action":"accept","src":["bob"],"dst":["alice:*"]}]}`))
+	for _, r := range p.Compile(nodes).Rules[2] {
+		if len(r.Dst) > 0 {
+			t.Fatalf("user selector granted routed subnet: %+v", r)
+		}
+	}
+	// Allow-all covers routed subnets.
+	var sawRouted bool
+	for _, r := range AllowAll().Compile(nodes).Rules[2] {
+		sawRouted = sawRouted || (len(r.Dst) == 1 && r.Dst[0] == lan)
+	}
+	if !sawRouted {
+		t.Fatal("allow-all should cover routed subnets")
+	}
+}

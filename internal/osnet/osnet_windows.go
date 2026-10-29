@@ -1,7 +1,9 @@
 package osnet
 
 import (
+	"errors"
 	"fmt"
+	"net/netip"
 	"strconv"
 )
 
@@ -46,4 +48,24 @@ func cleanup(c Config) error {
 		removeNRPT()
 	}
 	return nil
+}
+
+func addRoute(iface string, p netip.Prefix) error {
+	fam := "ipv4"
+	if p.Addr().Is6() {
+		fam = "ipv6"
+	}
+	return run("netsh", "interface", fam, "add", "route", p.String(), "interface="+iface, "store=active")
+}
+
+func delRoute(iface string, p netip.Prefix) error {
+	fam := "ipv4"
+	if p.Addr().Is6() {
+		fam = "ipv6"
+	}
+	return run("netsh", "interface", fam, "delete", "route", p.String(), "interface="+iface)
+}
+
+func startRouter(string, netip.Prefix, netip.Prefix) (*Router, error) {
+	return nil, errors.New("subnet routing is only supported on Linux so far")
 }

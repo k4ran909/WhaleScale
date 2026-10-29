@@ -54,6 +54,11 @@ type Options struct {
 	TUNName   string
 	Port      uint16
 	Log       *slog.Logger
+	// AdvertiseRoutes are subnets (or 0.0.0.0/0 and ::/0 to offer being an
+	// exit node) this node forwards to; an admin must approve them.
+	AdvertiseRoutes []netip.Prefix
+	// AcceptRoutes installs subnet routes other nodes offer.
+	AcceptRoutes bool
 	// Testing knobs.
 	IncludeLoopback bool
 	ForceRelay      bool
@@ -83,6 +88,8 @@ type Engine struct {
 	relay    *relay.Client
 	relayURL string
 	osCfg    *osnet.Config
+	osRoutes []netip.Prefix
+	router   *osnet.Router
 	ready    chan struct{}
 	lastErr  string
 
@@ -179,9 +186,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.conn = conn
 	e.log.Info("mesh socket open", "udp_port", conn.Port(), "node_key", e.nodeKey.Public().ShortString())
 
-	e.wg.Add(2)
+	e.wg.Add(3)
 	go e.endpointLoop()
 	go e.mapLoop()
+	go e.reportLoop()
 	return nil
 }
 
@@ -196,6 +204,9 @@ func (e *Engine) Close() {
 	e.wg.Wait()
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.router != nil {
+		e.router.Close()
+	}
 	if e.osCfg != nil {
 		osnet.Cleanup(*e.osCfg)
 	}
@@ -212,9 +223,13 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	for i, ep := range eps {
 		strs[i] = ep.String()
 	}
+	var routes []string
+	for _, r := range e.opts.AdvertiseRoutes {
+		routes = append(routes, r.Masked().String())
+	}
 	req := connect.NewRequest(&v1.UpdateNodeRequest{
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
-		Endpoints: strs, Os: runtime.GOOS,
+		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes,
 	})
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
@@ -344,6 +359,8 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 
 	// Peers: mesh socket first, so WireGuard's endpoints resolve.
 	var mpeers []meshconn.PeerConfig
+	var subnets []netip.Prefix
+	claimed := map[netip.Prefix]bool{}
 	want := map[key.Public]string{}
 	dnsNames := map[string][]netip.Addr{nm.Self.Name: {self.v4, self.v6}}
 	for _, p := range nm.Peers {
@@ -364,6 +381,16 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		var cfg strings.Builder
 		for _, a := range addrs {
 			fmt.Fprintf(&cfg, "allowed_ip=%s\n", netip.PrefixFrom(a, a.BitLen()))
+		}
+		if e.opts.AcceptRoutes {
+			for _, r := range parsePrefixes(p.Routes) {
+				if r.Bits() == 0 || claimed[r] {
+					continue // exit routes are opt-in per node; first router wins
+				}
+				claimed[r] = true
+				fmt.Fprintf(&cfg, "allowed_ip=%s\n", r)
+				subnets = append(subnets, r)
+			}
 		}
 		want[nk] = cfg.String()
 	}
@@ -387,6 +414,9 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		}
 	}
 	e.wgPeers = want
+	if err := e.syncOSRoutesLocked(subnets); err != nil {
+		e.log.Warn("install subnet routes", "err", err)
+	}
 
 	// Packet filter.
 	var rules []policy.Rule
@@ -397,12 +427,17 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 				r.Src = append(r.Src, p)
 			}
 		}
+		r.Dst = parsePrefixes(fr.DstPrefixes)
 		for _, pr := range fr.Ports {
 			r.Ports = append(r.Ports, policy.PortRange{First: uint16(pr.First), Last: uint16(pr.Last)})
 		}
 		rules = append(rules, r)
 	}
-	e.filter.SetRules(rules)
+	selfIPs := []netip.Addr{self.v4}
+	if self.v6.IsValid() {
+		selfIPs = append(selfIPs, self.v6)
+	}
+	e.filter.SetRules(rules, selfIPs)
 
 	suffix := "whale.internal"
 	if nm.Dns != nil && nm.Dns.Suffix != "" {
@@ -520,8 +555,90 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		}
 		e.osCfg = &cfg
 		e.log.Info("tun up", "iface", ifname, "ipv4", self.v4, "ipv6", self.v6)
+		if len(e.opts.AdvertiseRoutes) > 0 {
+			r, err := osnet.StartRouter(ifname, meshRange4, route6)
+			if err != nil {
+				e.log.Warn("subnet routing unavailable; advertised routes won't forward", "err", err)
+			} else {
+				e.router = r
+			}
+		}
+	} else if len(e.opts.AdvertiseRoutes) > 0 {
+		e.log.Warn("advertised routes need OS TUN mode on Linux; userspace mode can't forward")
 	}
 	return nil
+}
+
+// syncOSRoutesLocked makes the OS route the accepted subnets into the TUN.
+func (e *Engine) syncOSRoutesLocked(want []netip.Prefix) error {
+	if e.opts.Userspace || e.osCfg == nil {
+		return nil // netstack's default route already covers them
+	}
+	have := map[netip.Prefix]bool{}
+	for _, p := range e.osRoutes {
+		have[p] = true
+	}
+	next := map[netip.Prefix]bool{}
+	var errs []error
+	for _, p := range want {
+		next[p] = true
+		if !have[p] {
+			if err := osnet.AddRoute(e.osCfg.Iface, p); err != nil {
+				errs = append(errs, err)
+				delete(next, p)
+			}
+		}
+	}
+	for p := range have {
+		if !next[p] {
+			osnet.DelRoute(e.osCfg.Iface, p)
+		}
+	}
+	e.osRoutes = e.osRoutes[:0]
+	for p := range next {
+		e.osRoutes = append(e.osRoutes, p)
+	}
+	return errors.Join(errs...)
+}
+
+// reportLoop shares path status with the server for the topology view.
+func (e *Engine) reportLoop() {
+	defer e.wg.Done()
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	first := time.After(5 * time.Second)
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-first:
+		case <-t.C:
+		}
+		var paths []*v1.PathReport
+		for _, p := range e.conn.Status() {
+			paths = append(paths, &v1.PathReport{
+				ToNode: p.Name, Path: p.Path, Addr: p.Addr,
+				LatencyMs: float64(p.Latency.Microseconds()) / 1000,
+			})
+		}
+		req := connect.NewRequest(&v1.ReportStatusRequest{Paths: paths})
+		e.authed(req)
+		ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+		if _, err := e.api.ReportStatus(ctx, req); err != nil {
+			e.log.Debug("report status", "err", err)
+		}
+		cancel()
+	}
+}
+
+func parsePrefixes(ss []string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range ss {
+		if p, err := netip.ParsePrefix(s); err == nil {
+			out = append(out, p.Masked())
+		}
+	}
+	return out
 }
 
 func defaultTUNName() string {

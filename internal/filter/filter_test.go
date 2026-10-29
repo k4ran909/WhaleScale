@@ -25,7 +25,11 @@ func TestInbound(t *testing.T) {
 	f.SetRules([]policy.Rule{{
 		Src:   []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
 		Ports: []policy.PortRange{{First: 22, Last: 22}, {First: 8000, Last: 8100}},
-	}})
+	}, {
+		Src:   []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
+		Dst:   []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+		Ports: policy.AllPorts,
+	}}, []netip.Addr{netip.MustParseAddr("100.64.0.1")})
 	const me, bob, eve = "100.64.0.1", "100.64.0.2", "100.64.0.9"
 
 	cases := []struct {
@@ -40,6 +44,9 @@ func TestInbound(t *testing.T) {
 		{"eve ssh", ipv4Packet(protoTCP, eve, me, 50000, 22), false},
 		{"eve ping", ipv4Packet(protoICMP, eve, me, 0, 0), false},
 		{"garbage", []byte{0x45, 0}, false},
+		{"bob to routed lan", ipv4Packet(protoTCP, bob, "192.168.1.7", 50000, 443), true},
+		{"bob to unrouted net", ipv4Packet(protoTCP, bob, "10.0.0.7", 50000, 22), false},
+		{"eve to routed lan", ipv4Packet(protoTCP, eve, "192.168.1.7", 50000, 443), false},
 	}
 	for _, c := range cases {
 		if got := f.Inbound(c.pkt); got != c.want {

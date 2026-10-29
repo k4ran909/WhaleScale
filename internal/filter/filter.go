@@ -32,6 +32,7 @@ type flow struct {
 type Filter struct {
 	mu    sync.RWMutex
 	rules []policy.Rule
+	self  []netip.Addr
 
 	flowMu sync.Mutex
 	flows  map[flow]time.Time
@@ -43,9 +44,10 @@ func New() *Filter {
 }
 
 // SetRules replaces the inbound rules. A nil slice denies all new inbound.
-func (f *Filter) SetRules(rules []policy.Rule) {
+// self lists this node's own addresses, which rules without Dst cover.
+func (f *Filter) SetRules(rules []policy.Rule, self []netip.Addr) {
 	f.mu.Lock()
-	f.rules = rules
+	f.rules, f.self = rules, self
 	f.mu.Unlock()
 }
 
@@ -149,8 +151,17 @@ func (f *Filter) Inbound(b []byte) bool {
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	toSelf := false
+	for _, a := range f.self {
+		if a == p.dst {
+			toSelf = true
+		}
+	}
 	for _, r := range f.rules {
 		if !srcMatches(r.Src, p.src) {
+			continue
+		}
+		if len(r.Dst) == 0 && !toSelf || len(r.Dst) > 0 && !srcMatches(r.Dst, p.dst) {
 			continue
 		}
 		switch {

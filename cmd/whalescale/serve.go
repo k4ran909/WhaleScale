@@ -1,0 +1,299 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"sort"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/k4ran909/whalescale/internal/config"
+	"github.com/k4ran909/whalescale/internal/policy"
+	"github.com/k4ran909/whalescale/internal/server"
+	"github.com/k4ran909/whalescale/internal/store"
+	"github.com/k4ran909/whalescale/internal/stun"
+	"github.com/k4ran909/whalescale/internal/version"
+	"github.com/k4ran909/whalescale/web"
+)
+
+type serveOpts struct {
+	db, listen, publicURL, stunListen, dnsSuffix, policyFile string
+	certFile, keyFile, metricsListen, logLevel               string
+	oidcIssuer, oidcClientID, oidcSecret, oidcSecretFile     string
+	oidcAdmins, oidcUsers, oidcDomains                       string
+	console                                                  bool
+}
+
+var secretSettings = map[string]bool{"oidc-client-secret": true}
+
+func defineServeFlags(fs *flag.FlagSet) *serveOpts {
+	o := &serveOpts{}
+	fs.String("config", defaultConfigPath(), "config file (YAML, keys are these flag names)")
+	fs.StringVar(&o.db, "db", "whalescale.db", "SQLite database path")
+	fs.StringVar(&o.listen, "listen", ":8080", "HTTP(S) listen address")
+	fs.StringVar(&o.publicURL, "public-url", "", "URL nodes and browsers use to reach this server (default: derived from --listen)")
+	fs.StringVar(&o.stunListen, "stun-listen", ":3478", "comma-separated UDP addresses for STUN; two ports let nodes detect symmetric NAT; empty disables")
+	fs.StringVar(&o.dnsSuffix, "dns-suffix", "whale.internal", "MagicDNS domain suffix")
+	fs.StringVar(&o.policyFile, "policy", "", "policy file (JSON); without it, the policy is edited in the console")
+	fs.StringVar(&o.certFile, "tls-cert", "", "TLS certificate file (PEM)")
+	fs.StringVar(&o.keyFile, "tls-key", "", "TLS private key file (PEM)")
+	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
+	fs.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn or error")
+	fs.BoolVar(&o.console, "console", true, "serve the web console")
+	fs.StringVar(&o.oidcIssuer, "oidc-issuer", "", "OpenID Connect issuer URL; enables browser login")
+	fs.StringVar(&o.oidcClientID, "oidc-client-id", "", "OIDC client ID")
+	fs.StringVar(&o.oidcSecret, "oidc-client-secret", "", "OIDC client secret (prefer --oidc-client-secret-file or the env var)")
+	fs.StringVar(&o.oidcSecretFile, "oidc-client-secret-file", "", "file containing the OIDC client secret")
+	fs.StringVar(&o.oidcAdmins, "oidc-admins", "", "comma-separated emails allowed into the console")
+	fs.StringVar(&o.oidcUsers, "oidc-allowed-users", "", "comma-separated emails allowed to add devices (admins always can)")
+	fs.StringVar(&o.oidcDomains, "oidc-allowed-domains", "", "comma-separated email domains allowed to add devices")
+	return o
+}
+
+func loadServeConfig(args []string, quiet bool) (*serveOpts, config.Sources, error) {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	if quiet {
+		fs.SetOutput(io.Discard)
+	}
+	o := defineServeFlags(fs)
+	path, explicit := config.ConfigPath(args, defaultConfigPath())
+	src, err := config.Load(fs, path, explicit, args)
+	if err != nil {
+		return nil, nil, err
+	}
+	return o, src, nil
+}
+
+// resolve fills derived values and checks the configuration for mistakes.
+func (o *serveOpts) resolve() []error {
+	var errs []error
+	if (o.certFile == "") != (o.keyFile == "") {
+		errs = append(errs, errors.New("tls-cert and tls-key must be set together"))
+	}
+	for _, f := range []string{o.certFile, o.keyFile, o.policyFile} {
+		if f != "" {
+			if _, err := os.Stat(f); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if o.publicURL == "" {
+		host := o.listen
+		if strings.HasPrefix(host, ":") {
+			host = "127.0.0.1" + host
+		}
+		scheme := "http"
+		if o.certFile != "" {
+			scheme = "https"
+		}
+		o.publicURL = scheme + "://" + host
+	}
+	if u, err := url.Parse(o.publicURL); err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		errs = append(errs, fmt.Errorf("public-url %q must be an http(s) URL", o.publicURL))
+	}
+	for _, a := range splitList(o.stunListen) {
+		if _, err := net.ResolveUDPAddr("udp", a); err != nil {
+			errs = append(errs, fmt.Errorf("stun-listen %q: %w", a, err))
+		}
+	}
+	if o.policyFile != "" {
+		if b, err := os.ReadFile(o.policyFile); err == nil {
+			if _, err := policy.Parse(b); err != nil {
+				errs = append(errs, fmt.Errorf("policy %s: %w", o.policyFile, err))
+			}
+		}
+	}
+	if o.oidcSecretFile != "" {
+		b, err := os.ReadFile(o.oidcSecretFile)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		o.oidcSecret = strings.TrimSpace(string(b))
+	}
+	if o.oidcIssuer != "" {
+		if o.oidcClientID == "" || o.oidcSecret == "" {
+			errs = append(errs, errors.New("oidc-issuer needs oidc-client-id and a client secret"))
+		}
+		if len(splitList(o.oidcAdmins)) == 0 {
+			errs = append(errs, errors.New("oidc-issuer needs at least one oidc-admins email"))
+		}
+		if !strings.HasPrefix(o.publicURL, "https://") && !isLoopbackURL(o.publicURL) {
+			errs = append(errs, errors.New("OIDC needs an https public-url (identity providers reject plain-http redirects)"))
+		}
+	}
+	var lvl slog.Level
+	if err := lvl.UnmarshalText([]byte(o.logLevel)); err != nil {
+		errs = append(errs, fmt.Errorf("log-level: %w", err))
+	}
+	return errs
+}
+
+func isLoopbackURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return isLoopback(net.JoinHostPort(u.Hostname(), "0"))
+}
+
+func (o *serveOpts) oidc() *server.OIDCConfig {
+	if o.oidcIssuer == "" {
+		return nil
+	}
+	return &server.OIDCConfig{
+		Issuer: o.oidcIssuer, ClientID: o.oidcClientID, ClientSecret: o.oidcSecret,
+		Admins: splitList(o.oidcAdmins), AllowedUsers: splitList(o.oidcUsers), AllowedDomains: splitList(o.oidcDomains),
+	}
+}
+
+func cmdConfigtest(args []string) error {
+	o, src, err := loadServeConfig(args, false)
+	if err != nil {
+		return err
+	}
+	errs := o.resolve()
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	defineServeFlags(fs)
+	var names []string
+	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
+	sort.Strings(names)
+	vals := map[string]string{
+		"db": o.db, "listen": o.listen, "public-url": o.publicURL, "stun-listen": o.stunListen,
+		"dns-suffix": o.dnsSuffix, "policy": o.policyFile, "tls-cert": o.certFile, "tls-key": o.keyFile,
+		"metrics-listen": o.metricsListen, "log-level": o.logLevel, "console": fmt.Sprint(o.console),
+		"oidc-issuer": o.oidcIssuer, "oidc-client-id": o.oidcClientID, "oidc-client-secret": o.oidcSecret,
+		"oidc-client-secret-file": o.oidcSecretFile, "oidc-admins": o.oidcAdmins,
+		"oidc-allowed-users": o.oidcUsers, "oidc-allowed-domains": o.oidcDomains,
+	}
+	for _, n := range names {
+		v, ok := vals[n]
+		if !ok {
+			continue
+		}
+		if secretSettings[n] && v != "" {
+			v = "<redacted>"
+		}
+		from := src[n]
+		if from == "" {
+			from = "default"
+		}
+		fmt.Printf("%-24s %-40s (%s)\n", n, v, from)
+	}
+	if len(errs) > 0 {
+		fmt.Println()
+		for _, e := range errs {
+			fmt.Println("✘", e)
+		}
+		return fmt.Errorf("%d configuration problem(s)", len(errs))
+	}
+	fmt.Println("\n✔ configuration ok")
+	return nil
+}
+
+func cmdServe(args []string) error {
+	o, _, err := loadServeConfig(args, false)
+	if err != nil {
+		return err
+	}
+	if errs := o.resolve(); len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	var lvl slog.Level
+	lvl.UnmarshalText([]byte(o.logLevel))
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+
+	st, err := store.Open(context.Background(), o.db)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	tlsOn := o.certFile != ""
+	if !tlsOn && !isLoopback(o.listen) && !strings.HasPrefix(o.publicURL, "https://") {
+		log.Warn("serving plain HTTP on a non-loopback address: auth keys and node tokens travel in cleartext. Use --tls-cert/--tls-key or a TLS reverse proxy.")
+	}
+	pu, _ := url.Parse(o.publicURL)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var stunAdvertise []string
+	for _, a := range splitList(o.stunListen) {
+		pc, err := net.ListenPacket("udp", a)
+		if err != nil {
+			return fmt.Errorf("stun listen %s: %w", a, err)
+		}
+		_, port, _ := net.SplitHostPort(pc.LocalAddr().String())
+		stunAdvertise = append(stunAdvertise, net.JoinHostPort(pu.Hostname(), port))
+		go func() {
+			if err := stun.Serve(ctx, pc, log); err != nil {
+				log.Error("stun", "err", err)
+			}
+		}()
+	}
+
+	cfg := server.Config{
+		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
+		OIDC: o.oidc(), Log: log,
+	}
+	if o.console {
+		cfg.Console = web.Dist()
+	}
+	srv, err := server.New(st, cfg)
+	if err != nil {
+		return err
+	}
+	go srv.Watch(ctx, 5*time.Second)
+
+	if o.metricsListen != "" {
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", srv.MetricsHandler())
+		ms := &http.Server{Addr: o.metricsListen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			log.Info("metrics listening", "addr", o.metricsListen)
+			if err := ms.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("metrics", "err", err)
+			}
+		}()
+		defer ms.Close()
+	}
+
+	hs := &http.Server{
+		Addr:              o.listen,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 << 10,
+	}
+	errc := make(chan error, 1)
+	go func() {
+		log.Info("whalescale listening", "addr", o.listen, "public_url", o.publicURL, "stun", stunAdvertise,
+			"tls", tlsOn, "oidc", o.oidcIssuer != "", "db", o.db, "version", version.Version)
+		if tlsOn {
+			errc <- hs.ListenAndServeTLS(o.certFile, o.keyFile)
+		} else {
+			errc <- hs.ListenAndServe()
+		}
+	}()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	log.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return hs.Shutdown(shutdownCtx)
+}

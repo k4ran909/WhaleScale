@@ -40,3 +40,26 @@ func mask4(bits int) string {
 	m := uint32(0xffffffff) << (32 - bits)
 	return fmt.Sprintf("%d.%d.%d.%d", m>>24, m>>16&0xff, m>>8&0xff, m&0xff)
 }
+
+// AddRoute sends a prefix into the TUN; DelRoute removes it.
+func AddRoute(iface string, p netip.Prefix) error { return addRoute(iface, p) }
+func DelRoute(iface string, p netip.Prefix) error { return delRoute(iface, p) }
+
+// Router forwards traffic between the mesh and local networks for
+// advertised subnet routes. Close undoes its changes.
+type Router struct {
+	undo []func()
+}
+
+func (r *Router) Close() {
+	for i := len(r.undo) - 1; i >= 0; i-- {
+		r.undo[i]()
+	}
+	r.undo = nil
+}
+
+// StartRouter enables forwarding and source NAT for mesh traffic leaving
+// through non-mesh interfaces, so LAN hosts need no route back to the mesh.
+func StartRouter(iface string, mesh4, mesh6 netip.Prefix) (*Router, error) {
+	return startRouter(iface, mesh4, mesh6)
+}

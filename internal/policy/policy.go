@@ -197,11 +197,15 @@ type Node struct {
 	Name  string
 	User  string
 	Addrs []netip.Addr
+	// Routes are approved subnets (or 0.0.0.0/0, ::/0) the node forwards to.
+	Routes []netip.Prefix
 }
 
-// Rule allows packets from any Src prefix to the listed ports.
+// Rule allows packets from any Src prefix to the listed ports. Dst empty
+// means the node's own addresses; otherwise the routed prefixes listed.
 type Rule struct {
 	Src   []netip.Prefix
+	Dst   []netip.Prefix
 	Ports []PortRange
 }
 
@@ -254,10 +258,17 @@ func (p *Policy) Compile(nodes []Node) *Compiled {
 			sel, portStr, _ := splitDst(d)
 			ports, _ := parsePorts(portStr)
 			for _, dn := range nodes {
-				if !p.matchesDst(sel, dn) {
+				var rules []Rule
+				if p.matchesDst(sel, dn) {
+					rules = append(rules, Rule{Src: srcPrefixes, Ports: ports})
+				}
+				if routed := routedDst(sel, dn.Routes); len(routed) > 0 {
+					rules = append(rules, Rule{Src: srcPrefixes, Dst: routed, Ports: ports})
+				}
+				if len(rules) == 0 {
 					continue
 				}
-				c.Rules[dn.ID] = append(c.Rules[dn.ID], Rule{Src: srcPrefixes, Ports: ports})
+				c.Rules[dn.ID] = append(c.Rules[dn.ID], rules...)
 				for _, sn := range srcNodes {
 					link(sn.ID, dn.ID)
 				}
@@ -301,6 +312,35 @@ func (p *Policy) matchesDst(sel string, n Node) bool {
 		return false
 	}
 	return p.matches(sel, n)
+}
+
+// routedDst returns the part of a node's routes a dst selector grants: all
+// of them for "*", the overlap for a CIDR, none for user/group/node
+// selectors (those name devices, not the networks behind them).
+func routedDst(sel string, routes []netip.Prefix) []netip.Prefix {
+	if len(routes) == 0 {
+		return nil
+	}
+	if sel == "*" {
+		return routes
+	}
+	cidr, err := netip.ParsePrefix(sel)
+	if err != nil {
+		return nil
+	}
+	cidr = cidr.Masked()
+	var out []netip.Prefix
+	for _, r := range routes {
+		if !r.Overlaps(cidr) {
+			continue
+		}
+		if r.Bits() >= cidr.Bits() {
+			out = append(out, r)
+		} else {
+			out = append(out, cidr)
+		}
+	}
+	return out
 }
 
 func coveredBy(addrs []netip.Addr, pfxs []netip.Prefix) bool {

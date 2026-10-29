@@ -68,6 +68,10 @@ type Node struct {
 	NodeKey    string
 	DiscoKey   string
 	Endpoints  []string
+	// AdvertisedRoutes are offered by the node; Routes are the subset an
+	// admin approved.
+	AdvertisedRoutes []netip.Prefix
+	Routes           []netip.Prefix
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -271,11 +275,48 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 	if err != nil {
 		return nil, "", err
 	}
-	now := time.Now()
-	if now.Unix() >= exp || (used && !reusable) {
+	if time.Now().Unix() >= exp || (used && !reusable) {
 		return nil, "", ErrInvalidKey
 	}
 
+	n, token, err := insertNode(ctx, tx, prefix, uid, userName, sql.NullInt64{Int64: int64(keyID), Valid: true}, ephemeral, p)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE preauth_keys SET used = 1 WHERE id = ?`, keyID); err != nil {
+		return nil, "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, "", err
+	}
+	return n, token, nil
+}
+
+// RegisterNodeForUser creates a node for a user who authenticated some
+// other way (a browser OIDC login).
+func (s *Store) RegisterNodeForUser(ctx context.Context, userID uint64, p RegisterParams) (*Node, string, error) {
+	prefix, err := s.IPv6Prefix(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	defer tx.Rollback()
+	var userName string
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM users WHERE id = ?`, userID).Scan(&userName); err != nil {
+		return nil, "", fmt.Errorf("user %d: %w", userID, ErrNotFound)
+	}
+	n, token, err := insertNode(ctx, tx, prefix, userID, userName, sql.NullInt64{}, false, p)
+	if err != nil {
+		return nil, "", err
+	}
+	return n, token, tx.Commit()
+}
+
+func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64, userName string,
+	keyID sql.NullInt64, ephemeral bool, p RegisterParams) (*Node, string, error) {
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE machine_key = ?`, p.MachineKey).Scan(&exists); err != nil {
 		return nil, "", err
@@ -283,7 +324,6 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 	if exists > 0 {
 		return nil, "", fmt.Errorf("machine key: %w", ErrAlreadyExists)
 	}
-
 	name, err := uniqueNodeName(ctx, tx, sanitizeHostname(p.Hostname))
 	if err != nil {
 		return nil, "", err
@@ -293,23 +333,16 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 		return nil, "", err
 	}
 	v6 := ipv6For(prefix, v4)
-
 	token, err := randHex(32)
 	if err != nil {
 		return nil, "", err
 	}
 	token = "wsnode-" + token
-
+	now := time.Now()
 	res, err := tx.ExecContext(ctx, `INSERT INTO nodes(user_id, name, machine_key, ipv4, ipv6, os, token_hash, ephemeral, preauth_key_id, created_at, last_seen)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uid, name, p.MachineKey, v4.String(), v6.String(), p.OS, hashSecret(token), ephemeral, keyID, now.Unix(), now.Unix())
 	if err != nil {
-		return nil, "", err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE preauth_keys SET used = 1 WHERE id = ?`, keyID); err != nil {
-		return nil, "", err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, "", err
 	}
 	id, _ := res.LastInsertId()
@@ -334,7 +367,11 @@ func (s *Store) NodeByToken(ctx context.Context, token string) (*Node, error) {
 		return nil, err
 	}
 	n.LastSeen = now
-	return n, nil
+	one := []Node{*n}
+	if err := s.attachRoutes(ctx, one); err != nil {
+		return nil, err
+	}
+	return &one[0], nil
 }
 
 // ListNodes returns all nodes, optionally filtered to one user.
@@ -358,7 +395,11 @@ func (s *Store) ListNodes(ctx context.Context, user string) ([]Node, error) {
 		}
 		out = append(out, *n)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, s.attachRoutes(ctx, out)
 }
 
 // NodeInfo is what an agent reports about itself after registering.
