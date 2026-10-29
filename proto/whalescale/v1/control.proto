@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package whalescale.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/k4ran909/whalescale/gen/whalescale/v1;whalescalev1";
+
+// ControlService is the API that agents (wsd) and the ws CLI talk to.
+//
+// Phase 0: registration with a pre-auth key returns a node token that
+// authenticates later calls as a bearer token. Phase 1 replaces the token
+// with a Noise handshake bound to the machine key.
+service ControlService {
+  // Register enrolls a new node using a pre-auth key.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // GetNetworkMap returns the calling node and its visible peers.
+  // Requires "Authorization: Bearer <node_token>".
+  rpc GetNetworkMap(GetNetworkMapRequest) returns (GetNetworkMapResponse);
+}
+
+message Node {
+  uint64 id = 1;
+  string name = 2;
+  string user = 3;
+  // X25519 public key, base64 (std encoding).
+  string machine_key = 4;
+  repeated string addresses = 5;
+  string os = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp last_seen = 8;
+  bool ephemeral = 9;
+}
+
+message RegisterRequest {
+  string auth_key = 1;
+  string machine_key = 2;
+  string hostname = 3;
+  string os = 4;
+}
+
+message RegisterResponse {
+  Node node = 1;
+  // Secret used to authenticate this node. Shown only once.
+  string node_token = 2;
+}
+
+message GetNetworkMapRequest {}
+
+message GetNetworkMapResponse {
+  Node self = 1;
+  repeated Node peers = 2;
+}
