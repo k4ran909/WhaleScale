@@ -114,6 +114,8 @@ export const api = {
   getPolicy: () => call<{ policy: string; source: string; editable?: boolean }>("GetPolicy"),
   checkPolicy: (policy: string) => call<{ errors?: string[]; warnings?: string[] }>("CheckPolicy", { policy }),
   setPolicy: (policy: string) => call<{ warnings?: string[] }>("SetPolicy", { policy }),
+  explainAccess: (src: string, dst: string, policy?: string) =>
+    call<{ allowed?: boolean; reasons?: string[] }>("ExplainAccess", { src, dst, policy }),
   listRoutes: () => call<{ routes?: Route[] }>("ListRoutes").then((r) => r.routes ?? []),
   setRouteApproved: (nodeId: string, prefix: string, approved: boolean) =>
     call("SetRouteApproved", { nodeId, prefix, approved }),

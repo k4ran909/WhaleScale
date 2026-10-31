@@ -135,6 +135,32 @@ Without one, every node can reach every other node. Edit it in the console, or p
 
 Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
 
+
+### Policy tests
+
+Pin down intent with `tests`. A policy that fails its own tests is refused when saved in the console, when a policy file is reloaded, and by `whalescale policy check`. At server startup failures are only logged, so an outdated test can't lock anyone out.
+
+```json
+"tests": [
+  { "src": "guest", "accept": ["node:nas:445"], "deny": ["karan:22"] },
+  { "src": "karan", "accept": ["192.168.1.10:443"] }
+]
+```
+
+`src` is a user, `node:NAME` or an IP. `accept` and `deny` entries are `<user|node:NAME|IP>:<port>`.
+
+### Why can't A reach B?
+
+```bash
+$ whalescale policy explain guest karan:22
+guest → karan port 22: DENIED  (using the policy saved in the console)
+  - acls[1]: guest → karan:80,443 covers guest → karan but only ports 80,443
+  - acls[0]: group:admins → *:* would allow it for sources group:admins
+  - replies to connections karan opens to guest are still allowed
+```
+
+The console's Access policy page has the same "Explain access" panel, and it evaluates your unsaved edits. For subnet addresses, explain also warns when the policy allows something that no approved router serves.
+
 ## Operations
 
 | Command | What |
@@ -142,7 +168,8 @@ Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destinati
 | `whalescale configtest` | Validate config; show each value and its source |
 | `whalescale doctor` | End-to-end checks of a running server |
 | `whalescale users / preauthkeys / apikeys / nodes / routes / exposures` | Admin from the server host |
-| `whalescale policy check FILE` | Validate and lint a policy file |
+| `whalescale policy check FILE` | Validate, lint and run a policy file's tests |
+| `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic |
 

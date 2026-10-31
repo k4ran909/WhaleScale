@@ -29,6 +29,7 @@ import (
 type Policy struct {
 	Groups map[string][]string `json:"groups,omitempty"`
 	ACLs   []ACL               `json:"acls"`
+	Tests  []Test              `json:"tests,omitempty"`
 }
 
 type ACL struct {
@@ -93,6 +94,11 @@ func (p *Policy) validate() error {
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s dst %q: %w", where, d, err))
 			}
+		}
+	}
+	for i, t := range p.Tests {
+		if err := t.validate(); err != nil {
+			errs = append(errs, fmt.Errorf("tests[%d]: %w", i, err))
 		}
 	}
 	return errors.Join(errs...)

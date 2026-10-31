@@ -163,3 +163,8 @@ td.right { text-align: right; }
 .login-card p { margin: 0; }
 .or { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); font-size: 0.85em; }
 .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+
+.explain { margin-top: 1.5rem; }
+.explain h2 { margin-top: 0; }
+.explain-result ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.explain-result li { margin: 0.15rem 0; }

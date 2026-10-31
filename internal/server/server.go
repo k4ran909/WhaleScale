@@ -268,7 +268,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 		}
 		if s.cfg.PolicyFile != "" {
 			if fi, err := os.Stat(s.cfg.PolicyFile); err == nil && !fi.ModTime().Equal(s.policyMod) {
-				if err := s.loadPolicyFile(); err != nil {
+				if err := s.loadPolicyFile(false); err != nil {
 					s.log.Error("policy reload failed; keeping the previous policy", "err", err)
 				}
 			}
@@ -280,7 +280,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 // policy saved from the console, then allow-all.
 func (s *Server) loadInitialPolicy() error {
 	if s.cfg.PolicyFile != "" {
-		return s.loadPolicyFile()
+		return s.loadPolicyFile(true)
 	}
 	text, ok, err := s.store.Setting(context.Background(), control.PolicySettingKey)
 	if err != nil || !ok {
@@ -290,12 +290,29 @@ func (s *Server) loadInitialPolicy() error {
 	if err != nil {
 		return fmt.Errorf("stored policy is invalid (fix it with the console or 'whalescale policy'): %w", err)
 	}
+	s.warnFailingTests(p)
 	s.control.SetPolicy(p, text, "database")
 	s.log.Info("policy loaded from database", "acls", len(p.ACLs))
 	return nil
 }
 
-func (s *Server) loadPolicyFile() error {
+// warnFailingTests logs a policy's failing tests. At startup that is all
+// it does: nodes come and go, and an outdated test must not lock anyone out.
+func (s *Server) warnFailingTests(p *policy.Policy) []string {
+	nodes, err := s.store.ListNodes(context.Background(), "")
+	if err != nil {
+		return nil
+	}
+	fails := p.RunTests(control.PolicyNodes(nodes))
+	for _, f := range fails {
+		s.log.Warn("policy test failing", "failure", f)
+	}
+	return fails
+}
+
+// loadPolicyFile applies the policy file. On reloads (not at startup) a
+// policy that fails its own tests is refused and the previous one kept.
+func (s *Server) loadPolicyFile(startup bool) error {
 	fi, err := os.Stat(s.cfg.PolicyFile)
 	if err != nil {
 		return err
@@ -317,6 +334,9 @@ func (s *Server) loadPolicyFile() error {
 		for _, w := range p.Lint(names) {
 			s.log.Warn("policy", "warning", w)
 		}
+	}
+	if fails := s.warnFailingTests(p); len(fails) > 0 && !startup {
+		return fmt.Errorf("policy file fails %d of its tests; not applied", len(fails))
 	}
 	s.control.SetPolicy(p, string(b), "file")
 	s.log.Info("policy loaded", "file", s.cfg.PolicyFile, "acls", len(p.ACLs))

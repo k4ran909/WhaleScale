@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -258,6 +259,14 @@ func (a *Admin) check(ctx context.Context, text string) (*policy.Policy, []strin
 			names = append(names, u.Name)
 		}
 	}
+	// A policy that fails its own tests doesn't do what its author meant.
+	nodes, err := a.svc.store.ListNodes(ctx, "")
+	if err != nil {
+		return nil, []string{"could not load nodes to run the policy's tests"}, nil
+	}
+	if fails := p.RunTests(PolicyNodes(nodes)); len(fails) > 0 {
+		return nil, fails, p.Lint(names)
+	}
 	return p, nil, p.Lint(names)
 }
 
@@ -288,6 +297,35 @@ func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicy
 	a.svc.SetPolicy(p, req.Msg.Policy, "database")
 	a.audit(id, "policy updated", "acls", len(p.ACLs))
 	return connect.NewResponse(&v1.SetPolicyResponse{Warnings: warns}), nil
+}
+
+func (a *Admin) ExplainAccess(ctx context.Context, req *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	p := a.svc.CurrentPolicy()
+	if req.Msg.Policy != "" {
+		draft, err := policy.Parse([]byte(req.Msg.Policy))
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("draft policy: %w", err))
+		}
+		p = draft
+	}
+	all, err := a.svc.store.ListNodes(ctx, "")
+	if err != nil {
+		return nil, internal(a, "list nodes", err)
+	}
+	nodes := PolicyNodes(all)
+	src, err := policy.Resolve(req.Msg.Src, nodes)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from: %w", err))
+	}
+	dst, port, err := policy.ResolveDst(req.Msg.Dst, nodes)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to: %w", err))
+	}
+	ex := p.Explain(src, dst, port, nodes)
+	return connect.NewResponse(&v1.ExplainAccessResponse{Allowed: ex.Allowed, Reasons: ex.Reasons}), nil
 }
 
 // --- routes ---

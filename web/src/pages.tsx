@@ -534,7 +534,57 @@ export function Policy() {
         ))}
         {check && !hasErrors && !check.warnings?.length && <div className="ok-line">✔ Policy is valid</div>}
       </div>
+      <Explain draft={dirty && !hasErrors ? text : undefined} />
+      <p className="muted small">
+        Add <code>"tests"</code> to pin down intent, for example{" "}
+        <code>{'"tests": [{"src": "guest", "accept": ["node:nas:445"], "deny": ["karan:22"]}]'}</code>. A policy that fails its
+        tests is not saved.
+      </p>
     </Page>
+  );
+}
+
+function Explain({ draft }: { draft?: string }) {
+  const [src, setSrc] = useState("");
+  const [dst, setDst] = useState("");
+  const [result, setResult] = useState<{ allowed?: boolean; reasons?: string[]; error?: string }>();
+  return (
+    <div className="card explain">
+      <h2>Explain access</h2>
+      <form
+        className="form-grid"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            setResult(await api.explainAccess(src.trim(), dst.trim(), draft));
+          } catch (err) {
+            setResult({ error: errText(err) });
+          }
+        }}
+      >
+        <label>
+          From
+          <input placeholder="user, node:NAME or IP" value={src} onChange={(e) => setSrc(e.target.value)} required />
+        </label>
+        <label>
+          To
+          <input placeholder="node:nas:445" value={dst} onChange={(e) => setDst(e.target.value)} required />
+        </label>
+        <button className="btn">Explain</button>
+        {draft && <span className="muted small">using your unsaved edits</span>}
+      </form>
+      {result?.error && <div className="err-line">{result.error}</div>}
+      {result && !result.error && (
+        <div className="explain-result">
+          <strong className={result.allowed ? "ok-text" : "warn-text"}>{result.allowed ? "Allowed" : "Denied"}</strong>
+          <ul>
+            {(result.reasons ?? []).map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

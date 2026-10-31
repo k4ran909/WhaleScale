@@ -61,6 +61,9 @@ const (
 	AdminServiceCheckPolicyProcedure = "/whalescale.v1.AdminService/CheckPolicy"
 	// AdminServiceSetPolicyProcedure is the fully-qualified name of the AdminService's SetPolicy RPC.
 	AdminServiceSetPolicyProcedure = "/whalescale.v1.AdminService/SetPolicy"
+	// AdminServiceExplainAccessProcedure is the fully-qualified name of the AdminService's
+	// ExplainAccess RPC.
+	AdminServiceExplainAccessProcedure = "/whalescale.v1.AdminService/ExplainAccess"
 	// AdminServiceListRoutesProcedure is the fully-qualified name of the AdminService's ListRoutes RPC.
 	AdminServiceListRoutesProcedure = "/whalescale.v1.AdminService/ListRoutes"
 	// AdminServiceSetRouteApprovedProcedure is the fully-qualified name of the AdminService's
@@ -101,6 +104,8 @@ type AdminServiceClient interface {
 	// CheckPolicy validates a policy without applying it.
 	CheckPolicy(context.Context, *connect.Request[v1.CheckPolicyRequest]) (*connect.Response[v1.CheckPolicyResponse], error)
 	SetPolicy(context.Context, *connect.Request[v1.SetPolicyRequest]) (*connect.Response[v1.SetPolicyResponse], error)
+	// ExplainAccess says whether src may open connections to dst:port and why.
+	ExplainAccess(context.Context, *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error)
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
 	SetRouteApproved(context.Context, *connect.Request[v1.SetRouteApprovedRequest]) (*connect.Response[v1.SetRouteApprovedResponse], error)
 	// GetTopology returns the paths each online node reports to its peers.
@@ -195,6 +200,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("SetPolicy")),
 			connect.WithClientOptions(opts...),
 		),
+		explainAccess: connect.NewClient[v1.ExplainAccessRequest, v1.ExplainAccessResponse](
+			httpClient,
+			baseURL+AdminServiceExplainAccessProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ExplainAccess")),
+			connect.WithClientOptions(opts...),
+		),
 		listRoutes: connect.NewClient[v1.ListRoutesRequest, v1.ListRoutesResponse](
 			httpClient,
 			baseURL+AdminServiceListRoutesProcedure,
@@ -260,6 +271,7 @@ type adminServiceClient struct {
 	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
 	checkPolicy         *connect.Client[v1.CheckPolicyRequest, v1.CheckPolicyResponse]
 	setPolicy           *connect.Client[v1.SetPolicyRequest, v1.SetPolicyResponse]
+	explainAccess       *connect.Client[v1.ExplainAccessRequest, v1.ExplainAccessResponse]
 	listRoutes          *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
 	setRouteApproved    *connect.Client[v1.SetRouteApprovedRequest, v1.SetRouteApprovedResponse]
 	getTopology         *connect.Client[v1.GetTopologyRequest, v1.GetTopologyResponse]
@@ -330,6 +342,11 @@ func (c *adminServiceClient) SetPolicy(ctx context.Context, req *connect.Request
 	return c.setPolicy.CallUnary(ctx, req)
 }
 
+// ExplainAccess calls whalescale.v1.AdminService.ExplainAccess.
+func (c *adminServiceClient) ExplainAccess(ctx context.Context, req *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error) {
+	return c.explainAccess.CallUnary(ctx, req)
+}
+
 // ListRoutes calls whalescale.v1.AdminService.ListRoutes.
 func (c *adminServiceClient) ListRoutes(ctx context.Context, req *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {
 	return c.listRoutes.CallUnary(ctx, req)
@@ -385,6 +402,8 @@ type AdminServiceHandler interface {
 	// CheckPolicy validates a policy without applying it.
 	CheckPolicy(context.Context, *connect.Request[v1.CheckPolicyRequest]) (*connect.Response[v1.CheckPolicyResponse], error)
 	SetPolicy(context.Context, *connect.Request[v1.SetPolicyRequest]) (*connect.Response[v1.SetPolicyResponse], error)
+	// ExplainAccess says whether src may open connections to dst:port and why.
+	ExplainAccess(context.Context, *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error)
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
 	SetRouteApproved(context.Context, *connect.Request[v1.SetRouteApprovedRequest]) (*connect.Response[v1.SetRouteApprovedResponse], error)
 	// GetTopology returns the paths each online node reports to its peers.
@@ -475,6 +494,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("SetPolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceExplainAccessHandler := connect.NewUnaryHandler(
+		AdminServiceExplainAccessProcedure,
+		svc.ExplainAccess,
+		connect.WithSchema(adminServiceMethods.ByName("ExplainAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListRoutesHandler := connect.NewUnaryHandler(
 		AdminServiceListRoutesProcedure,
 		svc.ListRoutes,
@@ -549,6 +574,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceCheckPolicyHandler.ServeHTTP(w, r)
 		case AdminServiceSetPolicyProcedure:
 			adminServiceSetPolicyHandler.ServeHTTP(w, r)
+		case AdminServiceExplainAccessProcedure:
+			adminServiceExplainAccessHandler.ServeHTTP(w, r)
 		case AdminServiceListRoutesProcedure:
 			adminServiceListRoutesHandler.ServeHTTP(w, r)
 		case AdminServiceSetRouteApprovedProcedure:
@@ -620,6 +647,10 @@ func (UnimplementedAdminServiceHandler) CheckPolicy(context.Context, *connect.Re
 
 func (UnimplementedAdminServiceHandler) SetPolicy(context.Context, *connect.Request[v1.SetPolicyRequest]) (*connect.Response[v1.SetPolicyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.SetPolicy is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ExplainAccess(context.Context, *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ExplainAccess is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {

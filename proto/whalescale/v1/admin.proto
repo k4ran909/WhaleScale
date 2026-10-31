@@ -27,6 +27,8 @@ service AdminService {
   // CheckPolicy validates a policy without applying it.
   rpc CheckPolicy(CheckPolicyRequest) returns (CheckPolicyResponse);
   rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse);
+  // ExplainAccess says whether src may open connections to dst:port and why.
+  rpc ExplainAccess(ExplainAccessRequest) returns (ExplainAccessResponse);
 
   rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
   rpc SetRouteApproved(SetRouteApprovedRequest) returns (SetRouteApprovedResponse);
@@ -175,3 +177,16 @@ message SetExposureApprovedRequest {
   bool approved = 3;
 }
 message SetExposureApprovedResponse {}
+
+message ExplainAccessRequest {
+  // A user, node:NAME or IP.
+  string src = 1;
+  // "<user|node:NAME|IP>:<port>".
+  string dst = 2;
+  // Optional draft policy to evaluate instead of the active one.
+  string policy = 3;
+}
+message ExplainAccessResponse {
+  bool allowed = 1;
+  repeated string reasons = 2;
+}

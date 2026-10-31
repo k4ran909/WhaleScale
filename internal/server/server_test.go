@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -129,5 +130,41 @@ func TestAdminAuth(t *testing.T) {
 	code, out = adminCall(t, c, hs.URL, "GetPolicy", "{}", ck)
 	if code != 200 || out["source"] != "database" {
 		t.Fatalf("GetPolicy = %v", out)
+	}
+}
+
+func TestPolicyTestsAndExplain(t *testing.T) {
+	hs, st := newTestServer(t)
+	ctx := context.Background()
+	_, apiKey, _ := st.CreateAPIKey(ctx, time.Hour)
+	st.CreateUser(ctx, "karan")
+	st.CreateUser(ctx, "guest")
+	auth := map[string]string{"Authorization": "Bearer " + apiKey}
+	c := hs.Client()
+
+	// The policy says guest may reach karan's machines on 22, and its own
+	// test claims port 443 too: saving must be refused.
+	failing := `{"policy":"{\"acls\":[{\"action\":\"accept\",\"src\":[\"guest\"],\"dst\":[\"karan:22\"]}],\"tests\":[{\"src\":\"guest\",\"accept\":[\"karan:443\"]}]}"}`
+	code, out := adminCall(t, c, hs.URL, "SetPolicy", failing, auth)
+	if code != 400 || !strings.Contains(fmt.Sprint(out["message"]), "should reach karan:443") {
+		t.Fatalf("policy failing its tests was saved: %d %v", code, out)
+	}
+	passing := strings.Replace(failing, `karan:443\"]}]`, `karan:22\"],\"deny\":[\"karan:443\"]}]`, 1)
+	if code, out := adminCall(t, c, hs.URL, "SetPolicy", passing, auth); code != 200 {
+		t.Fatalf("passing policy refused: %d %v", code, out)
+	}
+
+	code, out = adminCall(t, c, hs.URL, "ExplainAccess", `{"src":"guest","dst":"karan:443"}`, auth)
+	if code != 200 || out["allowed"] == true || !strings.Contains(fmt.Sprint(out["reasons"]), "only ports 22") {
+		t.Fatalf("explain guest→karan:443 = %d %v", code, out)
+	}
+	// Against a draft that opens everything.
+	code, out = adminCall(t, c, hs.URL, "ExplainAccess",
+		`{"src":"guest","dst":"karan:443","policy":"{\"acls\":[{\"action\":\"accept\",\"src\":[\"*\"],\"dst\":[\"*:*\"]}]}"}`, auth)
+	if code != 200 || out["allowed"] != true {
+		t.Fatalf("explain with draft = %d %v", code, out)
+	}
+	if code, _ := adminCall(t, c, hs.URL, "ExplainAccess", `{"src":"group:x","dst":"karan:1"}`, auth); code != 400 {
+		t.Fatalf("group as source should be a bad request: %d", code)
 	}
 }

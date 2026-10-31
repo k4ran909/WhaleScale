@@ -109,6 +109,13 @@ func (s *Service) SetPolicy(p *policy.Policy, text, source string) {
 	s.NotifyAll()
 }
 
+// CurrentPolicy returns the active policy.
+func (s *Service) CurrentPolicy() *policy.Policy {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+	return s.policy
+}
+
 // Policy returns the active policy's text and source.
 func (s *Service) Policy() (text, source string) {
 	s.policyMu.RLock()
@@ -453,11 +460,10 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		s.log.Error("list nodes", "err", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
-	pnodes := make([]policy.Node, len(all))
+	pnodes := PolicyNodes(all)
 	var self *store.Node
 	for i := range all {
 		n := &all[i]
-		pnodes[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}, Routes: n.Routes}
 		if n.ID == selfID {
 			self = n
 		}
@@ -501,6 +507,16 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		s.log.Error("list exposures", "err", err)
 	}
 	return nm, nil
+}
+
+// PolicyNodes converts stored nodes to what the policy engine needs.
+func PolicyNodes(all []store.Node) []policy.Node {
+	out := make([]policy.Node, len(all))
+	for i := range all {
+		n := &all[i]
+		out[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}, Routes: n.Routes}
+	}
+	return out
 }
 
 // RelayAuth lets the relay accept a node token and learn its node key.

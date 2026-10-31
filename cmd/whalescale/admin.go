@@ -7,9 +7,11 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/k4ran909/whalescale/internal/control"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
 )
@@ -321,8 +323,11 @@ func nodeID(ctx context.Context, st *store.Store, s string) (uint64, error) {
 }
 
 func cmdPolicy(args []string) error {
+	if len(args) >= 1 && args[0] == "explain" {
+		return cmdPolicyExplain(args[1:])
+	}
 	if len(args) < 2 || args[0] != "check" {
-		return errors.New("usage: whalescale policy check FILE [--db PATH]")
+		return errors.New("usage: whalescale policy check FILE | explain SRC DST:PORT [--file FILE]")
 	}
 	fs, db := adminFlags("policy check")
 	file := args[1]
@@ -338,19 +343,104 @@ func cmdPolicy(args []string) error {
 		return err
 	}
 	var names []string
+	var nodes []store.Node
 	if st, err := store.Open(context.Background(), *db); err == nil {
 		if users, err := st.ListUsers(context.Background()); err == nil {
 			for _, u := range users {
 				names = append(names, u.Name)
 			}
 		}
+		nodes, _ = st.ListNodes(context.Background(), "")
 		st.Close()
 	}
 	warnings := p.Lint(names)
 	for _, w := range warnings {
 		fmt.Println("warning:", w)
 	}
-	fmt.Printf("%s: ok (%d acl rules, %d groups, %d warnings)\n", file, len(p.ACLs), len(p.Groups), len(warnings))
+	fails := p.RunTests(control.PolicyNodes(nodes))
+	for _, f := range fails {
+		fmt.Println("test failed:", f)
+	}
+	if len(fails) > 0 {
+		return fmt.Errorf("%d of the policy's tests failed", len(fails))
+	}
+	fmt.Printf("%s: ok (%d acl rules, %d groups, %d tests passed, %d warnings)\n", file, len(p.ACLs), len(p.Groups), len(p.Tests), len(warnings))
+	return nil
+}
+
+// cmdPolicyExplain says whether SRC may reach DST:PORT under the policy in
+// --file, else the server's (policy file, then the console's), else allow-all.
+func cmdPolicyExplain(args []string) error {
+	fs, db := adminFlags("policy explain")
+	file := fs.String("file", "", "policy file to evaluate (default: the server's policy)")
+	var pos []string
+	for len(args) > 0 {
+		if !strings.HasPrefix(args[0], "-") {
+			pos, args = append(pos, args[0]), args[1:]
+			continue
+		}
+		fs.Parse(args)
+		args = fs.Args()
+	}
+	if len(pos) != 2 {
+		return errors.New("usage: whalescale policy explain SRC DST:PORT [--file FILE]\n  e.g. whalescale policy explain bob node:nas:445")
+	}
+	st, err := store.Open(context.Background(), *db)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	var text, source string
+	switch {
+	case *file != "":
+		b, err := os.ReadFile(*file)
+		if err != nil {
+			return err
+		}
+		text, source = string(b), *file
+	default:
+		if opts, _, err := loadServeConfig(nil, true); err == nil && opts.policyFile != "" {
+			b, err := os.ReadFile(opts.policyFile)
+			if err != nil {
+				return err
+			}
+			text, source = string(b), opts.policyFile
+		} else if t, ok, _ := st.Setting(ctx, control.PolicySettingKey); ok {
+			text, source = t, "the policy saved in the console"
+		}
+	}
+	p := policy.AllowAll()
+	if text != "" {
+		if p, err = policy.Parse([]byte(text)); err != nil {
+			return err
+		}
+	} else {
+		source = "the default allow-all policy"
+	}
+	all, err := st.ListNodes(ctx, "")
+	if err != nil {
+		return err
+	}
+	nodes := control.PolicyNodes(all)
+	src, err := policy.Resolve(pos[0], nodes)
+	if err != nil {
+		return fmt.Errorf("source: %w", err)
+	}
+	dst, port, err := policy.ResolveDst(pos[1], nodes)
+	if err != nil {
+		return fmt.Errorf("destination: %w", err)
+	}
+	ex := p.Explain(src, dst, port, nodes)
+	verdict := "DENIED"
+	if ex.Allowed {
+		verdict = "ALLOWED"
+	}
+	fmt.Printf("%s → %s port %d: %s  (using %s)\n", src, dst, port, verdict, source)
+	for _, r := range ex.Reasons {
+		fmt.Println("  -", r)
+	}
 	return nil
 }
 
