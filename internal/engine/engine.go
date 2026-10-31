@@ -5,12 +5,17 @@ package engine
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -18,9 +23,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"golang.org/x/crypto/ssh"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/tun/netstack"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
@@ -34,6 +41,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/portmap"
 	"github.com/k4ran909/whalescale/internal/relay"
+	"github.com/k4ran909/whalescale/internal/sshserver"
 )
 
 const (
@@ -74,6 +82,10 @@ type Options struct {
 	// PortMap asks the home router (PCP, NAT-PMP or UPnP) to forward the
 	// WireGuard port, making this node directly reachable.
 	PortMap bool
+	// SSH runs the mesh SSH server on port 22 of this node's mesh address.
+	SSH bool
+	// SSHRunner overrides how sessions run (tests).
+	SSHRunner sshserver.Runner
 	// Testing knobs.
 	NoDirect        bool
 	IncludeLoopback bool
@@ -111,6 +123,7 @@ type Engine struct {
 	exitStat *ExitStatus
 	gw       *gateway.Client
 	portmap  *portmap.Client
+	sshKey   ssh.Signer
 	router   *osnet.Router
 	ready    chan struct{}
 	lastErr  string
@@ -143,6 +156,12 @@ func New(opts Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	var sshKey ssh.Signer
+	if opts.SSH {
+		if sshKey, err = loadSSHHostKey(st, opts.StatePath); err != nil {
+			return nil, fmt.Errorf("ssh host key: %w", err)
+		}
+	}
 	// The disco key is per process: nothing needs it to survive restarts.
 	dk, err := key.NewPrivate()
 	if err != nil {
@@ -166,7 +185,7 @@ func New(opts Options) (*Engine, error) {
 		}
 	}
 	e := &Engine{
-		opts: opts, log: opts.Log, nodeKey: nk, disco: dk, hc: hc, bypass: bypass,
+		opts: opts, log: opts.Log, nodeKey: nk, disco: dk, hc: hc, bypass: bypass, sshKey: sshKey,
 		api:     whalescalev1connect.NewControlServiceClient(hc, st.ServerURL),
 		filter:  filter.New(),
 		dns:     dnsserver.New(opts.Log),
@@ -284,7 +303,7 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	req := connect.NewRequest(&v1.UpdateNodeRequest{
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
 		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes, Exposures: exposures,
-		OfferRelay: e.opts.OfferRelay,
+		OfferRelay: e.opts.OfferRelay, SshHostKey: e.sshHostPublic(),
 	})
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
@@ -611,6 +630,13 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		if err != nil {
 			return fmt.Errorf("listen for MagicDNS: %w", err)
 		}
+		if e.sshKey != nil {
+			ln, err := tnet.ListenTCPAddrPort(netip.AddrPortFrom(self.v4, 22))
+			if err != nil {
+				return fmt.Errorf("listen for ssh: %w", err)
+			}
+			e.startSSH(ln)
+		}
 		e.wg.Add(1)
 		go func() { defer e.wg.Done(); e.dns.Serve(pc) }()
 		go func() { <-e.ctx.Done(); pc.Close() }()
@@ -676,6 +702,13 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		}
 		e.osCfg = &cfg
 		e.log.Info("tun up", "iface", ifname, "ipv4", self.v4, "ipv6", self.v6)
+		if e.sshKey != nil {
+			if ln, err := net.Listen("tcp4", netip.AddrPortFrom(self.v4, 22).String()); err != nil {
+				e.log.Error("mesh ssh server disabled: cannot listen on port 22", "err", err)
+			} else {
+				e.startSSH(ln)
+			}
+		}
 		if e.opts.ExitNode != "" {
 			e.bypass.SetTunnel(ifname)
 			rts, err := osnet.StartExitRoutes(ifname)
@@ -699,6 +732,110 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		e.log.Warn("advertised routes need OS TUN mode on Linux; userspace mode can't forward")
 	}
 	return nil
+}
+
+// loadSSHHostKey returns the node's SSH host key, creating one on first use.
+func loadSSHHostKey(st *clientstate.State, statePath string) (ssh.Signer, error) {
+	if st.SSHHostKey == "" {
+		_, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		block, err := ssh.MarshalPrivateKey(priv, "whalescale host key")
+		if err != nil {
+			return nil, err
+		}
+		st.SSHHostKey = string(pem.EncodeToMemory(block))
+		if statePath != "" {
+			if err := clientstate.Save(statePath, st); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return ssh.ParsePrivateKey([]byte(st.SSHHostKey))
+}
+
+func (e *Engine) sshHostPublic() string {
+	if e.sshKey == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(e.sshKey.PublicKey())))
+}
+
+// startSSH serves the mesh SSH server on ln until the engine stops.
+func (e *Engine) startSSH(ln net.Listener) {
+	runner := e.opts.SSHRunner
+	if runner == nil {
+		runner = sshserver.OSRunner{}
+	}
+	srv := &sshserver.Server{HostKey: e.sshKey, Authorize: e.authorizeSSH, Runner: runner, Recorded: e.uploadRecording, Log: e.log}
+	e.wg.Add(1)
+	go func() { defer e.wg.Done(); srv.Serve(ln) }()
+	go func() { <-e.ctx.Done(); ln.Close() }()
+	e.log.Info("mesh ssh server listening", "addr", ln.Addr())
+}
+
+// authorizeSSH applies the network map's SSH rules to a login.
+func (e *Engine) authorizeSSH(remote netip.Addr, localUser string) sshserver.Decision {
+	e.mu.Lock()
+	nm := e.netmap
+	e.mu.Unlock()
+	if nm == nil {
+		return sshserver.Decision{Reason: "no network map yet"}
+	}
+	var peer *v1.Node
+	for _, p := range nm.Peers {
+		if slices.Contains(p.Addresses, remote.String()) {
+			peer = p
+		}
+	}
+	if peer == nil {
+		return sshserver.Decision{Reason: "connection does not come from a peer"}
+	}
+	d := sshserver.Decision{SrcNode: peer.Name, SrcUser: peer.User, Reason: "no ssh rule allows it"}
+	for _, r := range nm.SshRules {
+		srcOK := false
+		for _, s := range r.SrcPrefixes {
+			if p, err := netip.ParsePrefix(s); err == nil && p.Contains(remote) {
+				srcOK = true
+			}
+		}
+		if !srcOK {
+			continue
+		}
+		for _, u := range r.Users {
+			if u == localUser || (u == policy.SelfUser && localUser == peer.User) {
+				d.Allowed, d.Reason = true, ""
+				d.Record = d.Record || r.Record
+			}
+		}
+	}
+	return d
+}
+
+// uploadRecording sends a recorded session to the server, keeping a local
+// copy if that fails so the record isn't lost.
+func (e *Engine) uploadRecording(m sshserver.RecordingMeta, data []byte) {
+	req := connect.NewRequest(&v1.UploadRecordingRequest{
+		LocalUser: m.LocalUser, SrcNode: m.SrcNode, SrcUser: m.SrcUser,
+		StartedAt: timestamppb.New(m.Started), EndedAt: timestamppb.New(m.Ended), Data: data,
+	})
+	e.authed(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	_, err := e.api.UploadRecording(ctx, req)
+	if err == nil {
+		return
+	}
+	e.log.Error("uploading ssh recording failed; keeping it locally", "err", err)
+	if e.opts.StatePath == "" {
+		return
+	}
+	dir := filepath.Join(filepath.Dir(e.opts.StatePath), "recordings")
+	if err := os.MkdirAll(dir, 0o700); err == nil {
+		name := fmt.Sprintf("%s-%s.cast", m.Started.UTC().Format("20060102T150405Z"), m.SrcNode)
+		os.WriteFile(filepath.Join(dir, name), data, 0o600)
+	}
 }
 
 // bypassLoop re-pins the agent's sockets when the physical network changes
@@ -847,14 +984,15 @@ func resolveUDP(hostport string) (netip.AddrPort, error) {
 // --- status and diagnostics, used by the local API ---
 
 type PeerStatus struct {
-	Name      string   `json:"name"`
-	FQDN      string   `json:"fqdn"`
-	User      string   `json:"user"`
-	Addresses []string `json:"addresses"`
-	OS        string   `json:"os"`
-	Online    bool     `json:"online"`
-	Routes    []string `json:"routes,omitempty"`
-	ExitNode  bool     `json:"exit_node,omitempty"`
+	Name       string   `json:"name"`
+	FQDN       string   `json:"fqdn"`
+	User       string   `json:"user"`
+	Addresses  []string `json:"addresses"`
+	OS         string   `json:"os"`
+	Online     bool     `json:"online"`
+	Routes     []string `json:"routes,omitempty"`
+	ExitNode   bool     `json:"exit_node,omitempty"`
+	SSHHostKey string   `json:"ssh_host_key,omitempty"`
 	meshconn.PeerStatus
 }
 
@@ -908,7 +1046,7 @@ func (e *Engine) Status() Status {
 	}
 	for _, p := range nm.Peers {
 		ps := PeerStatus{Name: p.Name, FQDN: p.Fqdn, User: p.User, Addresses: p.Addresses, OS: p.Os, Online: p.Online,
-			Routes: p.Routes, ExitNode: p.ExitNode}
+			Routes: p.Routes, ExitNode: p.ExitNode, SSHHostKey: p.SshHostKey}
 		if path, ok := paths[p.NodeKey]; ok {
 			ps.PeerStatus = path
 		} else {

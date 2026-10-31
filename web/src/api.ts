@@ -95,6 +95,17 @@ export interface PeerRelay {
   online?: boolean;
 }
 
+export interface Recording {
+  id: string;
+  nodeName: string;
+  localUser: string;
+  srcNode: string;
+  srcUser: string;
+  startedAt?: string;
+  endedAt?: string;
+  size?: string;
+}
+
 export interface PathReport {
   fromNode: string;
   toNode: string;
@@ -129,6 +140,9 @@ export const api = {
   topology: () => call<{ paths?: PathReport[] }>("GetTopology").then((r) => r.paths ?? []),
   listPeerRelays: () => call<{ relays?: PeerRelay[] }>("ListPeerRelays").then((r) => r.relays ?? []),
   setPeerRelayApproved: (nodeId: string, approved: boolean) => call("SetPeerRelayApproved", { nodeId, approved }),
+  listRecordings: () => call<{ recordings?: Recording[] }>("ListRecordings").then((r) => r.recordings ?? []),
+  // data is base64 (protobuf JSON for bytes).
+  getRecording: (id: string) => call<{ recording: Recording; data?: string }>("GetRecording", { id }),
   listExposures: () =>
     call<{ exposures?: Exposure[]; gatewayDomain?: string }>("ListExposures").then((r) => ({
       exposures: r.exposures ?? [],

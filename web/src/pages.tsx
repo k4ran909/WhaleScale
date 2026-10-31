@@ -719,3 +719,125 @@ export function Gateway() {
     </Page>
   );
 }
+
+// ---------- SSH recordings ----------
+
+function decodeBase64(b64: string): string {
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+// castToText turns an asciinema v2 recording into readable text: the output
+// events joined, with terminal escape sequences removed.
+function castToText(cast: string): string {
+  const out: string[] = [];
+  for (const line of cast.split("\n").slice(1)) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line);
+      if (Array.isArray(ev) && ev[1] === "o") out.push(String(ev[2]));
+    } catch {
+      /* skip malformed lines */
+    }
+  }
+  return out
+    .join("")
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, "")
+    .replace(/\r\n?/g, "\n");
+}
+
+function sizeText(s?: string): string {
+  const n = Number(s ?? 0);
+  return n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`;
+}
+
+export function Recordings() {
+  const { data: recs, error } = useLoad(api.listRecordings, 15000);
+  const [view, setView] = useState<{ title: string; text: string }>();
+  const [msg, setMsg] = useState<string>();
+
+  const open = async (r: { id: string; nodeName: string; localUser: string }, download: boolean) => {
+    try {
+      const res = await api.getRecording(r.id);
+      const cast = decodeBase64(res.data ?? "");
+      if (download) {
+        const url = URL.createObjectURL(new Blob([cast], { type: "application/x-asciicast" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `ssh-${r.nodeName}-${r.localUser}-${r.id}.cast`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        setView({ title: `${r.localUser}@${r.nodeName}`, text: castToText(cast) });
+      }
+    } catch (e) {
+      setMsg(errText(e));
+    }
+  };
+
+  return (
+    <Page
+      title="SSH recordings"
+      lead={
+        <>
+          Sessions on machines running the mesh SSH server, when the policy's ssh rule says <code>"record": true</code>. Only
+          output is recorded, never keystrokes. Downloads play with <code>asciinema play</code>.
+        </>
+      }
+    >
+      {error && <Banner kind="error">{error}</Banner>}
+      {msg && <Banner kind="error">{msg}</Banner>}
+      {view && (
+        <div className="card recording-view">
+          <div className="secret-head">
+            <strong>{view.title}</strong>
+            <button className="btn ghost" onClick={() => setView(undefined)}>Close</button>
+          </div>
+          <pre>{view.text || "(no output)"}</pre>
+        </div>
+      )}
+      {recs && recs.length === 0 ? (
+        <Empty>No recorded sessions yet.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Who</th>
+                <th>Logged in to</th>
+                <th>Length</th>
+                <th>Size</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {(recs ?? []).map((r) => {
+                const secs = r.startedAt && r.endedAt ? Math.round((Date.parse(r.endedAt) - Date.parse(r.startedAt)) / 1000) : 0;
+                return (
+                  <tr key={r.id}>
+                    <td>{timeAgo(r.startedAt)}</td>
+                    <td>
+                      {r.srcUser} <span className="sub">from {r.srcNode}</span>
+                    </td>
+                    <td className="mono">
+                      {r.localUser}@{r.nodeName}
+                    </td>
+                    <td>{secs < 60 ? `${secs}s` : `${Math.round(secs / 60)} min`}</td>
+                    <td>{sizeText(r.size)}</td>
+                    <td className="right">
+                      <button className="btn ghost" onClick={() => open(r, false)}>View</button>
+                      <button className="btn ghost" onClick={() => open(r, true)}>Download</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Page>
+  );
+}

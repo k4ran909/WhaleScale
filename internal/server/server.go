@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/control"
 	"github.com/k4ran909/whalescale/internal/gateway"
@@ -37,6 +39,8 @@ type Config struct {
 	// GatewayDomain enables the gateway: <name>.<GatewayDomain> must resolve
 	// to this server (a wildcard DNS record).
 	GatewayDomain string
+	// RecordingsDir stores recorded SSH sessions (default: next to the DB).
+	RecordingsDir string
 	// Console is the built web console (web/dist). Nil disables it.
 	Console fs.FS
 	Log     *slog.Logger
@@ -67,7 +71,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now()}
 	ccfg := control.Config{
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
-		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil,
+		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir,
 	}
 	if cfg.GatewayDomain != "" {
 		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, tok string) (*store.Node, error) {
@@ -109,7 +113,8 @@ func relayURL(public string) (string, error) {
 // Handler serves the APIs, relay, browser login, console and health check.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	path, h := whalescalev1connect.NewControlServiceHandler(s.control)
+	// Generous for recording uploads; everything else is tiny.
+	path, h := whalescalev1connect.NewControlServiceHandler(s.control, connect.WithReadMaxBytes(control.MaxRecording+(1<<20)))
 	mux.Handle(path, h)
 	mux.Handle(whalescalev1connect.ControlServiceStreamNetworkMapProcedure, longLived(h))
 	mux.Handle(whalescalev1connect.ControlServiceWaitRegistrationProcedure, longLived(h))

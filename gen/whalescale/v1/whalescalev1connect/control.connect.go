@@ -50,6 +50,9 @@ const (
 	// ControlServiceReportStatusProcedure is the fully-qualified name of the ControlService's
 	// ReportStatus RPC.
 	ControlServiceReportStatusProcedure = "/whalescale.v1.ControlService/ReportStatus"
+	// ControlServiceUploadRecordingProcedure is the fully-qualified name of the ControlService's
+	// UploadRecording RPC.
+	ControlServiceUploadRecordingProcedure = "/whalescale.v1.ControlService/UploadRecording"
 )
 
 // ControlServiceClient is a client for the whalescale.v1.ControlService service.
@@ -71,6 +74,8 @@ type ControlServiceClient interface {
 	// ReportStatus shares the agent's view of its paths, for the console's
 	// topology view and server metrics. Kept in memory only.
 	ReportStatus(context.Context, *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error)
+	// UploadRecording stores a finished, recorded SSH session.
+	UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error)
 }
 
 // NewControlServiceClient constructs a client for the whalescale.v1.ControlService service. By
@@ -120,6 +125,12 @@ func NewControlServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(controlServiceMethods.ByName("ReportStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		uploadRecording: connect.NewClient[v1.UploadRecordingRequest, v1.UploadRecordingResponse](
+			httpClient,
+			baseURL+ControlServiceUploadRecordingProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("UploadRecording")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -131,6 +142,7 @@ type controlServiceClient struct {
 	getNetworkMap    *connect.Client[v1.GetNetworkMapRequest, v1.GetNetworkMapResponse]
 	streamNetworkMap *connect.Client[v1.StreamNetworkMapRequest, v1.StreamNetworkMapResponse]
 	reportStatus     *connect.Client[v1.ReportStatusRequest, v1.ReportStatusResponse]
+	uploadRecording  *connect.Client[v1.UploadRecordingRequest, v1.UploadRecordingResponse]
 }
 
 // Register calls whalescale.v1.ControlService.Register.
@@ -163,6 +175,11 @@ func (c *controlServiceClient) ReportStatus(ctx context.Context, req *connect.Re
 	return c.reportStatus.CallUnary(ctx, req)
 }
 
+// UploadRecording calls whalescale.v1.ControlService.UploadRecording.
+func (c *controlServiceClient) UploadRecording(ctx context.Context, req *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
+	return c.uploadRecording.CallUnary(ctx, req)
+}
+
 // ControlServiceHandler is an implementation of the whalescale.v1.ControlService service.
 type ControlServiceHandler interface {
 	// Register enrolls a new node. With an auth_key it completes at once.
@@ -182,6 +199,8 @@ type ControlServiceHandler interface {
 	// ReportStatus shares the agent's view of its paths, for the console's
 	// topology view and server metrics. Kept in memory only.
 	ReportStatus(context.Context, *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error)
+	// UploadRecording stores a finished, recorded SSH session.
+	UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error)
 }
 
 // NewControlServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -227,6 +246,12 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 		connect.WithSchema(controlServiceMethods.ByName("ReportStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controlServiceUploadRecordingHandler := connect.NewUnaryHandler(
+		ControlServiceUploadRecordingProcedure,
+		svc.UploadRecording,
+		connect.WithSchema(controlServiceMethods.ByName("UploadRecording")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/whalescale.v1.ControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ControlServiceRegisterProcedure:
@@ -241,6 +266,8 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 			controlServiceStreamNetworkMapHandler.ServeHTTP(w, r)
 		case ControlServiceReportStatusProcedure:
 			controlServiceReportStatusHandler.ServeHTTP(w, r)
+		case ControlServiceUploadRecordingProcedure:
+			controlServiceUploadRecordingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -272,4 +299,8 @@ func (UnimplementedControlServiceHandler) StreamNetworkMap(context.Context, *con
 
 func (UnimplementedControlServiceHandler) ReportStatus(context.Context, *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.ReportStatus is not implemented"))
+}
+
+func (UnimplementedControlServiceHandler) UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.UploadRecording is not implemented"))
 }

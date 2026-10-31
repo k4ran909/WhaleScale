@@ -118,3 +118,41 @@ func TestRoutedSubnets(t *testing.T) {
 		t.Fatal("allow-all should cover routed subnets")
 	}
 }
+
+func TestSSHRules(t *testing.T) {
+	p, err := Parse([]byte(`{
+		"groups": {"group:admins": ["alice"]},
+		"acls": [],
+		"ssh": [{"action": "accept", "src": ["group:admins"], "dst": ["node:nas"], "users": ["root", "$user"], "record": true}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := p.Compile(testNodes)
+	ssh := c.SSH[3] // nas
+	if len(ssh) != 1 || !ssh[0].Record || ssh[0].Users[1] != SelfUser || ssh[0].Src[0] != netip.MustParsePrefix("100.64.0.1/32") {
+		t.Fatalf("nas ssh rules = %+v", ssh)
+	}
+	if len(c.SSH[2]) != 0 {
+		t.Fatal("bob-pc got an ssh rule it was not named in")
+	}
+	// The rule opens TCP 22 (only) from the admins, and makes them peers.
+	var opened bool
+	for _, r := range c.Rules[3] {
+		opened = opened || (len(r.Ports) == 1 && r.Ports[0] == PortRange{First: 22, Last: 22})
+	}
+	if !opened || !c.Peers[1][3] {
+		t.Fatalf("ssh rule did not open port 22: %+v", c.Rules[3])
+	}
+
+	for name, src := range map[string]string{
+		"cidr dst":   `{"acls":[],"ssh":[{"action":"accept","src":["*"],"dst":["10.0.0.0/8"],"users":["root"]}]}`,
+		"no users":   `{"acls":[],"ssh":[{"action":"accept","src":["*"],"dst":["*"],"users":[]}]}`,
+		"bad user":   `{"acls":[],"ssh":[{"action":"accept","src":["*"],"dst":["*"],"users":["Root; rm -rf"]}]}`,
+		"bad action": `{"acls":[],"ssh":[{"action":"check","src":["*"],"dst":["*"],"users":["root"]}]}`,
+	} {
+		if _, err := Parse([]byte(src)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

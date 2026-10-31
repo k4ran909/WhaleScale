@@ -34,7 +34,7 @@ type serveOpts struct {
 	certFile, keyFile, metricsListen, logLevel               string
 	oidcIssuer, oidcClientID, oidcSecret, oidcSecretFile     string
 	oidcAdmins, oidcUsers, oidcDomains                       string
-	gatewayDomain, acmeEmail, acmeCache                      string
+	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
 	console, tlsACME                                         bool
 }
 
@@ -54,6 +54,7 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.BoolVar(&o.tlsACME, "tls-acme", false, "get certificates from Let's Encrypt automatically (needs port 443 reachable from the internet)")
 	fs.StringVar(&o.acmeEmail, "acme-email", "", "contact email for Let's Encrypt (expiry warnings)")
 	fs.StringVar(&o.acmeCache, "acme-cache", "", "directory for ACME certificates (default: 'acme' next to the database)")
+	fs.StringVar(&o.recordingsDir, "recordings-dir", "", "where recorded SSH sessions are stored (default: 'recordings' next to the database)")
 	fs.StringVar(&o.gatewayDomain, "gateway-domain", "", "publish machines' services at <name>.<this domain>; needs a wildcard DNS record pointing here")
 	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
 	fs.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn or error")
@@ -98,6 +99,9 @@ func (o *serveOpts) resolve() []error {
 		if o.acmeCache == "" {
 			o.acmeCache = filepath.Join(filepath.Dir(o.db), "acme")
 		}
+	}
+	if o.recordingsDir == "" {
+		o.recordingsDir = filepath.Join(filepath.Dir(o.db), "recordings")
 	}
 	if d := o.gatewayDomain; d != "" && (strings.Contains(d, "/") || strings.Contains(d, ":") || !strings.Contains(strings.Trim(d, "."), ".")) {
 		errs = append(errs, fmt.Errorf("gateway-domain %q must be a bare domain like apps.example.com", d))
@@ -197,7 +201,7 @@ func cmdConfigtest(args []string) error {
 		"oidc-client-secret-file": o.oidcSecretFile, "oidc-admins": o.oidcAdmins,
 		"oidc-allowed-users": o.oidcUsers, "oidc-allowed-domains": o.oidcDomains,
 		"gateway-domain": o.gatewayDomain, "tls-acme": fmt.Sprint(o.tlsACME), "acme-email": o.acmeEmail,
-		"acme-cache": o.acmeCache,
+		"acme-cache": o.acmeCache, "recordings-dir": o.recordingsDir,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -268,7 +272,7 @@ func cmdServe(args []string) error {
 
 	cfg := server.Config{
 		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
-		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, Log: log,
+		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir, Log: log,
 	}
 	if o.console {
 		cfg.Console = web.Dist()

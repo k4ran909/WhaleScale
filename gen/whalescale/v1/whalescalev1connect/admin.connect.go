@@ -84,6 +84,12 @@ const (
 	// AdminServiceSetExposureApprovedProcedure is the fully-qualified name of the AdminService's
 	// SetExposureApproved RPC.
 	AdminServiceSetExposureApprovedProcedure = "/whalescale.v1.AdminService/SetExposureApproved"
+	// AdminServiceListRecordingsProcedure is the fully-qualified name of the AdminService's
+	// ListRecordings RPC.
+	AdminServiceListRecordingsProcedure = "/whalescale.v1.AdminService/ListRecordings"
+	// AdminServiceGetRecordingProcedure is the fully-qualified name of the AdminService's GetRecording
+	// RPC.
+	AdminServiceGetRecordingProcedure = "/whalescale.v1.AdminService/GetRecording"
 	// AdminServiceListAPIKeysProcedure is the fully-qualified name of the AdminService's ListAPIKeys
 	// RPC.
 	AdminServiceListAPIKeysProcedure = "/whalescale.v1.AdminService/ListAPIKeys"
@@ -120,6 +126,8 @@ type AdminServiceClient interface {
 	SetPeerRelayApproved(context.Context, *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error)
 	ListExposures(context.Context, *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error)
 	SetExposureApproved(context.Context, *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error)
+	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
+	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -256,6 +264,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("SetExposureApproved")),
 			connect.WithClientOptions(opts...),
 		),
+		listRecordings: connect.NewClient[v1.ListRecordingsRequest, v1.ListRecordingsResponse](
+			httpClient,
+			baseURL+AdminServiceListRecordingsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListRecordings")),
+			connect.WithClientOptions(opts...),
+		),
+		getRecording: connect.NewClient[v1.GetRecordingRequest, v1.GetRecordingResponse](
+			httpClient,
+			baseURL+AdminServiceGetRecordingProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
+			connect.WithClientOptions(opts...),
+		),
 		listAPIKeys: connect.NewClient[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse](
 			httpClient,
 			baseURL+AdminServiceListAPIKeysProcedure,
@@ -299,6 +319,8 @@ type adminServiceClient struct {
 	setPeerRelayApproved *connect.Client[v1.SetPeerRelayApprovedRequest, v1.SetPeerRelayApprovedResponse]
 	listExposures        *connect.Client[v1.ListExposuresRequest, v1.ListExposuresResponse]
 	setExposureApproved  *connect.Client[v1.SetExposureApprovedRequest, v1.SetExposureApprovedResponse]
+	listRecordings       *connect.Client[v1.ListRecordingsRequest, v1.ListRecordingsResponse]
+	getRecording         *connect.Client[v1.GetRecordingRequest, v1.GetRecordingResponse]
 	listAPIKeys          *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
 	createAPIKey         *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
 	expireAPIKey         *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
@@ -404,6 +426,16 @@ func (c *adminServiceClient) SetExposureApproved(ctx context.Context, req *conne
 	return c.setExposureApproved.CallUnary(ctx, req)
 }
 
+// ListRecordings calls whalescale.v1.AdminService.ListRecordings.
+func (c *adminServiceClient) ListRecordings(ctx context.Context, req *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error) {
+	return c.listRecordings.CallUnary(ctx, req)
+}
+
+// GetRecording calls whalescale.v1.AdminService.GetRecording.
+func (c *adminServiceClient) GetRecording(ctx context.Context, req *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
+	return c.getRecording.CallUnary(ctx, req)
+}
+
 // ListAPIKeys calls whalescale.v1.AdminService.ListAPIKeys.
 func (c *adminServiceClient) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
 	return c.listAPIKeys.CallUnary(ctx, req)
@@ -444,6 +476,8 @@ type AdminServiceHandler interface {
 	SetPeerRelayApproved(context.Context, *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error)
 	ListExposures(context.Context, *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error)
 	SetExposureApproved(context.Context, *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error)
+	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
+	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -576,6 +610,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("SetExposureApproved")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListRecordingsHandler := connect.NewUnaryHandler(
+		AdminServiceListRecordingsProcedure,
+		svc.ListRecordings,
+		connect.WithSchema(adminServiceMethods.ByName("ListRecordings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceGetRecordingHandler := connect.NewUnaryHandler(
+		AdminServiceGetRecordingProcedure,
+		svc.GetRecording,
+		connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListAPIKeysHandler := connect.NewUnaryHandler(
 		AdminServiceListAPIKeysProcedure,
 		svc.ListAPIKeys,
@@ -636,6 +682,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListExposuresHandler.ServeHTTP(w, r)
 		case AdminServiceSetExposureApprovedProcedure:
 			adminServiceSetExposureApprovedHandler.ServeHTTP(w, r)
+		case AdminServiceListRecordingsProcedure:
+			adminServiceListRecordingsHandler.ServeHTTP(w, r)
+		case AdminServiceGetRecordingProcedure:
+			adminServiceGetRecordingHandler.ServeHTTP(w, r)
 		case AdminServiceListAPIKeysProcedure:
 			adminServiceListAPIKeysHandler.ServeHTTP(w, r)
 		case AdminServiceCreateAPIKeyProcedure:
@@ -729,6 +779,14 @@ func (UnimplementedAdminServiceHandler) ListExposures(context.Context, *connect.
 
 func (UnimplementedAdminServiceHandler) SetExposureApproved(context.Context, *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.SetExposureApproved is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListRecordings is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetRecording is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {

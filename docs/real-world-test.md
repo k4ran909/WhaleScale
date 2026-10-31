@@ -180,7 +180,20 @@ whalescale exposures approve test     # on the server, or approve in the console
 - [ ] A WebSocket app (e.g. Home Assistant) works through it
 - [ ] "Take offline" in the console makes it 404 within seconds
 
-## 10. Service lifecycle
+## 10. SSH over the mesh
+
+Add to the policy (console): `"ssh": [{"action": "accept", "src": ["<your user>"], "dst": ["node:<linux-name>"], "users": ["$user"], "record": true}]`. On the Linux machine: `sudo ws up --ssh`. Then from the Windows PC (OpenSSH client is built into Windows):
+
+```powershell
+.\ws.exe ssh <linux-user>@<linux-name>
+```
+
+- [ ] You get a shell as that user without any key or password prompt, and no host-key question
+- [ ] `vim` / `htop` work and resizing the window works
+- [ ] Logging in as `root` (not in the rule) is refused
+- [ ] The session appears under "SSH recordings" in the console; "View" shows what you typed commands produced
+
+## 11. Service lifecycle
 
 - [ ] Reboot each machine: the tunnel comes back up on its own
 - [ ] `ws down`: peers show it offline within ~30 s; `ws up` brings it back

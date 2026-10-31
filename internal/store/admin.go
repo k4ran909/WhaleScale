@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -367,4 +369,86 @@ func (s *Store) SetRelayApproved(ctx context.Context, nodeID uint64, approved bo
 		return fmt.Errorf("node %d: %w", nodeID, ErrNotFound)
 	}
 	return nil
+}
+
+// --- SSH recordings ---
+
+// Recording describes a recorded SSH session; the contents are a file in
+// the recordings directory.
+type Recording struct {
+	ID        uint64
+	NodeName  string
+	LocalUser string
+	SrcNode   string
+	SrcUser   string
+	StartedAt time.Time
+	EndedAt   time.Time
+	Size      int64
+	File      string
+}
+
+// SaveRecording writes data under dir and records it.
+func (s *Store) SaveRecording(ctx context.Context, dir string, r Recording, data []byte) (*Recording, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	suffix, err := randHex(4)
+	if err != nil {
+		return nil, err
+	}
+	r.File = fmt.Sprintf("%s-%s-%s.cast", r.StartedAt.UTC().Format("20060102T150405Z"), sanitizeHostname(r.NodeName), suffix)
+	if err := os.WriteFile(filepath.Join(dir, r.File), data, 0o600); err != nil {
+		return nil, err
+	}
+	r.Size = int64(len(data))
+	res, err := s.db.ExecContext(ctx, `INSERT INTO recordings(node_name, local_user, src_node, src_user, started_at, ended_at, size, file)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, r.NodeName, r.LocalUser, r.SrcNode, r.SrcUser, r.StartedAt.Unix(), r.EndedAt.Unix(), r.Size, r.File)
+	if err != nil {
+		os.Remove(filepath.Join(dir, r.File))
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	r.ID = uint64(id)
+	return &r, nil
+}
+
+func scanRecording(sc interface{ Scan(...any) error }) (Recording, error) {
+	var r Recording
+	var started, ended int64
+	err := sc.Scan(&r.ID, &r.NodeName, &r.LocalUser, &r.SrcNode, &r.SrcUser, &started, &ended, &r.Size, &r.File)
+	r.StartedAt, r.EndedAt = time.Unix(started, 0), time.Unix(ended, 0)
+	return r, err
+}
+
+const recordingColumns = `id, node_name, local_user, src_node, src_user, started_at, ended_at, size, file`
+
+// ListRecordings returns the newest recordings first.
+func (s *Store) ListRecordings(ctx context.Context, limit int) ([]Recording, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+recordingColumns+` FROM recordings ORDER BY started_at DESC, id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Recording
+	for rows.Next() {
+		r, err := scanRecording(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// RecordingByID returns a recording and its contents.
+func (s *Store) RecordingByID(ctx context.Context, dir string, id uint64) (*Recording, []byte, error) {
+	r, err := scanRecording(s.db.QueryRowContext(ctx, `SELECT `+recordingColumns+` FROM recordings WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, fmt.Errorf("recording %d: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(dir, filepath.Base(r.File)))
+	return &r, data, err
 }

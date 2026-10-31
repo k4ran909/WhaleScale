@@ -6,6 +6,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.11.0
+	github.com/creack/pty v1.1.24
 	github.com/go-jose/go-jose/v4 v4.1.0
 	github.com/hashicorp/yamux v0.1.2
 	golang.org/x/crypto v0.58.0

@@ -35,6 +35,8 @@ Usage:
   ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
             [--exit-node NAME]  send all internet traffic through NAME ("" to stop)
             [--relay]           relay for peers that can't connect directly (needs approval)
+            [--ssh]             run the mesh SSH server (the policy's "ssh" rules decide who may log in)
+  ws ssh [USER@]HOST [CMD]    ssh to a peer, trusting its host key from the network map
                               start the tunnel (flags you pass replace saved ones)
   ws down                     stop the tunnel; wsd keeps running
   ws expose PORT --name NAME  publish http://localhost:PORT at https://NAME.<gateway domain>
@@ -65,6 +67,8 @@ func main() {
 		err = cmdDown(args)
 	case "expose":
 		err = cmdExpose(args)
+	case "ssh":
+		err = cmdSSH(args)
 	case "status":
 		err = cmdStatus(args)
 	case "ping":
@@ -217,6 +221,7 @@ func cmdUp(args []string) error {
 	advertise := fs.String("advertise-routes", "", "comma-separated subnets this machine routes to, e.g. 192.168.1.0/24")
 	exit := fs.Bool("advertise-exit-node", false, "offer this machine as an exit node (needs admin approval)")
 	exitNode := fs.String("exit-node", "", "send all internet traffic through this machine (name, FQDN or mesh IP); empty to stop")
+	runSSH := fs.Bool("ssh", false, "run the mesh SSH server on port 22 of this machine's mesh address")
 	offerRelay := fs.Bool("relay", false, "offer this machine as a UDP relay for peers that can't connect directly (best on a server with a public IP or port forward)")
 	fs.Parse(args)
 
@@ -242,6 +247,9 @@ func cmdUp(args []string) error {
 	}
 	if set["relay"] {
 		prefs.Relay = *offerRelay
+	}
+	if set["ssh"] {
+		prefs.SSH = *runSSH
 	}
 	if set["advertise-routes"] || set["advertise-exit-node"] {
 		var routes []string
@@ -272,6 +280,9 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Println("tunnel up")
+	if got.SSH {
+		fmt.Println("  mesh SSH server on port 22 (logins follow the access policy's \"ssh\" rules)")
+	}
 	if got.Relay {
 		fmt.Println("  offering to relay for peers (approve it in the console or with 'whalescale relays approve')")
 	}
@@ -375,6 +386,62 @@ func cmdExpose(args []string) error {
 		fmt.Println("check with: ws expose")
 	}
 	return nil
+}
+
+// cmdSSH runs the system ssh client against a peer, with a known_hosts
+// file built from the host key in the network map, so there is no
+// trust-on-first-use prompt and no stale-key warning after reinstalls.
+func cmdSSH(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: ws ssh [USER@]HOST [COMMAND...]")
+	}
+	target, rest := args[0], args[1:]
+	userPart, host, hasUser := strings.Cut(target, "@")
+	if !hasUser {
+		host, userPart = target, ""
+	}
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	s, err := localapi.NewClient(localapi.SocketPath(path)).Status()
+	if err != nil {
+		return err
+	}
+	h := strings.TrimSuffix(strings.ToLower(host), ".")
+	for _, p := range s.Peers {
+		if p.Name != h && p.FQDN != h && !slices.Contains(p.Addresses, h) {
+			continue
+		}
+		if p.SSHHostKey == "" {
+			return fmt.Errorf("%s does not run the mesh SSH server (enable it there with 'ws up --ssh')", p.Name)
+		}
+		kh, err := os.CreateTemp("", "whalescale-known-hosts-*")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(kh.Name())
+		fmt.Fprintf(kh, "%s %s\n", p.FQDN, p.SSHHostKey)
+		kh.Close()
+		sshArgs := []string{"-o", "UserKnownHostsFile=" + kh.Name(), "-o", "StrictHostKeyChecking=yes",
+			"-o", "HostKeyAlias=" + p.FQDN}
+		dest := first(p.Addresses)
+		if userPart != "" {
+			dest = userPart + "@" + dest
+		}
+		cmd := exec.Command("ssh", append(append(sshArgs, dest), rest...)...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				os.Remove(kh.Name()) // os.Exit skips the deferred cleanup
+				os.Exit(ee.ExitCode())
+			}
+			return fmt.Errorf("running ssh: %w (is an OpenSSH client installed?)", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("no peer named %q", host)
 }
 
 func cmdDown(args []string) error {

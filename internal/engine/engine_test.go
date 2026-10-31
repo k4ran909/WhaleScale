@@ -21,11 +21,13 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/coder/websocket"
+	"golang.org/x/crypto/ssh"
 
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/server"
+	"github.com/k4ran909/whalescale/internal/sshserver"
 	"github.com/k4ran909/whalescale/internal/store"
 )
 
@@ -79,7 +81,7 @@ func newTestNetGateway(t *testing.T, policyJSON, gatewayDomain string) *testNet 
 	t.Cleanup(hs.Close)
 	srv, err := server.New(st, server.Config{
 		PublicURL: hs.URL, STUN: []string{stunPC.LocalAddr().String()}, PolicyFile: policyFile, Log: log,
-		GatewayDomain: gatewayDomain,
+		GatewayDomain: gatewayDomain, RecordingsDir: filepath.Join(dir, "recordings"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -578,5 +580,105 @@ func TestPeerRelay(t *testing.T) {
 	waitPath(t, a, "cgnat-b", "relay")
 	if err := roundTrip(a, b, 8443, 15*time.Second); err != nil {
 		t.Fatalf("TCP after relay withdrawal: %v", err)
+	}
+}
+
+// echoRunner stands in for the OS: it reports who it ran as.
+type echoRunner struct{}
+
+func (echoRunner) Run(_ context.Context, s *sshserver.Session) (int, error) {
+	fmt.Fprintf(s.Stdout, "ran %q as %s", s.Cmd, s.User)
+	return 0, nil
+}
+
+func TestMeshSSH(t *testing.T) {
+	// Only SSH is granted: no ACLs at all, so port 22 is open purely
+	// because of the ssh rule.
+	n := newTestNet(t, `{"acls": [], "ssh": [
+		{"action": "accept", "src": ["node:laptop"], "dst": ["node:nas"], "users": ["backup", "$user"], "record": true}
+	]}`)
+	nas := n.nodeWith("nas", Options{SSH: true, SSHRunner: echoRunner{}})
+	laptop := n.nodeWith("laptop", Options{})
+
+	// The laptop learns nas's host key from the network map.
+	var hostKey ssh.PublicKey
+	deadline := time.Now().Add(10 * time.Second)
+	for hostKey == nil {
+		for _, p := range laptop.Status().Peers {
+			if p.Name == "nas" && p.SSHHostKey != "" {
+				k, _, _, _, err := ssh.ParseAuthorizedKey([]byte(p.SSHHostKey))
+				if err != nil {
+					t.Fatal(err)
+				}
+				hostKey = k
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("nas's ssh host key never reached the laptop")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	dial := func(user string) (*ssh.Client, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		c, err := laptop.Net().DialContextTCPAddrPort(ctx, netip.AddrPortFrom(selfIP(nas), 22))
+		if err != nil {
+			return nil, err
+		}
+		cc, chans, reqs, err := ssh.NewClientConn(c, "nas:22", &ssh.ClientConfig{
+			User: user, HostKeyCallback: ssh.FixedHostKey(hostKey), Timeout: 10 * time.Second})
+		if err != nil {
+			c.Close()
+			return nil, err
+		}
+		return ssh.NewClient(cc, chans, reqs), nil
+	}
+
+	var client *ssh.Client
+	var err error
+	deadline = time.Now().Add(15 * time.Second)
+	for {
+		if client, err = dial("backup"); err == nil || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("ssh as an allowed user: %v", err)
+	}
+	sess, _ := client.NewSession()
+	out, err := sess.Output("df -h")
+	client.Close()
+	if err != nil || string(out) != `ran "df -h" as backup` {
+		t.Fatalf("ssh exec = %q, %v", out, err)
+	}
+
+	// "$user" maps to the laptop's mesh user (alice); root is not allowed.
+	if c, err := dial("alice"); err != nil {
+		t.Fatalf("ssh as $user: %v", err)
+	} else {
+		c.Close()
+	}
+	if c, err := dial("root"); err == nil {
+		c.Close()
+		t.Fatal("ssh as root succeeded but the policy doesn't allow it")
+	}
+
+	// The recorded session reached the server.
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		recs, _ := n.store.ListRecordings(context.Background(), 10)
+		var found bool
+		for _, r := range recs {
+			found = found || (r.NodeName == "nas" && r.SrcNode == "laptop" && r.LocalUser == "backup")
+		}
+		if found {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no recording on the server: %+v", recs)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

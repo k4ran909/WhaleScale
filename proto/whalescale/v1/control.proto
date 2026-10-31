@@ -29,6 +29,8 @@ service ControlService {
   // ReportStatus shares the agent's view of its paths, for the console's
   // topology view and server metrics. Kept in memory only.
   rpc ReportStatus(ReportStatusRequest) returns (ReportStatusResponse);
+  // UploadRecording stores a finished, recorded SSH session.
+  rpc UploadRecording(UploadRecordingRequest) returns (UploadRecordingResponse);
 }
 
 message Node {
@@ -57,6 +59,8 @@ message Node {
   repeated string advertised_routes = 16;
   // Approved to act as an exit node.
   bool exit_node = 17;
+  // SSH host public key (authorized_keys format), when the node runs SSH.
+  string ssh_host_key = 18;
 }
 
 message RegisterRequest {
@@ -98,6 +102,8 @@ message UpdateNodeRequest {
   // Offer this node as a UDP relay for peers that can't connect directly.
   // It takes effect once an admin approves it.
   bool offer_relay = 7;
+  // SSH host public key, when this node runs the mesh SSH server.
+  string ssh_host_key = 8;
 }
 
 // Exposure is a local HTTP service published at https://<name>.<gateway domain>.
@@ -153,7 +159,29 @@ message NetworkMap {
   // Whether this node offers to relay, and whether that is approved.
   bool relay_offered = 12;
   bool relay_approved = 13;
+  // SSH logins this node accepts.
+  repeated SSHRule ssh_rules = 14;
 }
+
+// SSHRule lets connections from src_prefixes log in as the listed local
+// users ("$user" = the connecting person's mesh user name).
+message SSHRule {
+  repeated string src_prefixes = 1;
+  repeated string users = 2;
+  bool record = 3;
+}
+
+message UploadRecordingRequest {
+  string local_user = 1;
+  string src_node = 2;
+  string src_user = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Timestamp ended_at = 5;
+  // asciinema v2 (.cast) contents.
+  bytes data = 6;
+}
+
+message UploadRecordingResponse {}
 
 // PeerRelay is a node that forwards UDP between peers that can't connect
 // directly. It shares the node's WireGuard socket and endpoints.

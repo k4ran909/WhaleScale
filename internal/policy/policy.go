@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,34 @@ type Policy struct {
 	Groups map[string][]string `json:"groups,omitempty"`
 	ACLs   []ACL               `json:"acls"`
 	Tests  []Test              `json:"tests,omitempty"`
+	SSH    []SSHRule           `json:"ssh,omitempty"`
+}
+
+// SSHRule lets sources log in to destination machines over SSH as the
+// listed local users, with no keys or passwords: the mesh identity is the
+// credential. "$user" means the connecting person's own mesh user name.
+//
+//	{"action": "accept", "src": ["group:admins"], "dst": ["node:nas"],
+//	 "users": ["karan", "root"], "record": true}
+type SSHRule struct {
+	Action string   `json:"action"`
+	Src    []string `json:"src"`
+	Dst    []string `json:"dst"`
+	Users  []string `json:"users"`
+	// Record captures sessions and uploads them to the server.
+	Record bool `json:"record,omitempty"`
+}
+
+// SelfUser in SSHRule.Users stands for the connecting mesh user's name.
+const SelfUser = "$user"
+
+var localUserRe = regexp.MustCompile(`^[a-z_][a-z0-9_.-]{0,31}$`)
+
+// CompiledSSH is an SSH rule as it applies to one destination node.
+type CompiledSSH struct {
+	Src    []netip.Prefix
+	Users  []string
+	Record bool
 }
 
 type ACL struct {
@@ -99,6 +128,32 @@ func (p *Policy) validate() error {
 	for i, t := range p.Tests {
 		if err := t.validate(); err != nil {
 			errs = append(errs, fmt.Errorf("tests[%d]: %w", i, err))
+		}
+	}
+	for i, r := range p.SSH {
+		where := fmt.Sprintf("ssh[%d]", i)
+		if r.Action != "accept" {
+			errs = append(errs, fmt.Errorf("%s: action must be \"accept\", got %q", where, r.Action))
+		}
+		if len(r.Src) == 0 || len(r.Dst) == 0 || len(r.Users) == 0 {
+			errs = append(errs, fmt.Errorf("%s: src, dst and users must not be empty", where))
+		}
+		for _, sel := range r.Src {
+			if err := p.checkSelector(sel); err != nil {
+				errs = append(errs, fmt.Errorf("%s src %q: %w", where, sel, err))
+			}
+		}
+		for _, sel := range r.Dst {
+			if strings.Contains(sel, "/") {
+				errs = append(errs, fmt.Errorf("%s dst %q: SSH destinations are machines (a user, group:NAME, node:NAME or *), not networks", where, sel))
+			} else if err := p.checkSelector(sel); err != nil {
+				errs = append(errs, fmt.Errorf("%s dst %q: %w", where, sel, err))
+			}
+		}
+		for _, u := range r.Users {
+			if u != SelfUser && !localUserRe.MatchString(u) {
+				errs = append(errs, fmt.Errorf("%s user %q: not a valid local user name (or \"$user\")", where, u))
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -221,11 +276,13 @@ type Compiled struct {
 	Rules map[uint64][]Rule
 	// Peers each node may exchange packets with, in either direction.
 	Peers map[uint64]map[uint64]bool
+	// SSH logins each node accepts.
+	SSH map[uint64][]CompiledSSH
 }
 
 // Compile evaluates the policy against the current set of nodes.
 func (p *Policy) Compile(nodes []Node) *Compiled {
-	c := &Compiled{Rules: map[uint64][]Rule{}, Peers: map[uint64]map[uint64]bool{}}
+	c := &Compiled{Rules: map[uint64][]Rule{}, Peers: map[uint64]map[uint64]bool{}, SSH: map[uint64][]CompiledSSH{}}
 	link := func(a, b uint64) {
 		if a == b {
 			return
@@ -238,25 +295,7 @@ func (p *Policy) Compile(nodes []Node) *Compiled {
 		}
 	}
 	for _, a := range p.ACLs {
-		var srcNodes []Node
-		var srcPrefixes []netip.Prefix
-		for _, s := range a.Src {
-			if pfx, err := netip.ParsePrefix(s); err == nil {
-				srcPrefixes = append(srcPrefixes, pfx.Masked())
-				continue
-			}
-			for _, n := range nodes {
-				if p.matches(s, n) {
-					srcNodes = append(srcNodes, n)
-				}
-			}
-		}
-		for _, n := range srcNodes {
-			for _, ip := range n.Addrs {
-				srcPrefixes = append(srcPrefixes, netip.PrefixFrom(ip, ip.BitLen()))
-			}
-		}
-		srcPrefixes = dedupPrefixes(srcPrefixes)
+		srcNodes, srcPrefixes := p.resolveSrc(a.Src, nodes)
 		if len(srcPrefixes) == 0 {
 			continue
 		}
@@ -287,7 +326,52 @@ func (p *Policy) Compile(nodes []Node) *Compiled {
 			}
 		}
 	}
+	// SSH rules: each grants logins and opens TCP 22 from its sources.
+	for _, r := range p.SSH {
+		srcNodes, srcPrefixes := p.resolveSrc(r.Src, nodes)
+		if len(srcPrefixes) == 0 {
+			continue
+		}
+		for _, dn := range nodes {
+			hit := false
+			for _, sel := range r.Dst {
+				hit = hit || p.matches(sel, dn)
+			}
+			if !hit {
+				continue
+			}
+			c.SSH[dn.ID] = append(c.SSH[dn.ID], CompiledSSH{Src: srcPrefixes, Users: r.Users, Record: r.Record})
+			c.Rules[dn.ID] = append(c.Rules[dn.ID], Rule{Src: srcPrefixes, Ports: []PortRange{{First: 22, Last: 22}}})
+			for _, sn := range srcNodes {
+				link(sn.ID, dn.ID)
+			}
+		}
+	}
 	return c
+}
+
+// resolveSrc turns source selectors into the nodes they name and the
+// prefixes packets from them may carry.
+func (p *Policy) resolveSrc(sels []string, nodes []Node) ([]Node, []netip.Prefix) {
+	var srcNodes []Node
+	var prefixes []netip.Prefix
+	for _, s := range sels {
+		if pfx, err := netip.ParsePrefix(s); err == nil {
+			prefixes = append(prefixes, pfx.Masked())
+			continue
+		}
+		for _, n := range nodes {
+			if p.matches(s, n) {
+				srcNodes = append(srcNodes, n)
+			}
+		}
+	}
+	for _, n := range srcNodes {
+		for _, ip := range n.Addrs {
+			prefixes = append(prefixes, netip.PrefixFrom(ip, ip.BitLen()))
+		}
+	}
+	return srcNodes, dedupPrefixes(prefixes)
 }
 
 func (p *Policy) matches(sel string, n Node) bool {

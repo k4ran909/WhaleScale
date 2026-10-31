@@ -73,6 +73,27 @@ sudo ws up --advertise-routes 192.168.1.0/24
 
 Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
 
+## SSH over the mesh
+
+Log in to your machines without managing SSH keys: your mesh identity is the credential, and the access policy decides who may log in where, and as which local user.
+
+```json
+"ssh": [
+  { "action": "accept", "src": ["group:admins"], "dst": ["node:nas"], "users": ["root", "$user"], "record": true }
+]
+```
+
+```bash
+sudo ws up --ssh              # on the server machine (Linux or macOS)
+ws ssh karan@nas              # from any machine; or plain: ssh karan@nas.whale.internal
+```
+
+- **Identity:** the source mesh address identifies the person. WireGuard ties every peer's addresses to its key, so they can't be spoofed (the same model Tailscale SSH uses).
+- **Local users:** `"$user"` means "your own username on the mesh". An SSH rule also opens TCP 22 from its sources, and nothing else.
+- **No host-key prompts:** each machine's SSH host key is distributed in the network map. `ws ssh` hands it to your `ssh` client.
+- **Recording:** with `"record": true`, session output (never keystrokes) is recorded in asciinema format and uploaded to the server. If the upload fails, a copy is kept on the machine. Admins can view or download recordings in the console (SSH recordings); downloads play with `asciinema play`.
+- **What's supported:** shells, commands, PTYs and window resizing. Not SFTP, port forwarding, or a Windows SSH server yet.
+
 ## Router port mapping
 
 `wsd` asks your home router to forward its WireGuard UDP port, trying PCP, then NAT-PMP, then UPnP. When that works, peers connect directly with no manual port forward. The mapping is renewed at half its lifetime and removed when `wsd` stops. Turn it off with `wsd --portmap=false`.

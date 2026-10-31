@@ -42,6 +42,8 @@ type Config struct {
 	GatewayURL    string
 	// GatewayConnected reports whether a node holds a gateway tunnel.
 	GatewayConnected func(nodeID uint64) bool
+	// RecordingsDir stores recorded SSH sessions.
+	RecordingsDir string
 }
 
 type Service struct {
@@ -280,6 +282,34 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 	return connect.NewResponse(&v1.ReportStatusResponse{}), nil
 }
 
+// MaxRecording caps one uploaded SSH session recording.
+const MaxRecording = 32 << 20
+
+func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
+	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	if err != nil {
+		return nil, err
+	}
+	m := req.Msg
+	if s.cfg.RecordingsDir == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this server does not store recordings"))
+	}
+	if len(m.Data) == 0 || len(m.Data) > MaxRecording {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("recording is empty or too large"))
+	}
+	// The node name comes from the authenticated node, never the request.
+	r, err := s.store.SaveRecording(ctx, s.cfg.RecordingsDir, store.Recording{
+		NodeName: self.Name, LocalUser: truncate(m.LocalUser, 64), SrcNode: truncate(m.SrcNode, 64),
+		SrcUser: truncate(m.SrcUser, 64), StartedAt: m.StartedAt.AsTime(), EndedAt: m.EndedAt.AsTime(),
+	}, m.Data)
+	if err != nil {
+		s.log.Error("save recording", "err", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+	s.log.Info("ssh session recorded", "node", self.Name, "local_user", r.LocalUser, "from", r.SrcNode, "bytes", r.Size)
+	return connect.NewResponse(&v1.UploadRecordingResponse{}), nil
+}
+
 // Topology returns recent path reports from online nodes.
 func (s *Service) Topology() []*v1.PathReport {
 	s.mu.Lock()
@@ -340,8 +370,12 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if k := m.SshHostKey; k != "" && (len(k) > 512 || !strings.HasPrefix(k, "ssh-ed25519 ")) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("ssh_host_key must be an ssh-ed25519 public key"))
+	}
 	changed, err := s.store.UpdateNodeInfo(ctx, self.ID, store.NodeInfo{
 		NodeKey: m.NodeKey, DiscoKey: m.DiscoKey, Endpoints: m.Endpoints, OS: truncate(m.Os, 32),
+		SSHHostKey: m.SshHostKey,
 	})
 	if err == nil {
 		var rc bool
@@ -512,6 +546,13 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		nm.PacketFilter = append(nm.PacketFilter, fr)
 	}
 	nm.RelayOffered, nm.RelayApproved = self.RelayOffered, self.RelayApproved
+	for _, r := range compiled.SSH[selfID] {
+		sr := &v1.SSHRule{Users: r.Users, Record: r.Record}
+		for _, p := range r.Src {
+			sr.SrcPrefixes = append(sr.SrcPrefixes, p.String())
+		}
+		nm.SshRules = append(nm.SshRules, sr)
+	}
 	for i := range all {
 		n := &all[i]
 		if n.ID == selfID || n.NodeKey == "" || n.DiscoKey == "" {
@@ -687,6 +728,7 @@ func (s *Service) toProto(n *store.Node) *v1.Node {
 		Routes:           routes,
 		AdvertisedRoutes: advertised,
 		ExitNode:         exit,
+		SshHostKey:       n.SSHHostKey,
 		Id:               n.ID,
 		Name:             n.Name,
 		User:             n.User,

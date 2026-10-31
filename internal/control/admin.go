@@ -448,6 +448,41 @@ func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1
 	return connect.NewResponse(&v1.SetExposureApprovedResponse{}), nil
 }
 
+// --- SSH recordings ---
+
+func recordingProto(r *store.Recording) *v1.Recording {
+	return &v1.Recording{Id: r.ID, NodeName: r.NodeName, LocalUser: r.LocalUser, SrcNode: r.SrcNode, SrcUser: r.SrcUser,
+		StartedAt: timestamppb.New(r.StartedAt), EndedAt: timestamppb.New(r.EndedAt), Size: uint64(r.Size)}
+}
+
+func (a *Admin) ListRecordings(ctx context.Context, req *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	list, err := a.svc.store.ListRecordings(ctx, 500)
+	if err != nil {
+		return nil, internal(a, "list recordings", err)
+	}
+	resp := &v1.ListRecordingsResponse{}
+	for i := range list {
+		resp.Recordings = append(resp.Recordings, recordingProto(&list[i]))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (a *Admin) GetRecording(ctx context.Context, req *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
+	id, err := a.auth(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	r, data, err := a.svc.store.RecordingByID(ctx, a.svc.cfg.RecordingsDir, req.Msg.Id)
+	if err != nil {
+		return nil, notFoundOr(a, "get recording", err)
+	}
+	a.audit(id, "recording viewed", "recording_id", r.ID, "node", r.NodeName)
+	return connect.NewResponse(&v1.GetRecordingResponse{Recording: recordingProto(r), Data: data}), nil
+}
+
 // --- API keys ---
 
 func apiKeyProto(k *store.APIKey) *v1.APIKey {

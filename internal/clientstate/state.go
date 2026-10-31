@@ -22,7 +22,9 @@ type State struct {
 	NodeToken string `json:"node_token,omitempty"`
 	NodeID    uint64 `json:"node_id,omitempty"`
 	NodeName  string `json:"node_name,omitempty"`
-	Prefs     Prefs  `json:"prefs"`
+	// SSHHostKey is the mesh SSH server's private host key (OpenSSH PEM).
+	SSHHostKey string `json:"ssh_host_key,omitempty"`
+	Prefs      Prefs  `json:"prefs"`
 }
 
 // Prefs are the settings 'ws up' and 'ws down' change.
@@ -41,6 +43,9 @@ type Prefs struct {
 	Exposures map[string]uint16 `json:"exposures,omitempty"`
 	// Relay offers this node as a peer relay.
 	Relay bool `json:"relay,omitempty"`
+	// SSH runs the mesh SSH server; the access policy's "ssh" rules decide
+	// who may log in.
+	SSH bool `json:"ssh,omitempty"`
 }
 
 // SystemDir is where a wsd service keeps its state. When it exists, ws and

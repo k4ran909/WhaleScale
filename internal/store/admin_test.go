@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -136,5 +138,28 @@ func TestRelayOffer(t *testing.T) {
 	}
 	if err := s.SetRelayApproved(ctx, 999, true); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown node: %v", err)
+	}
+}
+
+func TestRecordings(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	dir := filepath.Join(t.TempDir(), "rec")
+	start := time.Now().Add(-time.Minute)
+	r, err := s.SaveRecording(ctx, dir, Recording{NodeName: "nas", LocalUser: "root", SrcNode: "laptop", SrcUser: "karan",
+		StartedAt: start, EndedAt: time.Now()}, []byte(`{"version":2}`+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.ListRecordings(ctx, 10)
+	if len(list) != 1 || list[0].SrcUser != "karan" || list[0].Size != r.Size {
+		t.Fatalf("list = %+v", list)
+	}
+	got, data, err := s.RecordingByID(ctx, dir, r.ID)
+	if err != nil || got.LocalUser != "root" || !strings.HasPrefix(string(data), `{"version":2}`) {
+		t.Fatalf("RecordingByID = %+v %q %v", got, data, err)
+	}
+	if _, _, err := s.RecordingByID(ctx, dir, 999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown recording: %v", err)
 	}
 }

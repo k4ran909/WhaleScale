@@ -42,6 +42,9 @@ service AdminService {
   rpc ListExposures(ListExposuresRequest) returns (ListExposuresResponse);
   rpc SetExposureApproved(SetExposureApprovedRequest) returns (SetExposureApprovedResponse);
 
+  rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
+  rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse);
+
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
@@ -207,3 +210,21 @@ message SetPeerRelayApprovedRequest {
   bool approved = 2;
 }
 message SetPeerRelayApprovedResponse {}
+
+message Recording {
+  uint64 id = 1;
+  string node_name = 2;
+  string local_user = 3;
+  string src_node = 4;
+  string src_user = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp ended_at = 7;
+  uint64 size = 8;
+}
+message ListRecordingsRequest {}
+message ListRecordingsResponse { repeated Recording recordings = 1; }
+message GetRecordingRequest { uint64 id = 1; }
+message GetRecordingResponse {
+  Recording recording = 1;
+  bytes data = 2;
+}
