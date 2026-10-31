@@ -347,6 +347,75 @@ func cmdRelays(args []string) error {
 	return nil
 }
 
+func cmdFlows(args []string) error {
+	fs, db := adminFlags("flows")
+	node := fs.String("node", "", "only flows reported by this machine")
+	since := fs.Duration("since", time.Hour, "how far back to look")
+	denied := fs.Bool("denied", false, "only connections the access policy refused")
+	limit := fs.Int("limit", 100, "maximum rows")
+	st, err := openStore(fs, db, args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	flows, err := st.QueryFlows(ctx, store.FlowQuery{Node: *node, Since: time.Now().Add(-*since), DeniedOnly: *denied, Limit: *limit})
+	if err != nil {
+		return err
+	}
+	if len(flows) == 0 {
+		fmt.Println("no flows (is the server running with flow-logs: true?)")
+		return nil
+	}
+	names := map[string]string{}
+	if nodes, err := st.ListNodes(ctx, ""); err == nil {
+		for _, n := range nodes {
+			names[n.IPv4.String()], names[n.IPv6.String()] = n.Name, n.Name
+		}
+	}
+	label := func(ip string) string {
+		if n := names[ip]; n != "" {
+			return n
+		}
+		return ip
+	}
+	tw := table("TIME\tREPORTED BY\tCLIENT\tSERVER\tPROTO\tVERDICT\tSENT\tRECEIVED")
+	for _, f := range flows {
+		verdict := "allow"
+		if f.Denied {
+			verdict = "DENY"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s:%d\t%s\t%s\t%s\t%s\n", f.End.Format(time.TimeOnly), f.NodeName,
+			label(f.Client), label(f.Server), f.Port, protoName(f.Proto), verdict, humanBytes(f.BytesSent), humanBytes(f.BytesRecv))
+	}
+	tw.Flush()
+	return nil
+}
+
+func protoName(p uint8) string {
+	switch p {
+	case 6:
+		return "tcp"
+	case 17:
+		return "udp"
+	case 1, 58:
+		return "icmp"
+	}
+	return strconv.Itoa(int(p))
+}
+
+func humanBytes(n uint64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1<<20:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	case n < 1<<30:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	}
+	return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+}
+
 // nodeID accepts a node ID or name.
 func nodeID(ctx context.Context, st *store.Store, s string) (uint64, error) {
 	if id, err := strconv.ParseUint(s, 10, 64); err == nil {

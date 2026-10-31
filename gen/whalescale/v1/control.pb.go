@@ -871,7 +871,9 @@ type NetworkMap struct {
 	RelayOffered  bool `protobuf:"varint,12,opt,name=relay_offered,json=relayOffered,proto3" json:"relay_offered,omitempty"`
 	RelayApproved bool `protobuf:"varint,13,opt,name=relay_approved,json=relayApproved,proto3" json:"relay_approved,omitempty"`
 	// SSH logins this node accepts.
-	SshRules      []*SSHRule `protobuf:"bytes,14,rep,name=ssh_rules,json=sshRules,proto3" json:"ssh_rules,omitempty"`
+	SshRules []*SSHRule `protobuf:"bytes,14,rep,name=ssh_rules,json=sshRules,proto3" json:"ssh_rules,omitempty"`
+	// Report connection activity (flow logs) to the server.
+	FlowLogs      bool `protobuf:"varint,15,opt,name=flow_logs,json=flowLogs,proto3" json:"flow_logs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1002,6 +1004,13 @@ func (x *NetworkMap) GetSshRules() []*SSHRule {
 		return x.SshRules
 	}
 	return nil
+}
+
+func (x *NetworkMap) GetFlowLogs() bool {
+	if x != nil {
+		return x.FlowLogs
+	}
+	return false
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local
@@ -1557,8 +1566,10 @@ func (x *PathReport) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 type ReportStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Paths         []*PathReport          `protobuf:"bytes,1,rep,name=paths,proto3" json:"paths,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Paths []*PathReport          `protobuf:"bytes,1,rep,name=paths,proto3" json:"paths,omitempty"`
+	// Connection activity since the last report; only when flow logging is on.
+	Flows         []*FlowRecord `protobuf:"bytes,2,rep,name=flows,proto3" json:"flows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1600,6 +1611,150 @@ func (x *ReportStatusRequest) GetPaths() []*PathReport {
 	return nil
 }
 
+func (x *ReportStatusRequest) GetFlows() []*FlowRecord {
+	if x != nil {
+		return x.Flows
+	}
+	return nil
+}
+
+// FlowRecord is one connection's traffic over a reporting window, from the
+// reporting node's point of view.
+type FlowRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Proto uint32                 `protobuf:"varint,1,opt,name=proto,proto3" json:"proto,omitempty"`
+	// The side that opened the connection, and the side it went to.
+	Client string `protobuf:"bytes,2,opt,name=client,proto3" json:"client,omitempty"`
+	Server string `protobuf:"bytes,3,opt,name=server,proto3" json:"server,omitempty"`
+	Port   uint32 `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	// This node opened the connection.
+	Outbound bool `protobuf:"varint,5,opt,name=outbound,proto3" json:"outbound,omitempty"`
+	// An inbound attempt the access policy refused.
+	Denied        bool                   `protobuf:"varint,6,opt,name=denied,proto3" json:"denied,omitempty"`
+	Start         *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=start,proto3" json:"start,omitempty"`
+	End           *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=end,proto3" json:"end,omitempty"`
+	BytesSent     uint64                 `protobuf:"varint,9,opt,name=bytes_sent,json=bytesSent,proto3" json:"bytes_sent,omitempty"`
+	BytesRecv     uint64                 `protobuf:"varint,10,opt,name=bytes_recv,json=bytesRecv,proto3" json:"bytes_recv,omitempty"`
+	PacketsSent   uint64                 `protobuf:"varint,11,opt,name=packets_sent,json=packetsSent,proto3" json:"packets_sent,omitempty"`
+	PacketsRecv   uint64                 `protobuf:"varint,12,opt,name=packets_recv,json=packetsRecv,proto3" json:"packets_recv,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlowRecord) Reset() {
+	*x = FlowRecord{}
+	mi := &file_whalescale_v1_control_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlowRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlowRecord) ProtoMessage() {}
+
+func (x *FlowRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_control_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlowRecord.ProtoReflect.Descriptor instead.
+func (*FlowRecord) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_control_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *FlowRecord) GetProto() uint32 {
+	if x != nil {
+		return x.Proto
+	}
+	return 0
+}
+
+func (x *FlowRecord) GetClient() string {
+	if x != nil {
+		return x.Client
+	}
+	return ""
+}
+
+func (x *FlowRecord) GetServer() string {
+	if x != nil {
+		return x.Server
+	}
+	return ""
+}
+
+func (x *FlowRecord) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *FlowRecord) GetOutbound() bool {
+	if x != nil {
+		return x.Outbound
+	}
+	return false
+}
+
+func (x *FlowRecord) GetDenied() bool {
+	if x != nil {
+		return x.Denied
+	}
+	return false
+}
+
+func (x *FlowRecord) GetStart() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Start
+	}
+	return nil
+}
+
+func (x *FlowRecord) GetEnd() *timestamppb.Timestamp {
+	if x != nil {
+		return x.End
+	}
+	return nil
+}
+
+func (x *FlowRecord) GetBytesSent() uint64 {
+	if x != nil {
+		return x.BytesSent
+	}
+	return 0
+}
+
+func (x *FlowRecord) GetBytesRecv() uint64 {
+	if x != nil {
+		return x.BytesRecv
+	}
+	return 0
+}
+
+func (x *FlowRecord) GetPacketsSent() uint64 {
+	if x != nil {
+		return x.PacketsSent
+	}
+	return 0
+}
+
+func (x *FlowRecord) GetPacketsRecv() uint64 {
+	if x != nil {
+		return x.PacketsRecv
+	}
+	return 0
+}
+
 type ReportStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1608,7 +1763,7 @@ type ReportStatusResponse struct {
 
 func (x *ReportStatusResponse) Reset() {
 	*x = ReportStatusResponse{}
-	mi := &file_whalescale_v1_control_proto_msgTypes[23]
+	mi := &file_whalescale_v1_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1620,7 +1775,7 @@ func (x *ReportStatusResponse) String() string {
 func (*ReportStatusResponse) ProtoMessage() {}
 
 func (x *ReportStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_control_proto_msgTypes[23]
+	mi := &file_whalescale_v1_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1633,7 +1788,7 @@ func (x *ReportStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportStatusResponse.ProtoReflect.Descriptor instead.
 func (*ReportStatusResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_control_proto_rawDescGZIP(), []int{23}
+	return file_whalescale_v1_control_proto_rawDescGZIP(), []int{24}
 }
 
 var File_whalescale_v1_control_proto protoreflect.FileDescriptor
@@ -1709,7 +1864,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\vnetwork_map\x18\x01 \x01(\v2\x19.whalescale.v1.NetworkMapR\n" +
 	"networkMap\x12\x1d\n" +
 	"\n" +
-	"keep_alive\x18\x02 \x01(\bR\tkeepAlive\"\xe7\x04\n" +
+	"keep_alive\x18\x02 \x01(\bR\tkeepAlive\"\x84\x05\n" +
 	"\n" +
 	"NetworkMap\x12'\n" +
 	"\x04self\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04self\x12)\n" +
@@ -1728,7 +1883,8 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\rrelay_clients\x18\v \x03(\v2\x1a.whalescale.v1.RelayClientR\frelayClients\x12#\n" +
 	"\rrelay_offered\x18\f \x01(\bR\frelayOffered\x12%\n" +
 	"\x0erelay_approved\x18\r \x01(\bR\rrelayApproved\x123\n" +
-	"\tssh_rules\x18\x0e \x03(\v2\x16.whalescale.v1.SSHRuleR\bsshRules\"Z\n" +
+	"\tssh_rules\x18\x0e \x03(\v2\x16.whalescale.v1.SSHRuleR\bsshRules\x12\x1b\n" +
+	"\tflow_logs\x18\x0f \x01(\bR\bflowLogs\"Z\n" +
 	"\aSSHRule\x12!\n" +
 	"\fsrc_prefixes\x18\x01 \x03(\tR\vsrcPrefixes\x12\x14\n" +
 	"\x05users\x18\x02 \x03(\tR\x05users\x12\x16\n" +
@@ -1770,9 +1926,27 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\n" +
 	"latency_ms\x18\x05 \x01(\x01R\tlatencyMs\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"F\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"w\n" +
 	"\x13ReportStatusRequest\x12/\n" +
-	"\x05paths\x18\x01 \x03(\v2\x19.whalescale.v1.PathReportR\x05paths\"\x16\n" +
+	"\x05paths\x18\x01 \x03(\v2\x19.whalescale.v1.PathReportR\x05paths\x12/\n" +
+	"\x05flows\x18\x02 \x03(\v2\x19.whalescale.v1.FlowRecordR\x05flows\"\xfe\x02\n" +
+	"\n" +
+	"FlowRecord\x12\x14\n" +
+	"\x05proto\x18\x01 \x01(\rR\x05proto\x12\x16\n" +
+	"\x06client\x18\x02 \x01(\tR\x06client\x12\x16\n" +
+	"\x06server\x18\x03 \x01(\tR\x06server\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\rR\x04port\x12\x1a\n" +
+	"\boutbound\x18\x05 \x01(\bR\boutbound\x12\x16\n" +
+	"\x06denied\x18\x06 \x01(\bR\x06denied\x120\n" +
+	"\x05start\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x05start\x12,\n" +
+	"\x03end\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x03end\x12\x1d\n" +
+	"\n" +
+	"bytes_sent\x18\t \x01(\x04R\tbytesSent\x12\x1d\n" +
+	"\n" +
+	"bytes_recv\x18\n" +
+	" \x01(\x04R\tbytesRecv\x12!\n" +
+	"\fpackets_sent\x18\v \x01(\x04R\vpacketsSent\x12!\n" +
+	"\fpackets_recv\x18\f \x01(\x04R\vpacketsRecv\"\x16\n" +
 	"\x14ReportStatusResponse2\x93\x05\n" +
 	"\x0eControlService\x12K\n" +
 	"\bRegister\x12\x1e.whalescale.v1.RegisterRequest\x1a\x1f.whalescale.v1.RegisterResponse\x12c\n" +
@@ -1796,7 +1970,7 @@ func file_whalescale_v1_control_proto_rawDescGZIP() []byte {
 	return file_whalescale_v1_control_proto_rawDescData
 }
 
-var file_whalescale_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_whalescale_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_whalescale_v1_control_proto_goTypes = []any{
 	(*Node)(nil),                     // 0: whalescale.v1.Node
 	(*RegisterRequest)(nil),          // 1: whalescale.v1.RegisterRequest
@@ -1821,12 +1995,13 @@ var file_whalescale_v1_control_proto_goTypes = []any{
 	(*PortRange)(nil),                // 20: whalescale.v1.PortRange
 	(*PathReport)(nil),               // 21: whalescale.v1.PathReport
 	(*ReportStatusRequest)(nil),      // 22: whalescale.v1.ReportStatusRequest
-	(*ReportStatusResponse)(nil),     // 23: whalescale.v1.ReportStatusResponse
-	(*timestamppb.Timestamp)(nil),    // 24: google.protobuf.Timestamp
+	(*FlowRecord)(nil),               // 23: whalescale.v1.FlowRecord
+	(*ReportStatusResponse)(nil),     // 24: whalescale.v1.ReportStatusResponse
+	(*timestamppb.Timestamp)(nil),    // 25: google.protobuf.Timestamp
 }
 var file_whalescale_v1_control_proto_depIdxs = []int32{
-	24, // 0: whalescale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
-	24, // 1: whalescale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
+	25, // 0: whalescale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
+	25, // 1: whalescale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
 	0,  // 2: whalescale.v1.RegisterResponse.node:type_name -> whalescale.v1.Node
 	0,  // 3: whalescale.v1.WaitRegistrationResponse.node:type_name -> whalescale.v1.Node
 	6,  // 4: whalescale.v1.UpdateNodeRequest.exposures:type_name -> whalescale.v1.Exposure
@@ -1841,30 +2016,33 @@ var file_whalescale_v1_control_proto_depIdxs = []int32{
 	16, // 13: whalescale.v1.NetworkMap.peer_relays:type_name -> whalescale.v1.PeerRelay
 	17, // 14: whalescale.v1.NetworkMap.relay_clients:type_name -> whalescale.v1.RelayClient
 	13, // 15: whalescale.v1.NetworkMap.ssh_rules:type_name -> whalescale.v1.SSHRule
-	24, // 16: whalescale.v1.UploadRecordingRequest.started_at:type_name -> google.protobuf.Timestamp
-	24, // 17: whalescale.v1.UploadRecordingRequest.ended_at:type_name -> google.protobuf.Timestamp
+	25, // 16: whalescale.v1.UploadRecordingRequest.started_at:type_name -> google.protobuf.Timestamp
+	25, // 17: whalescale.v1.UploadRecordingRequest.ended_at:type_name -> google.protobuf.Timestamp
 	20, // 18: whalescale.v1.FilterRule.ports:type_name -> whalescale.v1.PortRange
-	24, // 19: whalescale.v1.PathReport.updated_at:type_name -> google.protobuf.Timestamp
+	25, // 19: whalescale.v1.PathReport.updated_at:type_name -> google.protobuf.Timestamp
 	21, // 20: whalescale.v1.ReportStatusRequest.paths:type_name -> whalescale.v1.PathReport
-	1,  // 21: whalescale.v1.ControlService.Register:input_type -> whalescale.v1.RegisterRequest
-	3,  // 22: whalescale.v1.ControlService.WaitRegistration:input_type -> whalescale.v1.WaitRegistrationRequest
-	5,  // 23: whalescale.v1.ControlService.UpdateNode:input_type -> whalescale.v1.UpdateNodeRequest
-	8,  // 24: whalescale.v1.ControlService.GetNetworkMap:input_type -> whalescale.v1.GetNetworkMapRequest
-	10, // 25: whalescale.v1.ControlService.StreamNetworkMap:input_type -> whalescale.v1.StreamNetworkMapRequest
-	22, // 26: whalescale.v1.ControlService.ReportStatus:input_type -> whalescale.v1.ReportStatusRequest
-	14, // 27: whalescale.v1.ControlService.UploadRecording:input_type -> whalescale.v1.UploadRecordingRequest
-	2,  // 28: whalescale.v1.ControlService.Register:output_type -> whalescale.v1.RegisterResponse
-	4,  // 29: whalescale.v1.ControlService.WaitRegistration:output_type -> whalescale.v1.WaitRegistrationResponse
-	7,  // 30: whalescale.v1.ControlService.UpdateNode:output_type -> whalescale.v1.UpdateNodeResponse
-	9,  // 31: whalescale.v1.ControlService.GetNetworkMap:output_type -> whalescale.v1.GetNetworkMapResponse
-	11, // 32: whalescale.v1.ControlService.StreamNetworkMap:output_type -> whalescale.v1.StreamNetworkMapResponse
-	23, // 33: whalescale.v1.ControlService.ReportStatus:output_type -> whalescale.v1.ReportStatusResponse
-	15, // 34: whalescale.v1.ControlService.UploadRecording:output_type -> whalescale.v1.UploadRecordingResponse
-	28, // [28:35] is the sub-list for method output_type
-	21, // [21:28] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	23, // 21: whalescale.v1.ReportStatusRequest.flows:type_name -> whalescale.v1.FlowRecord
+	25, // 22: whalescale.v1.FlowRecord.start:type_name -> google.protobuf.Timestamp
+	25, // 23: whalescale.v1.FlowRecord.end:type_name -> google.protobuf.Timestamp
+	1,  // 24: whalescale.v1.ControlService.Register:input_type -> whalescale.v1.RegisterRequest
+	3,  // 25: whalescale.v1.ControlService.WaitRegistration:input_type -> whalescale.v1.WaitRegistrationRequest
+	5,  // 26: whalescale.v1.ControlService.UpdateNode:input_type -> whalescale.v1.UpdateNodeRequest
+	8,  // 27: whalescale.v1.ControlService.GetNetworkMap:input_type -> whalescale.v1.GetNetworkMapRequest
+	10, // 28: whalescale.v1.ControlService.StreamNetworkMap:input_type -> whalescale.v1.StreamNetworkMapRequest
+	22, // 29: whalescale.v1.ControlService.ReportStatus:input_type -> whalescale.v1.ReportStatusRequest
+	14, // 30: whalescale.v1.ControlService.UploadRecording:input_type -> whalescale.v1.UploadRecordingRequest
+	2,  // 31: whalescale.v1.ControlService.Register:output_type -> whalescale.v1.RegisterResponse
+	4,  // 32: whalescale.v1.ControlService.WaitRegistration:output_type -> whalescale.v1.WaitRegistrationResponse
+	7,  // 33: whalescale.v1.ControlService.UpdateNode:output_type -> whalescale.v1.UpdateNodeResponse
+	9,  // 34: whalescale.v1.ControlService.GetNetworkMap:output_type -> whalescale.v1.GetNetworkMapResponse
+	11, // 35: whalescale.v1.ControlService.StreamNetworkMap:output_type -> whalescale.v1.StreamNetworkMapResponse
+	24, // 36: whalescale.v1.ControlService.ReportStatus:output_type -> whalescale.v1.ReportStatusResponse
+	15, // 37: whalescale.v1.ControlService.UploadRecording:output_type -> whalescale.v1.UploadRecordingResponse
+	31, // [31:38] is the sub-list for method output_type
+	24, // [24:31] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_whalescale_v1_control_proto_init() }
@@ -1878,7 +2056,7 @@ func file_whalescale_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_whalescale_v1_control_proto_rawDesc), len(file_whalescale_v1_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

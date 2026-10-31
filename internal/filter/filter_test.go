@@ -2,6 +2,7 @@ package filter
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net/netip"
 	"testing"
 
@@ -94,5 +95,61 @@ func TestPingRepliesFromBeyondTheMesh(t *testing.T) {
 	}
 	if f.Inbound(icmpPacket(lanHost, me, 8, 7)) {
 		t.Fatal("echo request from outside allowed by a reply flow")
+	}
+}
+
+func TestFlowLog(t *testing.T) {
+	f := New()
+	f.SetRules([]policy.Rule{{
+		Src:   []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
+		Ports: []policy.PortRange{{First: 22, Last: 22}},
+	}}, []netip.Addr{netip.MustParseAddr("100.64.0.1")})
+	const me, bob, eve = "100.64.0.1", "100.64.0.2", "100.64.0.9"
+
+	if f.DrainFlows(0) != nil {
+		t.Fatal("flows recorded while logging was off")
+	}
+	f.SetFlowLogging(true)
+
+	// bob opens SSH to us; we answer. One connection, both directions.
+	f.Inbound(ipv4Packet(protoTCP, bob, me, 50000, 22))
+	f.Inbound(ipv4Packet(protoTCP, bob, me, 50000, 22))
+	f.Outbound(ipv4Packet(protoTCP, me, bob, 22, 50000))
+	// We open HTTPS to bob; he answers.
+	f.Outbound(ipv4Packet(protoTCP, me, bob, 51000, 443))
+	f.Inbound(ipv4Packet(protoTCP, bob, me, 443, 51000))
+	// eve tries SSH and is refused, twice.
+	f.Inbound(ipv4Packet(protoTCP, eve, me, 40000, 22))
+	f.Inbound(ipv4Packet(protoTCP, eve, me, 40001, 22))
+
+	recs := f.DrainFlows(0)
+	byPort := map[string]FlowRecord{}
+	for _, r := range recs {
+		key := fmt.Sprintf("%s>%s:%d out=%v deny=%v", r.Client, r.Server, r.Port, r.Outbound, r.Denied)
+		byPort[key] = r
+	}
+	if len(recs) != 3 {
+		t.Fatalf("want 3 records, got %d: %v", len(recs), byPort)
+	}
+	ssh := byPort[bob+">"+me+":22 out=false deny=false"]
+	if ssh.PacketsRecv != 2 || ssh.PacketsSent != 1 {
+		t.Fatalf("ssh conn = %+v", ssh)
+	}
+	https := byPort[me+">"+bob+":443 out=true deny=false"]
+	if https.PacketsSent != 1 || https.PacketsRecv != 1 {
+		t.Fatalf("https conn = %+v", https)
+	}
+	denied := byPort[eve+">"+me+":22 out=false deny=true"]
+	if denied.PacketsRecv != 2 {
+		t.Fatalf("denied attempts = %+v", denied)
+	}
+
+	// Drained counters reset; idle connections report nothing.
+	if again := f.DrainFlows(0); len(again) != 0 {
+		t.Fatalf("second drain = %+v", again)
+	}
+	// Logging doesn't change enforcement: eve is still refused.
+	if f.Inbound(ipv4Packet(protoTCP, eve, me, 40002, 22)) {
+		t.Fatal("logging changed a verdict")
 	}
 }

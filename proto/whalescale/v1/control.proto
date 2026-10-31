@@ -161,6 +161,8 @@ message NetworkMap {
   bool relay_approved = 13;
   // SSH logins this node accepts.
   repeated SSHRule ssh_rules = 14;
+  // Report connection activity (flow logs) to the server.
+  bool flow_logs = 15;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local
@@ -230,6 +232,28 @@ message PathReport {
 
 message ReportStatusRequest {
   repeated PathReport paths = 1;
+  // Connection activity since the last report; only when flow logging is on.
+  repeated FlowRecord flows = 2;
+}
+
+// FlowRecord is one connection's traffic over a reporting window, from the
+// reporting node's point of view.
+message FlowRecord {
+  uint32 proto = 1;
+  // The side that opened the connection, and the side it went to.
+  string client = 2;
+  string server = 3;
+  uint32 port = 4;
+  // This node opened the connection.
+  bool outbound = 5;
+  // An inbound attempt the access policy refused.
+  bool denied = 6;
+  google.protobuf.Timestamp start = 7;
+  google.protobuf.Timestamp end = 8;
+  uint64 bytes_sent = 9;
+  uint64 bytes_recv = 10;
+  uint64 packets_sent = 11;
+  uint64 packets_recv = 12;
 }
 
 message ReportStatusResponse {}

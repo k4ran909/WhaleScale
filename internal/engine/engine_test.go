@@ -44,6 +44,10 @@ func newTestNet(t *testing.T, policyJSON string) *testNet {
 }
 
 func newTestNetGateway(t *testing.T, policyJSON, gatewayDomain string) *testNet {
+	return newTestNetWith(t, policyJSON, func(c *server.Config) { c.GatewayDomain = gatewayDomain })
+}
+
+func newTestNetWith(t *testing.T, policyJSON string, configure func(*server.Config)) *testNet {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -79,10 +83,12 @@ func newTestNetGateway(t *testing.T, policyJSON, gatewayDomain string) *testNet 
 	hs := httptest.NewUnstartedServer(nil)
 	hs.Start()
 	t.Cleanup(hs.Close)
-	srv, err := server.New(st, server.Config{
+	cfg := server.Config{
 		PublicURL: hs.URL, STUN: []string{stunPC.LocalAddr().String()}, PolicyFile: policyFile, Log: log,
-		GatewayDomain: gatewayDomain, RecordingsDir: filepath.Join(dir, "recordings"),
-	})
+		RecordingsDir: filepath.Join(dir, "recordings"),
+	}
+	configure(&cfg)
+	srv, err := server.New(st, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,5 +686,44 @@ func TestMeshSSH(t *testing.T) {
 			t.Fatalf("no recording on the server: %+v", recs)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func TestFlowLogs(t *testing.T) {
+	// pc-b may reach pc-a on 7100 only; pc-a may not open anything to pc-b.
+	n := newTestNetWith(t, `{"acls":[{"action":"accept","src":["node:pc-b"],"dst":["node:pc-a:7100"]}]}`,
+		func(c *server.Config) { c.FlowLogs = true })
+	a := n.nodeWith("pc-a", Options{ReportInterval: 300 * time.Millisecond})
+	b := n.nodeWith("pc-b", Options{ReportInterval: 300 * time.Millisecond})
+	waitPath(t, b, "pc-a", "direct")
+
+	echo(t, a, 7100)
+	echo(t, b, 7200)
+	if err := roundTrip(b, a, 7100, 10*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	roundTrip(a, b, 7200, 2*time.Second) // refused by pc-b's filter
+
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		flows, _ := n.store.QueryFlows(context.Background(), store.FlowQuery{Since: time.Now().Add(-time.Hour), Limit: 100})
+		var allowed, denied, sender bool
+		for _, f := range flows {
+			switch {
+			case f.NodeName == "pc-a" && f.Port == 7100 && !f.Outbound && !f.Denied && f.BytesRecv > 0 && f.BytesSent > 0:
+				allowed = true // pc-a saw pc-b's connection, both directions
+			case f.NodeName == "pc-b" && f.Port == 7100 && f.Outbound && f.BytesSent > 0:
+				sender = true // and pc-b logged opening it
+			case f.NodeName == "pc-b" && f.Port == 7200 && f.Denied:
+				denied = true // pc-b refused pc-a's attempt
+			}
+		}
+		if allowed && denied && sender {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("flows missing (allowed=%v sender=%v denied=%v): %+v", allowed, sender, denied, flows)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }

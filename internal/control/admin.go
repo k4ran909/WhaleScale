@@ -448,6 +448,42 @@ func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1
 	return connect.NewResponse(&v1.SetExposureApprovedResponse{}), nil
 }
 
+// --- flow logs ---
+
+func (a *Admin) QueryFlows(ctx context.Context, req *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	m := req.Msg
+	since := time.Hour
+	if m.SinceSeconds > 0 {
+		since = time.Duration(min(m.SinceSeconds, 366*24*3600)) * time.Second
+	}
+	limit := 200
+	if m.Limit > 0 {
+		limit = int(min(m.Limit, 5000))
+	}
+	flows, err := a.svc.store.QueryFlows(ctx, store.FlowQuery{Node: m.Node, Since: time.Now().Add(-since),
+		DeniedOnly: m.DeniedOnly, Limit: limit})
+	if err != nil {
+		return nil, internal(a, "query flows", err)
+	}
+	names := map[string]string{}
+	if nodes, err := a.svc.store.ListNodes(ctx, ""); err == nil {
+		for _, n := range nodes {
+			names[n.IPv4.String()], names[n.IPv6.String()] = n.Name, n.Name
+		}
+	}
+	resp := &v1.QueryFlowsResponse{Enabled: a.svc.cfg.FlowLogs}
+	for _, f := range flows {
+		resp.Flows = append(resp.Flows, &v1.AdminFlow{NodeName: f.NodeName, Proto: uint32(f.Proto),
+			Client: f.Client, ClientName: names[f.Client], Server: f.Server, ServerName: names[f.Server], Port: uint32(f.Port),
+			Outbound: f.Outbound, Denied: f.Denied, Start: timestamppb.New(f.Start), End: timestamppb.New(f.End),
+			BytesSent: f.BytesSent, BytesRecv: f.BytesRecv, PacketsSent: f.PacketsSent, PacketsRecv: f.PacketsRecv})
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // --- SSH recordings ---
 
 func recordingProto(r *store.Recording) *v1.Recording {

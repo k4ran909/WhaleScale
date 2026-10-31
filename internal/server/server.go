@@ -41,6 +41,10 @@ type Config struct {
 	GatewayDomain string
 	// RecordingsDir stores recorded SSH sessions (default: next to the DB).
 	RecordingsDir string
+	// FlowLogs turns on connection logging; records older than
+	// FlowRetention are pruned.
+	FlowLogs      bool
+	FlowRetention time.Duration
 	// Console is the built web console (web/dist). Nil disables it.
 	Console fs.FS
 	Log     *slog.Logger
@@ -71,7 +75,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now()}
 	ccfg := control.Config{
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
-		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir,
+		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir, FlowLogs: cfg.FlowLogs,
 	}
 	if cfg.GatewayDomain != "" {
 		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, tok string) (*store.Node, error) {
@@ -261,11 +265,18 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	last, _ := s.store.Fingerprint(ctx)
+	var lastPrune time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		}
+		if time.Since(lastPrune) > time.Hour {
+			lastPrune = time.Now()
+			if n, err := s.store.PruneFlows(ctx, time.Now().Add(-s.flowRetention())); err == nil && n > 0 {
+				s.log.Info("pruned old flow logs", "rows", n)
+			}
 		}
 		if fp, err := s.store.Fingerprint(ctx); err == nil && fp != last {
 			last = fp
@@ -279,6 +290,13 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 			}
 		}
 	}
+}
+
+func (s *Server) flowRetention() time.Duration {
+	if s.cfg.FlowRetention > 0 {
+		return s.cfg.FlowRetention
+	}
+	return 7 * 24 * time.Hour
 }
 
 // loadInitialPolicy picks the policy source: a --policy file wins, then a

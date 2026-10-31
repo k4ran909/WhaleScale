@@ -44,6 +44,8 @@ type Config struct {
 	GatewayConnected func(nodeID uint64) bool
 	// RecordingsDir stores recorded SSH sessions.
 	RecordingsDir string
+	// FlowLogs makes nodes report connection activity.
+	FlowLogs bool
 }
 
 type Service struct {
@@ -279,6 +281,11 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 	s.mu.Lock()
 	s.paths[self.ID] = pathSet{reports: reports, at: time.Now()}
 	s.mu.Unlock()
+	if s.cfg.FlowLogs && len(req.Msg.Flows) > 0 {
+		if err := s.store.InsertFlows(ctx, flowsFromReport(self.Name, req.Msg.Flows)); err != nil {
+			s.log.Error("store flow logs", "err", err)
+		}
+	}
 	return connect.NewResponse(&v1.ReportStatusResponse{}), nil
 }
 
@@ -308,6 +315,29 @@ func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.U
 	}
 	s.log.Info("ssh session recorded", "node", self.Name, "local_user", r.LocalUser, "from", r.SrcNode, "bytes", r.Size)
 	return connect.NewResponse(&v1.UploadRecordingResponse{}), nil
+}
+
+// maxFlowsPerReport bounds what one node can write per report.
+const maxFlowsPerReport = 1000
+
+// flowsFromReport validates reported flows. The node name always comes
+// from the authenticated node.
+func flowsFromReport(node string, in []*v1.FlowRecord) []store.Flow {
+	if len(in) > maxFlowsPerReport {
+		in = in[:maxFlowsPerReport]
+	}
+	var out []store.Flow
+	for _, f := range in {
+		c, err1 := netip.ParseAddr(f.Client)
+		sv, err2 := netip.ParseAddr(f.Server)
+		if err1 != nil || err2 != nil || f.Proto > 255 || f.Port > 65535 {
+			continue
+		}
+		out = append(out, store.Flow{NodeName: node, Proto: uint8(f.Proto), Client: c.String(), Server: sv.String(),
+			Port: uint16(f.Port), Outbound: f.Outbound, Denied: f.Denied, Start: f.Start.AsTime(), End: f.End.AsTime(),
+			BytesSent: f.BytesSent, BytesRecv: f.BytesRecv, PacketsSent: f.PacketsSent, PacketsRecv: f.PacketsRecv})
+	}
+	return out
 }
 
 // Topology returns recent path reports from online nodes.
@@ -546,6 +576,7 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		nm.PacketFilter = append(nm.PacketFilter, fr)
 	}
 	nm.RelayOffered, nm.RelayApproved = self.RelayOffered, self.RelayApproved
+	nm.FlowLogs = s.cfg.FlowLogs
 	for _, r := range compiled.SSH[selfID] {
 		sr := &v1.SSHRule{Users: r.Users, Record: r.Record}
 		for _, p := range r.Src {

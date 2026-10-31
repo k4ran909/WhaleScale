@@ -87,6 +87,7 @@ type Options struct {
 	// SSHRunner overrides how sessions run (tests).
 	SSHRunner sshserver.Runner
 	// Testing knobs.
+	ReportInterval  time.Duration // default 30s
 	NoDirect        bool
 	IncludeLoopback bool
 	ForceRelay      bool
@@ -578,6 +579,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		selfIPs = append(selfIPs, self.v6)
 	}
 	e.filter.SetRules(rules, selfIPs)
+	e.filter.SetFlowLogging(nm.FlowLogs)
 
 	suffix := "whale.internal"
 	if nm.Dns != nil && nm.Dns.Suffix != "" {
@@ -904,9 +906,13 @@ func (e *Engine) syncOSRoutesLocked(want []netip.Prefix) error {
 // reportLoop shares path status with the server for the topology view.
 func (e *Engine) reportLoop() {
 	defer e.wg.Done()
-	t := time.NewTicker(30 * time.Second)
+	every := e.opts.ReportInterval
+	if every <= 0 {
+		every = 30 * time.Second
+	}
+	t := time.NewTicker(every)
 	defer t.Stop()
-	first := time.After(5 * time.Second)
+	first := time.After(min(5*time.Second, every))
 	for {
 		select {
 		case <-e.ctx.Done():
@@ -921,7 +927,14 @@ func (e *Engine) reportLoop() {
 				LatencyMs: float64(p.Latency.Microseconds()) / 1000,
 			})
 		}
-		req := connect.NewRequest(&v1.ReportStatusRequest{Paths: paths})
+		var flows []*v1.FlowRecord
+		for _, f := range e.filter.DrainFlows(1000) {
+			flows = append(flows, &v1.FlowRecord{Proto: uint32(f.Proto), Client: f.Client.String(), Server: f.Server.String(),
+				Port: uint32(f.Port), Outbound: f.Outbound, Denied: f.Denied,
+				Start: timestamppb.New(f.Start), End: timestamppb.New(f.End),
+				BytesSent: f.BytesSent, BytesRecv: f.BytesRecv, PacketsSent: f.PacketsSent, PacketsRecv: f.PacketsRecv})
+		}
+		req := connect.NewRequest(&v1.ReportStatusRequest{Paths: paths, Flows: flows})
 		e.authed(req)
 		ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 		if _, err := e.api.ReportStatus(ctx, req); err != nil {

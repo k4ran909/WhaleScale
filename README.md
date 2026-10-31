@@ -94,6 +94,23 @@ ws ssh karan@nas              # from any machine; or plain: ssh karan@nas.whale.
 - **Recording:** with `"record": true`, session output (never keystrokes) is recorded in asciinema format and uploaded to the server. If the upload fails, a copy is kept on the machine. Admins can view or download recordings in the console (SSH recordings); downloads play with `asciinema play`.
 - **What's supported:** shells, commands, PTYs and window resizing. Not SFTP, port forwarding, or a Windows SSH server yet.
 
+## Flow logs
+
+Off by default, for privacy. With `flow-logs: true` on the server, every machine reports, every 30 seconds:
+
+- each connection it took part in: who opened it, to which address and port, and bytes and packets each way;
+- every inbound attempt the access policy refused.
+
+Records stay on your server for `flow-log-retention` (default `168h`) and are pruned hourly.
+
+```bash
+$ whalescale flows --since 1h --denied
+TIME      REPORTED BY  CLIENT  SERVER    PROTO  VERDICT  SENT  RECEIVED
+14:02:31  nas          guest   nas:22    tcp    DENY     0 B   180 B
+```
+
+The console's Flows page shows the same, filterable by machine, time range and verdict. Logging never changes enforcement: it uses its own table, so policy changes still apply immediately, even to open connections.
+
 ## Router port mapping
 
 `wsd` asks your home router to forward its WireGuard UDP port, trying PCP, then NAT-PMP, then UPnP. When that works, peers connect directly with no manual port forward. The mapping is renewed at half its lifetime and removed when `wsd` stops. Turn it off with `wsd --portmap=false`.
@@ -215,6 +232,7 @@ The console's Access policy page has the same "Explain access" panel, and it eva
 | `whalescale users / preauthkeys / apikeys / nodes / routes / exposures` | Admin from the server host |
 | `whalescale policy check FILE` | Validate, lint and run a policy file's tests |
 | `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
+| `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic |
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, loginWithAPIKey, logout } from "./api";
-import { Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users } from "./pages";
+import { Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users } from "./pages";
 import { errText } from "./ui";
 
 const tabs = [
   { id: "machines", label: "Machines", view: Machines },
   { id: "topology", label: "Topology", view: Topology },
+  { id: "flows", label: "Flows", view: Flows },
   { id: "users", label: "Users", view: Users },
   { id: "keys", label: "Keys", view: Keys },
   { id: "routes", label: "Routes", view: Routes },

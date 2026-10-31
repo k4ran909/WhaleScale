@@ -841,3 +841,109 @@ export function Recordings() {
     </Page>
   );
 }
+
+// ---------- Flows ----------
+
+const protoNames: Record<number, string> = { 1: "icmp", 6: "tcp", 17: "udp", 58: "icmp" };
+
+function bytesText(s?: string): string {
+  const n = Number(s ?? 0);
+  if (n < 1024) return `${n} B`;
+  if (n < 1 << 20) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1 << 30) return `${(n / (1 << 20)).toFixed(1)} MB`;
+  return `${(n / (1 << 30)).toFixed(1)} GB`;
+}
+
+export function Flows() {
+  const [since, setSince] = useState(3600);
+  const [deniedOnly, setDeniedOnly] = useState(false);
+  const [node, setNode] = useState("");
+  const [data, setData] = useState<{ flows: import("./api").Flow[]; enabled: boolean }>();
+  const [error, setError] = useState<string>();
+  const { data: nodes } = useLoad(api.listNodes);
+
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      api.queryFlows({ node, sinceSeconds: since, deniedOnly, limit: 500 }).then(
+        (d) => live && (setData(d), setError(undefined)),
+        (e) => live && setError(errText(e)),
+      );
+    load();
+    const t = setInterval(load, 15000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [since, deniedOnly, node]);
+
+  return (
+    <Page
+      title="Flows"
+      lead="Who talked to whom, on which port and how much, as each machine reports it every 30 seconds. Refused attempts show as denied."
+      actions={
+        <div className="row">
+          <select value={node} onChange={(e) => setNode(e.target.value)} aria-label="Reported by">
+            <option value="">All machines</option>
+            {(nodes ?? []).map((n) => (
+              <option key={n.id} value={n.name}>{n.name}</option>
+            ))}
+          </select>
+          <select value={since} onChange={(e) => setSince(Number(e.target.value))} aria-label="Time range">
+            <option value={900}>Last 15 min</option>
+            <option value={3600}>Last hour</option>
+            <option value={86400}>Last day</option>
+            <option value={7 * 86400}>Last 7 days</option>
+          </select>
+          <label className="check">
+            <input type="checkbox" checked={deniedOnly} onChange={(e) => setDeniedOnly(e.target.checked)} /> Denied only
+          </label>
+        </div>
+      }
+    >
+      {error && <Banner kind="error">{error}</Banner>}
+      {data && !data.enabled && (
+        <Banner kind="warn">
+          Flow logs are off. Start the server with <code>flow-logs: true</code> to collect them (kept for{" "}
+          <code>flow-log-retention</code>, 7 days by default).
+        </Banner>
+      )}
+      {data && data.flows.length === 0 ? (
+        <Empty>No flows in this range.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Reported by</th>
+                <th>Client → server</th>
+                <th>Proto</th>
+                <th>Verdict</th>
+                <th>Sent</th>
+                <th>Received</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.flows ?? []).map((f, i) => (
+                <tr key={i}>
+                  <td>{timeAgo(f.end)}</td>
+                  <td>{f.nodeName}</td>
+                  <td className="mono">
+                    {f.clientName || f.client} → {f.serverName || f.server}
+                    {f.port ? `:${f.port}` : ""}
+                    {f.outbound && <span className="sub"> (opened here)</span>}
+                  </td>
+                  <td>{protoNames[f.proto] ?? f.proto}</td>
+                  <td>{f.denied ? <span className="warn-text">Denied</span> : "Allowed"}</td>
+                  <td>{bytesText(f.bytesSent)}</td>
+                  <td>{bytesText(f.bytesRecv)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Page>
+  );
+}

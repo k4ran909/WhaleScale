@@ -35,7 +35,8 @@ type serveOpts struct {
 	oidcIssuer, oidcClientID, oidcSecret, oidcSecretFile     string
 	oidcAdmins, oidcUsers, oidcDomains                       string
 	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
-	console, tlsACME                                         bool
+	console, tlsACME, flowLogs                               bool
+	flowRetention                                            time.Duration
 }
 
 var secretSettings = map[string]bool{"oidc-client-secret": true}
@@ -54,6 +55,8 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.BoolVar(&o.tlsACME, "tls-acme", false, "get certificates from Let's Encrypt automatically (needs port 443 reachable from the internet)")
 	fs.StringVar(&o.acmeEmail, "acme-email", "", "contact email for Let's Encrypt (expiry warnings)")
 	fs.StringVar(&o.acmeCache, "acme-cache", "", "directory for ACME certificates (default: 'acme' next to the database)")
+	fs.BoolVar(&o.flowLogs, "flow-logs", false, "have nodes report connection activity (who talked to whom, ports, bytes, refused attempts)")
+	fs.DurationVar(&o.flowRetention, "flow-log-retention", 7*24*time.Hour, "how long flow logs are kept")
 	fs.StringVar(&o.recordingsDir, "recordings-dir", "", "where recorded SSH sessions are stored (default: 'recordings' next to the database)")
 	fs.StringVar(&o.gatewayDomain, "gateway-domain", "", "publish machines' services at <name>.<this domain>; needs a wildcard DNS record pointing here")
 	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
@@ -202,6 +205,7 @@ func cmdConfigtest(args []string) error {
 		"oidc-allowed-users": o.oidcUsers, "oidc-allowed-domains": o.oidcDomains,
 		"gateway-domain": o.gatewayDomain, "tls-acme": fmt.Sprint(o.tlsACME), "acme-email": o.acmeEmail,
 		"acme-cache": o.acmeCache, "recordings-dir": o.recordingsDir,
+		"flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -272,7 +276,8 @@ func cmdServe(args []string) error {
 
 	cfg := server.Config{
 		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
-		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir, Log: log,
+		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
+		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log,
 	}
 	if o.console {
 		cfg.Console = web.Dist()

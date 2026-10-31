@@ -33,6 +33,7 @@ Usage:
   whalescale routes      list | approve NODE PREFIX | unapprove NODE PREFIX
   whalescale exposures   list | approve NAME | unapprove NAME
   whalescale relays      list | approve NODE | unapprove NODE
+  whalescale flows       [--node NAME] [--since 1h] [--denied] [--limit 100]
   whalescale policy      check FILE | explain SRC DST:PORT [--file FILE]
   whalescale migrate     apply pending database migrations and exit
   whalescale version
@@ -75,6 +76,8 @@ func main() {
 		err = cmdExposures(args)
 	case "relays":
 		err = cmdRelays(args)
+	case "flows":
+		err = cmdFlows(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "migrate":

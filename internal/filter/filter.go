@@ -37,6 +37,9 @@ type Filter struct {
 	flowMu sync.Mutex
 	flows  map[flow]time.Time
 	now    func() time.Time
+
+	logMu sync.Mutex
+	log   *flowLog // nil unless flow logging is on
 }
 
 func New() *Filter {
@@ -144,6 +147,9 @@ func (f *Filter) Outbound(b []byte) {
 	if !ok {
 		return
 	}
+	if l := f.flowLogger(); l != nil {
+		l.logOutbound(p, len(b), f.now())
+	}
 	k, ok := outboundKey(p)
 	if !ok {
 		return
@@ -173,6 +179,14 @@ func (f *Filter) Inbound(b []byte) bool {
 	if !ok {
 		return false
 	}
+	allowed := f.inbound(p)
+	if l := f.flowLogger(); l != nil {
+		l.logInbound(p, len(b), allowed, f.now())
+	}
+	return allowed
+}
+
+func (f *Filter) inbound(p packet) bool {
 	// Replies to traffic this node sent, including ping replies from hosts
 	// behind subnet routers and exit nodes, which no rule would name.
 	if k, ok := inboundKey(p); ok {

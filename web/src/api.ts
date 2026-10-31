@@ -106,6 +106,22 @@ export interface Recording {
   size?: string;
 }
 
+export interface Flow {
+  nodeName: string;
+  proto: number;
+  client: string;
+  clientName?: string;
+  server: string;
+  serverName?: string;
+  port?: number;
+  outbound?: boolean;
+  denied?: boolean;
+  start?: string;
+  end?: string;
+  bytesSent?: string;
+  bytesRecv?: string;
+}
+
 export interface PathReport {
   fromNode: string;
   toNode: string;
@@ -140,6 +156,8 @@ export const api = {
   topology: () => call<{ paths?: PathReport[] }>("GetTopology").then((r) => r.paths ?? []),
   listPeerRelays: () => call<{ relays?: PeerRelay[] }>("ListPeerRelays").then((r) => r.relays ?? []),
   setPeerRelayApproved: (nodeId: string, approved: boolean) => call("SetPeerRelayApproved", { nodeId, approved }),
+  queryFlows: (q: { node?: string; sinceSeconds?: number; deniedOnly?: boolean; limit?: number }) =>
+    call<{ flows?: Flow[]; enabled?: boolean }>("QueryFlows", q).then((r) => ({ flows: r.flows ?? [], enabled: !!r.enabled })),
   listRecordings: () => call<{ recordings?: Recording[] }>("ListRecordings").then((r) => r.recordings ?? []),
   // data is base64 (protobuf JSON for bytes).
   getRecording: (id: string) => call<{ recording: Recording; data?: string }>("GetRecording", { id }),

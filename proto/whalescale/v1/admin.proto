@@ -42,6 +42,8 @@ service AdminService {
   rpc ListExposures(ListExposuresRequest) returns (ListExposuresResponse);
   rpc SetExposureApproved(SetExposureApprovedRequest) returns (SetExposureApprovedResponse);
 
+  rpc QueryFlows(QueryFlowsRequest) returns (QueryFlowsResponse);
+
   rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse);
 
@@ -227,4 +229,36 @@ message GetRecordingRequest { uint64 id = 1; }
 message GetRecordingResponse {
   Recording recording = 1;
   bytes data = 2;
+}
+
+message QueryFlowsRequest {
+  // Only flows reported by this node (name); empty for all.
+  string node = 1;
+  // Only flows ending in the last N seconds; 0 means one hour.
+  uint64 since_seconds = 2;
+  bool denied_only = 3;
+  // 0 means 200; at most 5000.
+  uint32 limit = 4;
+}
+message AdminFlow {
+  string node_name = 1;
+  uint32 proto = 2;
+  string client = 3;
+  string client_name = 4;
+  string server = 5;
+  string server_name = 6;
+  uint32 port = 7;
+  bool outbound = 8;
+  bool denied = 9;
+  google.protobuf.Timestamp start = 10;
+  google.protobuf.Timestamp end = 11;
+  uint64 bytes_sent = 12;
+  uint64 bytes_recv = 13;
+  uint64 packets_sent = 14;
+  uint64 packets_recv = 15;
+}
+message QueryFlowsResponse {
+  repeated AdminFlow flows = 1;
+  // False when the server runs without flow-logs.
+  bool enabled = 2;
 }
