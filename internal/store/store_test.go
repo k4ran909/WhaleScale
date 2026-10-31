@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -140,5 +142,48 @@ func TestSanitizeHostname(t *testing.T) {
 		if got := sanitizeHostname(in); got != want {
 			t.Errorf("sanitizeHostname(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Queries cancelled mid-flight must not leave statements behind. Before
+// v1.40.1, modernc.org/sqlite dropped the rows of a query cancelled after its
+// first step without finalizing them: the statement kept a read transaction
+// open, which stalls WAL checkpoints, and kept the file open after Close.
+func TestCancelledQueriesReleaseDB(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "test.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.CreateUser(ctx, "alice")
+	for i := 0; i < 2000; i++ {
+		qctx, cancel := context.WithCancel(ctx)
+		go cancel()
+		s.ListUsers(qctx)
+	}
+
+	// A leaked statement is an open reader, so a truncating checkpoint from
+	// another connection reports busy.
+	other, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	var busy, logFrames, done int
+	if err := other.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &done); err != nil {
+		t.Fatal(err)
+	}
+	if busy != 0 {
+		t.Error("checkpoint blocked by a statement left open by a cancelled query")
+	}
+	other.Close()
+
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Windows can't delete a file that is still open.
+	if err := os.Remove(path); err != nil {
+		t.Errorf("database still open after Close: %v", err)
 	}
 }

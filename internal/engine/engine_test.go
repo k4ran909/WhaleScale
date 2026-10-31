@@ -255,7 +255,9 @@ func TestPolicyEnforced(t *testing.T) {
 }
 
 // tempDir is t.TempDir with a patient cleanup: on Windows, virus scanners
-// briefly hold freshly written database files open.
+// briefly hold freshly written database files open. A file that stays open
+// is our own leak (once a statement the SQLite driver never finalized), so
+// that fails the test.
 func tempDir(t *testing.T) string {
 	dir, err := os.MkdirTemp("", "whalescale-test-")
 	if err != nil {
@@ -269,7 +271,7 @@ func tempDir(t *testing.T) string {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		t.Logf("leaving %s behind: %v", dir, err)
+		t.Errorf("leaving %s behind: %v", dir, err)
 	})
 	return dir
 }
