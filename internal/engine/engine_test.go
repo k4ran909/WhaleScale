@@ -43,12 +43,16 @@ func newTestNet(t *testing.T, policyJSON string) *testNet {
 		log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	}
 
-	dir := t.TempDir()
+	dir := tempDir(t)
 	st, err := store.Open(ctx, filepath.Join(dir, "ws.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Logf("store close: %v", err)
+		}
+	})
 	st.CreateUser(ctx, "alice")
 	st.CreateUser(ctx, "bob")
 	_, keyA, _ := st.CreatePreAuthKey(ctx, "alice", true, false, time.Hour)
@@ -74,7 +78,12 @@ func newTestNet(t *testing.T, policyJSON string) *testNet {
 	}
 	hs.Config.Handler = srv.Handler()
 	go srv.ServeSTUN(ctx, stunPC)
-	go srv.Watch(ctx, 100*time.Millisecond)
+	// Stop the watcher (and wait for it) before the store closes: cleanups
+	// run last-in-first-out, and Windows can't delete an open database.
+	wctx, wcancel := context.WithCancel(ctx)
+	watchDone := make(chan struct{})
+	go func() { defer close(watchDone); srv.Watch(wctx, 100*time.Millisecond) }()
+	t.Cleanup(func() { wcancel(); <-watchDone })
 	return &testNet{t: t, url: hs.URL, authKey: keyA, log: log, store: st}
 }
 
@@ -243,6 +252,26 @@ func TestPolicyEnforced(t *testing.T) {
 	if err := roundTrip(a, b, 7000, 2*time.Second); err == nil {
 		t.Fatal("pol-a reached pol-b, but the policy forbids it")
 	}
+}
+
+// tempDir is t.TempDir with a patient cleanup: on Windows, virus scanners
+// briefly hold freshly written database files open.
+func tempDir(t *testing.T) string {
+	dir, err := os.MkdirTemp("", "whalescale-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		var err error
+		for i := 0; i < 50; i++ {
+			if err = os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Logf("leaving %s behind: %v", dir, err)
+	})
+	return dir
 }
 
 func httpClientForTest() *http.Client { return &http.Client{Timeout: 10 * time.Second} }
