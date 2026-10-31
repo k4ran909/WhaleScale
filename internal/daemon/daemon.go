@@ -24,6 +24,7 @@ type Options struct {
 	Userspace bool
 	TUNName   string
 	Port      uint16
+	PortMap   bool
 	Log       *slog.Logger
 }
 
@@ -131,7 +132,7 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 	eng, err := engine.New(engine.Options{
 		State: st, StatePath: d.opts.StatePath, Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
 		Port: d.opts.Port, Log: d.log, AdvertiseRoutes: routes, AcceptRoutes: p.AcceptRoutes,
-		ExitNode: p.ExitNode, Exposures: p.Exposures, OfferRelay: p.Relay,
+		ExitNode: p.ExitNode, Exposures: p.Exposures, OfferRelay: p.Relay, PortMap: d.opts.PortMap,
 	})
 	if err != nil {
 		return err

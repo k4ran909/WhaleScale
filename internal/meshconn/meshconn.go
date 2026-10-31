@@ -100,6 +100,7 @@ type Conn struct {
 	stunTx      map[stun.TxID]stunReq
 	stunResults map[netip.AddrPort]netip.AddrPort // server -> mapped
 	endpoints   []netip.AddrPort
+	mapped      netip.AddrPort             // router port mapping, if any
 	peerRelays  map[key.Public]*relayState // relays we may use, by node key
 	relayServe  *relayServer               // non-nil while we relay for others
 }
@@ -823,11 +824,23 @@ wait:
 	return r
 }
 
+// SetMappedEndpoint adds (or, with the zero value, removes) the public
+// address a router port mapping gives us.
+func (c *Conn) SetMappedEndpoint(ap netip.AddrPort) {
+	c.mu.Lock()
+	c.mapped = ap
+	c.mu.Unlock()
+	c.updateEndpoints()
+}
+
 func (c *Conn) updateEndpoints() {
 	var eps []netip.AddrPort
 	c.mu.Lock()
 	for _, m := range c.stunResults {
 		eps = append(eps, m)
+	}
+	if c.mapped.IsValid() {
+		eps = append(eps, c.mapped)
 	}
 	c.mu.Unlock()
 	if addrs, err := net.InterfaceAddrs(); err == nil {

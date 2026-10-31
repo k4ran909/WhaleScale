@@ -21,7 +21,6 @@ import (
 
 	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/engine"
-	"github.com/k4ran909/whalescale/internal/meshconn"
 )
 
 // maxSocketPath stays under the ~108-byte sun_path limit on every OS.
@@ -196,8 +195,8 @@ func (c *Client) Ping(peer string) (engine.PingResult, error) {
 	return r, c.get("/v1/ping", url.Values{"peer": {peer}}, &r)
 }
 
-func (c *Client) Netcheck() (meshconn.NetcheckReport, error) {
-	var r meshconn.NetcheckReport
+func (c *Client) Netcheck() (engine.NetcheckReport, error) {
+	var r engine.NetcheckReport
 	return r, c.get("/v1/netcheck", nil, &r)
 }
 

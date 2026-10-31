@@ -99,6 +99,7 @@ ping <other>.whale.internal     # OS-level MagicDNS + tunnel
 - [ ] Windows ↔ Linux: `ping` by name works both ways
 - [ ] The console's Topology page shows the same paths
 - [ ] `ws netcheck` on each machine; NAT type: ______ / ______
+- [ ] `ws netcheck` "router:" line: protocols ______; double NAT? yes / no. If supported and not double NAT, the "port mapping:" line shows your public IP, and peers reach this machine directly even from mobile data
 
 ## 5. CGNAT device
 

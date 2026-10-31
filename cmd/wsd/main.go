@@ -34,7 +34,7 @@ Flags:
 type flags struct {
 	statePath, tunMode, tunName string
 	port                        uint
-	verbose                     bool
+	verbose, portmap            bool
 }
 
 func parseFlags(args []string) (*flags, *flag.FlagSet) {
@@ -50,6 +50,7 @@ func parseFlags(args []string) (*flags, *flag.FlagSet) {
 	fs.StringVar(&f.tunName, "tun-name", "", "interface name (default: whale0, Whalescale on Windows, utun on macOS)")
 	fs.UintVar(&f.port, "port", engine.DefaultPort, "UDP port for WireGuard and path discovery (0 = random)")
 	fs.BoolVar(&f.verbose, "verbose", false, "debug logging")
+	fs.BoolVar(&f.portmap, "portmap", true, "ask the home router (PCP, NAT-PMP, UPnP) to forward the UDP port")
 	fs.Parse(args)
 	return f, fs
 }
@@ -64,6 +65,9 @@ func (f *flags) serviceArgs() []string {
 	}
 	if f.verbose {
 		args = append(args, "--verbose")
+	}
+	if !f.portmap {
+		args = append(args, "--portmap=false")
 	}
 	return args
 }
@@ -118,7 +122,7 @@ func run(ctx context.Context, f *flags, logOut io.Writer) error {
 	}
 	d := daemon.New(daemon.Options{
 		StatePath: f.statePath, Userspace: f.tunMode == "userspace", TUNName: f.tunName,
-		Port: uint16(f.port), Log: log,
+		Port: uint16(f.port), PortMap: f.portmap, Log: log,
 	})
 	return d.Run(ctx)
 }

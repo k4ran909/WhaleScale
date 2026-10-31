@@ -590,6 +590,29 @@ func cmdNetcheck(args []string) error {
 	default:
 		fmt.Println("NAT type:      endpoint-independent mapping: hole punching should work")
 	}
+	switch rt := r.Router; {
+	case rt == nil:
+		fmt.Println("router:        no default gateway found")
+	case !rt.PCP && !rt.NATPMP && !rt.UPnP:
+		fmt.Printf("router:        %s offers no port mapping (PCP, NAT-PMP and UPnP all off)\n", rt.Gateway)
+	default:
+		var supports []string
+		for _, s := range []struct {
+			on   bool
+			name string
+		}{{rt.PCP, "PCP"}, {rt.NATPMP, "NAT-PMP"}, {rt.UPnP, "UPnP"}} {
+			if s.on {
+				supports = append(supports, s.name)
+			}
+		}
+		fmt.Printf("router:        %s supports %s\n", rt.Gateway, strings.Join(supports, ", "))
+		if rt.DoubleNAT {
+			fmt.Printf("               but its own address %s is private/CGNAT: port mapping can't make you reachable (use a peer relay)\n", rt.ExternalIP)
+		}
+	}
+	if m := r.PortMap; m != nil {
+		fmt.Printf("port mapping:  %s via %s\n", m.External, m.Protocol)
+	}
 	fmt.Printf("relay:         connected=%v\n", r.RelayConnected)
 	fmt.Println("endpoints:")
 	for _, ep := range r.Endpoints {

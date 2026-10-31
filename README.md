@@ -73,6 +73,14 @@ sudo ws up --advertise-routes 192.168.1.0/24
 
 Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
 
+## Router port mapping
+
+`wsd` asks your home router to forward its WireGuard UDP port, trying PCP, then NAT-PMP, then UPnP. When that works, peers connect directly with no manual port forward. The mapping is renewed at half its lifetime and removed when `wsd` stops. Turn it off with `wsd --portmap=false`.
+
+`ws netcheck` shows what the router supports. It also warns about double NAT, where the router's own "public" address is private or CGNAT (common with Jio and Airtel home connections): a mapping can't help there, and a peer relay is the answer.
+
+For UPnP, the agent only uses the router's answer, and only follows a description URL that points back at the router, so another device on the LAN can't redirect it.
+
 ## Peer relays
 
 When two machines can't connect directly (both behind strict or carrier-grade NAT, as on Jio and Airtel mobile data), their traffic goes through the server's WebSocket relay. A peer relay is a faster UDP path. Any well-connected machine, such as a VPS or a home server with a port forward, can offer to forward for the others:

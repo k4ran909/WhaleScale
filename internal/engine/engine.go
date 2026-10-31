@@ -32,6 +32,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/meshconn"
 	"github.com/k4ran909/whalescale/internal/osnet"
 	"github.com/k4ran909/whalescale/internal/policy"
+	"github.com/k4ran909/whalescale/internal/portmap"
 	"github.com/k4ran909/whalescale/internal/relay"
 )
 
@@ -70,6 +71,9 @@ type Options struct {
 	// OfferRelay volunteers this node as a UDP relay for peers that can't
 	// connect directly; it starts relaying once an admin approves.
 	OfferRelay bool
+	// PortMap asks the home router (PCP, NAT-PMP or UPnP) to forward the
+	// WireGuard port, making this node directly reachable.
+	PortMap bool
 	// Testing knobs.
 	NoDirect        bool
 	IncludeLoopback bool
@@ -106,6 +110,7 @@ type Engine struct {
 	exitRts  *osnet.ExitRoutes
 	exitStat *ExitStatus
 	gw       *gateway.Client
+	portmap  *portmap.Client
 	router   *osnet.Router
 	ready    chan struct{}
 	lastErr  string
@@ -210,6 +215,23 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.conn = conn
 	e.log.Info("mesh socket open", "udp_port", conn.Port(), "node_key", e.nodeKey.Public().ShortString())
+
+	if e.opts.PortMap {
+		if gw, local, err := osnet.DefaultGateway(); err != nil {
+			e.log.Debug("router port mapping unavailable", "err", err)
+		} else {
+			e.portmap = portmap.New(portmap.Config{Gateway: gw, Local: local, Port: conn.Port(), Log: e.log},
+				func(m *portmap.Mapping) {
+					if m == nil {
+						conn.SetMappedEndpoint(netip.AddrPort{})
+					} else {
+						conn.SetMappedEndpoint(m.External)
+					}
+				})
+			e.wg.Add(1)
+			go func() { defer e.wg.Done(); e.portmap.Run(e.ctx) }()
+		}
+	}
 
 	e.wg.Add(3)
 	go e.endpointLoop()
@@ -935,8 +957,24 @@ func (e *Engine) Ping(ctx context.Context, target string) (PingResult, error) {
 	return PingResult{Peer: p.Name, PingResult: r}, err
 }
 
-func (e *Engine) Netcheck(ctx context.Context) meshconn.NetcheckReport {
-	return e.conn.Netcheck(ctx)
+// NetcheckReport adds the router's port-mapping support to the socket
+// layer's report.
+type NetcheckReport struct {
+	meshconn.NetcheckReport
+	Router  *portmap.Report  `json:"router,omitempty"`
+	PortMap *portmap.Mapping `json:"port_mapping,omitempty"`
+}
+
+func (e *Engine) Netcheck(ctx context.Context) NetcheckReport {
+	r := NetcheckReport{NetcheckReport: e.conn.Netcheck(ctx)}
+	if gw, local, err := osnet.DefaultGateway(); err == nil {
+		rep := portmap.Probe(ctx, portmap.Config{Gateway: gw, Local: local, Port: e.conn.Port(), Log: e.log})
+		r.Router = &rep
+	}
+	if e.portmap != nil {
+		r.PortMap = e.portmap.Mapping()
+	}
+	return r
 }
 
 // Lookup resolves a MagicDNS name.
