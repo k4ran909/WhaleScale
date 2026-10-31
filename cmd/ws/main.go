@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -28,6 +30,10 @@ const usage = `ws - Whalescale client
 
 Usage:
   ws login  --server URL [--authkey KEY] [--hostname NAME]
+                              without a key, prints a link to sign in with your browser
+  ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
+                              start the tunnel (flags you pass replace saved ones)
+  ws down                     stop the tunnel; wsd keeps running
   ws status [--json]          peers and the path to each (direct / relay)
   ws ping [-c N] NAME         disco ping; shows whether the reply came direct or via relay
   ws netcheck [--json]        public address, NAT type, relay reachability
@@ -47,6 +53,10 @@ func main() {
 	switch cmd, args := os.Args[1], os.Args[2:]; cmd {
 	case "login":
 		err = cmdLogin(args)
+	case "up":
+		err = cmdUp(args)
+	case "down":
+		err = cmdDown(args)
 	case "status":
 		err = cmdStatus(args)
 	case "ping":
@@ -82,8 +92,8 @@ func cmdLogin(args []string) error {
 	hostname := fs.String("hostname", "", "node name (default: this machine's hostname)")
 	fs.Parse(args)
 
-	if *server == "" || *authKey == "" {
-		return errors.New("--server and --authkey (or $WS_AUTHKEY) are required")
+	if *server == "" {
+		return errors.New("--server is required")
 	}
 	u, err := url.Parse(*server)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -132,12 +142,143 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
-	n := resp.Msg.Node
-	st.NodeToken, st.NodeID, st.NodeName = resp.Msg.NodeToken, n.Id, n.Name
+	n, token := resp.Msg.Node, resp.Msg.NodeToken
+	if resp.Msg.AuthUrl != "" {
+		if n, token, err = waitBrowserLogin(st.ServerURL, resp.Msg.AuthUrl, resp.Msg.RegistrationId); err != nil {
+			return err
+		}
+	}
+	st.NodeToken, st.NodeID, st.NodeName = token, n.Id, n.Name
 	if err := clientstate.Save(path, st); err != nil {
 		return fmt.Errorf("registered, but saving state failed: %w", err)
 	}
 	fmt.Printf("logged in as %s (user %s), addresses %s\n", n.Name, n.User, strings.Join(n.Addresses, ", "))
+	if _, err := localapi.NewClient(localapi.SocketPath(path)).Prefs(); err == nil {
+		fmt.Println("wsd is running: start the tunnel with 'ws up'")
+	} else {
+		fmt.Println("next: start wsd (or 'wsd install-service'), then 'ws up'")
+	}
+	return nil
+}
+
+// waitBrowserLogin shows the sign-in link and waits until the user has
+// finished logging in, for up to ten minutes.
+func waitBrowserLogin(server, authURL, regID string) (*v1.Node, string, error) {
+	fmt.Printf("\nTo add this device, open this link and sign in:\n\n    %s\n\n", authURL)
+	openBrowser(authURL)
+	fmt.Println("Waiting for you to sign in...")
+	long := whalescalev1connect.NewControlServiceClient(&http.Client{Timeout: 70 * time.Second}, strings.TrimRight(server, "/"))
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
+		resp, err := long.WaitRegistration(ctx, connect.NewRequest(&v1.WaitRegistrationRequest{RegistrationId: regID}))
+		cancel()
+		if err == nil {
+			return resp.Msg.Node, resp.Msg.NodeToken, nil
+		}
+		switch connect.CodeOf(err) {
+		case connect.CodeDeadlineExceeded, connect.CodeUnavailable:
+			time.Sleep(time.Second)
+		default:
+			return nil, "", fmt.Errorf("login: %w", err)
+		}
+	}
+	return nil, "", errors.New("timed out waiting for the browser login; run 'ws login' again")
+}
+
+// openBrowser tries to open url; the printed link is the fallback.
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+			return
+		}
+		cmd = exec.Command("xdg-open", url)
+	}
+	cmd.Start()
+}
+
+func cmdUp(args []string) error {
+	fs := flag.NewFlagSet("up", flag.ExitOnError)
+	accept := fs.Bool("accept-routes", false, "use subnet routes other machines advertise")
+	advertise := fs.String("advertise-routes", "", "comma-separated subnets this machine routes to, e.g. 192.168.1.0/24")
+	exit := fs.Bool("advertise-exit-node", false, "offer this machine as an exit node (needs admin approval)")
+	fs.Parse(args)
+
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	lc := localapi.NewClient(localapi.SocketPath(path))
+	prefs, err := lc.Prefs()
+	if errors.Is(err, localapi.ErrNotRunning) {
+		return errors.New("wsd is not running; start it (or run 'wsd install-service') first")
+	}
+	if err != nil {
+		return err
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if set["accept-routes"] {
+		prefs.AcceptRoutes = *accept
+	}
+	if set["advertise-routes"] || set["advertise-exit-node"] {
+		var routes []string
+		if set["advertise-routes"] {
+			for _, r := range strings.Split(*advertise, ",") {
+				if r = strings.TrimSpace(r); r != "" {
+					routes = append(routes, r)
+				}
+			}
+		} else {
+			for _, r := range prefs.AdvertiseRoutes {
+				if r != "0.0.0.0/0" && r != "::/0" {
+					routes = append(routes, r)
+				}
+			}
+		}
+		wantExit := *exit
+		if !set["advertise-exit-node"] {
+			wantExit = slices.Contains(prefs.AdvertiseRoutes, "0.0.0.0/0")
+		}
+		if wantExit {
+			routes = append(routes, "0.0.0.0/0", "::/0")
+		}
+		prefs.AdvertiseRoutes = routes
+	}
+	got, err := lc.Up(prefs)
+	if err != nil {
+		return err
+	}
+	fmt.Println("tunnel up")
+	if got.AcceptRoutes {
+		fmt.Println("  accepting subnet routes from other machines")
+	}
+	if len(got.AdvertiseRoutes) > 0 {
+		fmt.Printf("  advertising %s (approve them in the console or with 'whalescale routes approve')\n",
+			strings.Join(got.AdvertiseRoutes, ", "))
+	}
+	return nil
+}
+
+func cmdDown(args []string) error {
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	err = localapi.NewClient(localapi.SocketPath(path)).Down()
+	if errors.Is(err, localapi.ErrNotRunning) {
+		return errors.New("wsd is not running")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("tunnel down (wsd keeps running; 'ws up' starts it again)")
 	return nil
 }
 
@@ -176,6 +317,10 @@ func cmdStatus(args []string) error {
 	}
 	if *asJSON {
 		return printJSON(s)
+	}
+	if s.State == "stopped" {
+		fmt.Println("the tunnel is down; run 'ws up' to start it")
+		return nil
 	}
 	if s.Self == nil {
 		fmt.Println("wsd is running but has no network map yet")

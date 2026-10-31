@@ -83,8 +83,13 @@ func TestRoutes(t *testing.T) {
 	if len(nodes[0].AdvertisedRoutes) != 2 || len(nodes[0].Routes) != 0 {
 		t.Fatalf("before approval: %+v", nodes[0])
 	}
+	before, _ := s.Fingerprint(ctx)
 	if err := s.SetRouteApproved(ctx, n.ID, lan, true); err != nil {
 		t.Fatal(err)
+	}
+	// A running server detects CLI approvals through the fingerprint.
+	if after, _ := s.Fingerprint(ctx); after == before {
+		t.Fatal("fingerprint unchanged after route approval")
 	}
 	if err := s.SetRouteApproved(ctx, n.ID, netip.MustParsePrefix("10.0.0.0/8"), true); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("approving an unadvertised route: %v", err)

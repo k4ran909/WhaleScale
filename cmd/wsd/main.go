@@ -1,88 +1,124 @@
 // Command wsd is the Whalescale node agent: it runs the WireGuard data plane,
 // NAT traversal, the relay client and MagicDNS, following the network map
-// from the control server.
+// from the control server. 'ws up' and 'ws down' control it.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/daemon"
 	"github.com/k4ran909/whalescale/internal/engine"
-	"github.com/k4ran909/whalescale/internal/localapi"
 	"github.com/k4ran909/whalescale/internal/version"
 )
 
+const usage = `wsd - Whalescale node agent
+
+Usage:
+  wsd [flags]                     run in the foreground
+  wsd install-service [flags]     install and start as a system service (root/Administrator)
+  wsd uninstall-service           stop and remove the service
+  wsd version
+
+Flags:
+`
+
+type flags struct {
+	statePath, tunMode, tunName string
+	port                        uint
+	verbose                     bool
+}
+
+func parseFlags(args []string) (*flags, *flag.FlagSet) {
+	f := &flags{}
+	fs := flag.NewFlagSet("wsd", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprint(fs.Output(), usage)
+		fs.PrintDefaults()
+	}
+	defState, _ := clientstate.DefaultPath()
+	fs.StringVar(&f.statePath, "state", defState, "state file written by 'ws login'")
+	fs.StringVar(&f.tunMode, "tun", "os", `"os" for a real interface (needs admin/root), "userspace" for an in-process stack`)
+	fs.StringVar(&f.tunName, "tun-name", "", "interface name (default: whale0, Whalescale on Windows, utun on macOS)")
+	fs.UintVar(&f.port, "port", engine.DefaultPort, "UDP port for WireGuard and path discovery (0 = random)")
+	fs.BoolVar(&f.verbose, "verbose", false, "debug logging")
+	fs.Parse(args)
+	return f, fs
+}
+
+// serviceArgs are the flags a service runs with: the user's, with the
+// state forced into the system directory.
+func (f *flags) serviceArgs() []string {
+	args := []string{"--state", filepath.Join(clientstate.SystemDir(), "state.json"), "--tun", f.tunMode,
+		"--port", fmt.Sprint(f.port)}
+	if f.tunName != "" {
+		args = append(args, "--tun-name", f.tunName)
+	}
+	if f.verbose {
+		args = append(args, "--verbose")
+	}
+	return args
+}
+
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version") {
+	args := os.Args[1:]
+	cmd := ""
+	if len(args) > 0 && len(args[0]) > 0 && args[0][0] != '-' {
+		cmd, args = args[0], args[1:]
+	}
+	var err error
+	switch cmd {
+	case "version":
 		fmt.Println("wsd", version.String())
 		return
+	case "install-service":
+		f, _ := parseFlags(args)
+		err = installService(f)
+	case "uninstall-service":
+		err = uninstallService()
+	case "":
+		if runningAsService() {
+			err = runService(args)
+		} else {
+			f, _ := parseFlags(args)
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			err = run(ctx, f, os.Stderr)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", cmd)
+		parseFlags([]string{"-h"})
 	}
-	if err := run(); err != nil {
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "wsd:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	defState, _ := clientstate.DefaultPath()
-	statePath := flag.String("state", defState, "state file written by 'ws login'")
-	tunMode := flag.String("tun", "os", `"os" for a real interface (needs admin/root), "userspace" for an in-process stack`)
-	tunName := flag.String("tun-name", "", "interface name (default: whale0, Whalescale on Windows, utun on macOS)")
-	port := flag.Uint("port", engine.DefaultPort, "UDP port for WireGuard and path discovery (0 = random)")
-	verbose := flag.Bool("verbose", false, "debug logging")
-	flag.Parse()
-
+func run(ctx context.Context, f *flags, logOut io.Writer) error {
 	level := slog.LevelInfo
-	if *verbose {
+	if f.verbose {
 		level = slog.LevelDebug
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
-
-	if *tunMode != "os" && *tunMode != "userspace" {
+	log := slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: level}))
+	if f.tunMode != "os" && f.tunMode != "userspace" {
 		return fmt.Errorf("--tun must be os or userspace")
 	}
-	st, err := clientstate.Load(*statePath)
-	if err != nil {
-		return err
-	}
-	if st == nil || st.NodeToken == "" {
-		return fmt.Errorf("not logged in (no credentials in %s); run 'ws login' first", *statePath)
-	}
-
-	sock := localapi.SocketPath(*statePath)
-	ln, err := localapi.Listen(sock)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(sock)
-
-	e, err := engine.New(engine.Options{
-		State: st, StatePath: *statePath, Userspace: *tunMode == "userspace",
-		TUNName: *tunName, Port: uint16(*port), Log: log,
-	})
-	if err != nil {
-		return err
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := e.Start(ctx); err != nil {
-		return err
-	}
-	defer e.Close()
-
-	go http.Serve(ln, localapi.Handler(e))
-	log.Info("wsd running", "node", st.NodeName, "server", st.ServerURL, "tun", *tunMode, "socket", sock, "version", version.Version)
-	if *tunMode == "userspace" {
+	log.Info("wsd starting", "version", version.Version, "state", f.statePath, "tun", f.tunMode)
+	if f.tunMode == "userspace" {
 		log.Info("userspace mode: the tunnel is only reachable from inside wsd; use 'ws ping' and 'ws status' to check paths")
 	}
-	<-ctx.Done()
-	log.Info("shutting down")
-	return nil
+	d := daemon.New(daemon.Options{
+		StatePath: f.statePath, Userspace: f.tunMode == "userspace", TUNName: f.tunName,
+		Port: uint16(f.port), Log: log,
+	})
+	return d.Run(ctx)
 }

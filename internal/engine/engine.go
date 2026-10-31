@@ -694,6 +694,8 @@ type PeerStatus struct {
 }
 
 type Status struct {
+	// State is "running", or "stopped" while the tunnel is down.
+	State          string       `json:"state"`
 	Self           *v1.Node     `json:"self"`
 	Peers          []PeerStatus `json:"peers"`
 	RelayURL       string       `json:"relay_url"`
@@ -708,7 +710,7 @@ func (e *Engine) Status() Status {
 	e.mu.Lock()
 	nm, relayURL, rc, lastErr := e.netmap, e.relayURL, e.relay, e.lastErr
 	e.mu.Unlock()
-	st := Status{RelayURL: relayURL, Userspace: e.opts.Userspace, LastError: lastErr}
+	st := Status{State: "running", RelayURL: relayURL, Userspace: e.opts.Userspace, LastError: lastErr}
 	if rc != nil {
 		st.RelayConnected = rc.Connected()
 	}

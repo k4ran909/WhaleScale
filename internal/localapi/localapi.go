@@ -3,6 +3,7 @@
 package localapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,8 +16,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/engine"
 	"github.com/k4ran909/whalescale/internal/meshconn"
 )
@@ -58,12 +61,37 @@ func Listen(path string) (net.Listener, error) {
 	return ln, nil
 }
 
-func Handler(e *engine.Engine) http.Handler {
+// Backend is what the local API controls (the daemon).
+type Backend interface {
+	// Engine is nil while the tunnel is down.
+	Engine() *engine.Engine
+	Prefs() clientstate.Prefs
+	Up(clientstate.Prefs) error
+	Down() error
+}
+
+func Handler(b Backend) http.Handler {
 	mux := http.NewServeMux()
+	// withEngine answers 409 while the tunnel is down.
+	withEngine := func(f func(w http.ResponseWriter, r *http.Request, e *engine.Engine)) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			e := b.Engine()
+			if e == nil {
+				http.Error(w, "the tunnel is down; run 'ws up'", http.StatusConflict)
+				return
+			}
+			f(w, r, e)
+		}
+	}
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
+		e := b.Engine()
+		if e == nil {
+			writeJSON(w, engine.Status{State: "stopped"})
+			return
+		}
 		writeJSON(w, e.Status())
 	})
-	mux.HandleFunc("GET /v1/ping", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/ping", withEngine(func(w http.ResponseWriter, r *http.Request, e *engine.Engine) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 		res, err := e.Ping(ctx, r.URL.Query().Get("peer"))
@@ -72,17 +100,39 @@ func Handler(e *engine.Engine) http.Handler {
 			return
 		}
 		writeJSON(w, res)
-	})
-	mux.HandleFunc("GET /v1/netcheck", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("GET /v1/netcheck", withEngine(func(w http.ResponseWriter, r *http.Request, e *engine.Engine) {
 		writeJSON(w, e.Netcheck(r.Context()))
-	})
-	mux.HandleFunc("GET /v1/lookup", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("GET /v1/lookup", withEngine(func(w http.ResponseWriter, r *http.Request, e *engine.Engine) {
 		addrs, ok := e.Lookup(r.URL.Query().Get("name"))
 		if !ok {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
 		writeJSON(w, addrs)
+	}))
+	mux.HandleFunc("GET /v1/prefs", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, b.Prefs())
+	})
+	mux.HandleFunc("POST /v1/up", func(w http.ResponseWriter, r *http.Request) {
+		var p clientstate.Prefs
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&p); err != nil {
+			http.Error(w, "bad prefs: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := b.Up(p); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, b.Prefs())
+	})
+	mux.HandleFunc("POST /v1/down", func(w http.ResponseWriter, r *http.Request) {
+		if err := b.Down(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	return mux
 }
@@ -150,3 +200,44 @@ func (c *Client) Netcheck() (meshconn.NetcheckReport, error) {
 	var r meshconn.NetcheckReport
 	return r, c.get("/v1/netcheck", nil, &r)
 }
+
+func (c *Client) Prefs() (clientstate.Prefs, error) {
+	var p clientstate.Prefs
+	return p, c.get("/v1/prefs", nil, &p)
+}
+
+func (c *Client) post(path string, body any, out any) error {
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		r = bytes.NewReader(b)
+	}
+	resp, err := c.hc.Post("http://wsd"+path, "application/json", r)
+	if err != nil {
+		if errors.Is(err, ErrNotRunning) {
+			return ErrNotRunning
+		}
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return errors.New(strings.TrimSpace(string(b)))
+	}
+	if out != nil {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
+}
+
+// Up saves prefs and (re)starts the tunnel.
+func (c *Client) Up(p clientstate.Prefs) (clientstate.Prefs, error) {
+	var out clientstate.Prefs
+	return out, c.post("/v1/up", p, &out)
+}
+
+// Down stops the tunnel; wsd keeps running.
+func (c *Client) Down() error { return c.post("/v1/down", nil, nil) }

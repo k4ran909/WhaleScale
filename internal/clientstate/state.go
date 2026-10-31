@@ -1,5 +1,5 @@
-// Package clientstate stores a node's identity on disk: its machine key and
-// the credentials it received from the control server.
+// Package clientstate stores a node's identity on disk: its machine key,
+// the credentials it received from the control server, and its preferences.
 package clientstate
 
 import (
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 type State struct {
@@ -21,12 +22,41 @@ type State struct {
 	NodeToken string `json:"node_token,omitempty"`
 	NodeID    uint64 `json:"node_id,omitempty"`
 	NodeName  string `json:"node_name,omitempty"`
+	Prefs     Prefs  `json:"prefs"`
 }
 
-// DefaultPath is $WHALESCALE_STATE, else <user config dir>/whalescale/state.json.
+// Prefs are the settings 'ws up' and 'ws down' change.
+type Prefs struct {
+	// Down keeps wsd running but the tunnel stopped.
+	Down bool `json:"down,omitempty"`
+	// AdvertiseRoutes are subnets (or 0.0.0.0/0 and ::/0 for an exit
+	// node) this node offers to route. An admin must approve them.
+	AdvertiseRoutes []string `json:"advertise_routes,omitempty"`
+	// AcceptRoutes installs subnet routes that other nodes offer.
+	AcceptRoutes bool `json:"accept_routes,omitempty"`
+}
+
+// SystemDir is where a wsd service keeps its state. When it exists, ws and
+// wsd use it instead of the per-user config directory.
+func SystemDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		return filepath.Join(os.Getenv("ProgramData"), "Whalescale")
+	case "darwin":
+		return "/Library/Application Support/Whalescale"
+	default:
+		return "/var/lib/whalescale"
+	}
+}
+
+// DefaultPath is $WHALESCALE_STATE; else the system state file if a wsd
+// service was installed; else <user config dir>/whalescale/state.json.
 func DefaultPath() (string, error) {
 	if p := os.Getenv("WHALESCALE_STATE"); p != "" {
 		return p, nil
+	}
+	if fi, err := os.Stat(SystemDir()); err == nil && fi.IsDir() {
+		return filepath.Join(SystemDir(), "state.json"), nil
 	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -40,6 +70,9 @@ func Load(path string) (*State, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return nil, fmt.Errorf("%s: permission denied (the wsd service owns it; run this as root/Administrator)", path)
 	}
 	if err != nil {
 		return nil, err
