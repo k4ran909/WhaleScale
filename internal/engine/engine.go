@@ -67,7 +67,11 @@ type Options struct {
 	// Exposures publishes local services (name -> localhost port) through
 	// the server's gateway, once an admin approves them.
 	Exposures map[string]uint16
+	// OfferRelay volunteers this node as a UDP relay for peers that can't
+	// connect directly; it starts relaying once an admin approves.
+	OfferRelay bool
 	// Testing knobs.
+	NoDirect        bool
 	IncludeLoopback bool
 	ForceRelay      bool
 	HTTPClient      *http.Client
@@ -182,6 +186,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	mopts := meshconn.Options{
 		Port: e.opts.Port, DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
 		IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay,
+		DisableDirect:   e.opts.NoDirect,
 		Exclude:         exclude,
 		OnEndpoints: func(eps []netip.AddrPort) {
 			select {
@@ -257,6 +262,7 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	req := connect.NewRequest(&v1.UpdateNodeRequest{
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
 		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes, Exposures: exposures,
+		OfferRelay: e.opts.OfferRelay,
 	})
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
@@ -382,6 +388,37 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		e.conn.SetRelay(rc)
 		e.wg.Add(1)
 		go func() { defer e.wg.Done(); rc.Run(e.ctx) }()
+	}
+
+	// Peer relays: the ones we may use, and whether we relay for others.
+	var relays []meshconn.PeerRelayConfig
+	for _, r := range nm.PeerRelays {
+		nk, err1 := key.ParsePublic(r.NodeKey)
+		dk, err2 := key.ParsePublic(r.DiscoKey)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		var eps []netip.AddrPort
+		for _, s := range r.Endpoints {
+			if ap, err := netip.ParseAddrPort(s); err == nil {
+				eps = append(eps, ap)
+			}
+		}
+		relays = append(relays, meshconn.PeerRelayConfig{Name: r.Name, NodeKey: nk, DiscoKey: dk, Endpoints: eps})
+	}
+	e.conn.SetPeerRelays(relays)
+	if e.opts.OfferRelay && nm.RelayApproved {
+		clients := map[key.Public]key.Public{}
+		for _, rc := range nm.RelayClients {
+			nk, err1 := key.ParsePublic(rc.NodeKey)
+			dk, err2 := key.ParsePublic(rc.DiscoKey)
+			if err1 == nil && err2 == nil {
+				clients[dk] = nk
+			}
+		}
+		e.conn.SetRelayClients(clients)
+	} else {
+		e.conn.SetRelayClients(nil)
 	}
 
 	// Gateway tunnel, for published local services.
@@ -812,6 +849,8 @@ type Status struct {
 	MapVersion     uint64         `json:"map_version"`
 	ExitNode       *ExitStatus    `json:"exit_node,omitempty"`
 	Exposures      []*v1.Exposure `json:"exposures,omitempty"`
+	// Relay is "", "offered (waiting for approval)" or "relaying".
+	Relay string `json:"relay,omitempty"`
 }
 
 func (e *Engine) Status() Status {
@@ -829,6 +868,12 @@ func (e *Engine) Status() Status {
 		return st
 	}
 	st.Self, st.MapVersion, st.Exposures = nm.Self, nm.Version, nm.Exposures
+	switch {
+	case e.opts.OfferRelay && nm.RelayApproved:
+		st.Relay = "relaying for peers that can't connect directly"
+	case e.opts.OfferRelay:
+		st.Relay = "offered, waiting for an admin to approve it"
+	}
 	e.mu.Lock()
 	if e.exitStat != nil {
 		x := *e.exitStat

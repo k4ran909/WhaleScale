@@ -527,3 +527,56 @@ func TestGateway(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+func TestPeerRelay(t *testing.T) {
+	n := newTestNet(t, "")
+	r := n.nodeWith("relay-vps", Options{OfferRelay: true})
+	a := n.nodeWith("cgnat-a", Options{NoDirect: true})
+	b := n.nodeWith("cgnat-b", Options{NoDirect: true})
+
+	// Not approved yet: A and B can only use the server's relay.
+	waitPath(t, a, "cgnat-b", "relay")
+	if st := r.Status(); !strings.Contains(st.Relay, "waiting") {
+		t.Fatalf("relay status before approval: %q", st.Relay)
+	}
+
+	ctx := context.Background()
+	nodes, _ := n.store.ListNodes(ctx, "")
+	for _, nd := range nodes {
+		if nd.Name == "relay-vps" {
+			if !nd.RelayOffered {
+				t.Fatal("relay offer never reached the server")
+			}
+			if err := n.store.SetRelayApproved(ctx, nd.ID, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	ps := waitPath(t, a, "cgnat-b", "peer-relay")
+	if ps.Addr != "relay-vps" {
+		t.Fatalf("peer relay path via %q", ps.Addr)
+	}
+	waitPath(t, b, "cgnat-a", "peer-relay")
+	t.Logf("cgnat-a -> cgnat-b via peer relay %s (%v)", ps.Addr, ps.Latency)
+
+	echo(t, b, 8443)
+	if err := roundTrip(a, b, 8443, 10*time.Second); err != nil {
+		t.Fatalf("TCP over the peer relay: %v", err)
+	}
+	if res, err := a.Ping(ctx, "cgnat-b"); err != nil || res.Via == "direct" {
+		t.Fatalf("ping = %+v, %v", res, err)
+	}
+
+	// Taking the approval away stops relaying; traffic falls back to the
+	// server relay rather than breaking.
+	for _, nd := range nodes {
+		if nd.Name == "relay-vps" {
+			n.store.SetRelayApproved(ctx, nd.ID, false)
+		}
+	}
+	waitPath(t, a, "cgnat-b", "relay")
+	if err := roundTrip(a, b, 8443, 15*time.Second); err != nil {
+		t.Fatalf("TCP after relay withdrawal: %v", err)
+	}
+}

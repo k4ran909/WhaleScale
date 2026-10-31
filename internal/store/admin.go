@@ -342,3 +342,29 @@ func (s *Store) attachRoutes(ctx context.Context, nodes []Node) error {
 	}
 	return nil
 }
+
+// --- peer relays ---
+
+// SetRelayOffered records whether a node volunteers as a peer relay. It
+// reports whether that changed.
+func (s *Store) SetRelayOffered(ctx context.Context, nodeID uint64, offered bool) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE nodes SET relay_offered = ? WHERE id = ? AND relay_offered != ?`,
+		offered, nodeID, offered)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// SetRelayApproved lets (or stops) a node relay for others.
+func (s *Store) SetRelayApproved(ctx context.Context, nodeID uint64, approved bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE nodes SET relay_approved = ? WHERE id = ?`, approved, nodeID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("node %d: %w", nodeID, ErrNotFound)
+	}
+	return nil
+}

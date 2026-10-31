@@ -145,6 +145,8 @@ td.right { text-align: right; }
 .cell .cell-lat { color: var(--muted); font-variant-numeric: tabular-nums; }
 .cell.direct { background: var(--ok-bg); }
 .cell.direct .cell-path { color: var(--ok); }
+.cell.peer-relay { background: var(--ok-bg); }
+.cell.peer-relay .cell-path { color: var(--ok); }
 .cell.relay { background: var(--warn-bg); }
 .cell.relay .cell-path { color: var(--warn); }
 .cell.none { background: var(--bad-bg); }

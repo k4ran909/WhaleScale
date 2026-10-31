@@ -72,6 +72,12 @@ const (
 	// AdminServiceGetTopologyProcedure is the fully-qualified name of the AdminService's GetTopology
 	// RPC.
 	AdminServiceGetTopologyProcedure = "/whalescale.v1.AdminService/GetTopology"
+	// AdminServiceListPeerRelaysProcedure is the fully-qualified name of the AdminService's
+	// ListPeerRelays RPC.
+	AdminServiceListPeerRelaysProcedure = "/whalescale.v1.AdminService/ListPeerRelays"
+	// AdminServiceSetPeerRelayApprovedProcedure is the fully-qualified name of the AdminService's
+	// SetPeerRelayApproved RPC.
+	AdminServiceSetPeerRelayApprovedProcedure = "/whalescale.v1.AdminService/SetPeerRelayApproved"
 	// AdminServiceListExposuresProcedure is the fully-qualified name of the AdminService's
 	// ListExposures RPC.
 	AdminServiceListExposuresProcedure = "/whalescale.v1.AdminService/ListExposures"
@@ -110,6 +116,8 @@ type AdminServiceClient interface {
 	SetRouteApproved(context.Context, *connect.Request[v1.SetRouteApprovedRequest]) (*connect.Response[v1.SetRouteApprovedResponse], error)
 	// GetTopology returns the paths each online node reports to its peers.
 	GetTopology(context.Context, *connect.Request[v1.GetTopologyRequest]) (*connect.Response[v1.GetTopologyResponse], error)
+	ListPeerRelays(context.Context, *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error)
+	SetPeerRelayApproved(context.Context, *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error)
 	ListExposures(context.Context, *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error)
 	SetExposureApproved(context.Context, *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
@@ -224,6 +232,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("GetTopology")),
 			connect.WithClientOptions(opts...),
 		),
+		listPeerRelays: connect.NewClient[v1.ListPeerRelaysRequest, v1.ListPeerRelaysResponse](
+			httpClient,
+			baseURL+AdminServiceListPeerRelaysProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListPeerRelays")),
+			connect.WithClientOptions(opts...),
+		),
+		setPeerRelayApproved: connect.NewClient[v1.SetPeerRelayApprovedRequest, v1.SetPeerRelayApprovedResponse](
+			httpClient,
+			baseURL+AdminServiceSetPeerRelayApprovedProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SetPeerRelayApproved")),
+			connect.WithClientOptions(opts...),
+		),
 		listExposures: connect.NewClient[v1.ListExposuresRequest, v1.ListExposuresResponse](
 			httpClient,
 			baseURL+AdminServiceListExposuresProcedure,
@@ -259,27 +279,29 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // adminServiceClient implements AdminServiceClient.
 type adminServiceClient struct {
-	whoAmI              *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
-	listUsers           *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
-	createUser          *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
-	deleteUser          *connect.Client[v1.DeleteUserRequest, v1.DeleteUserResponse]
-	listNodes           *connect.Client[v1.ListNodesRequest, v1.ListNodesResponse]
-	deleteNode          *connect.Client[v1.DeleteNodeRequest, v1.DeleteNodeResponse]
-	listPreAuthKeys     *connect.Client[v1.ListPreAuthKeysRequest, v1.ListPreAuthKeysResponse]
-	createPreAuthKey    *connect.Client[v1.CreatePreAuthKeyRequest, v1.CreatePreAuthKeyResponse]
-	expirePreAuthKey    *connect.Client[v1.ExpirePreAuthKeyRequest, v1.ExpirePreAuthKeyResponse]
-	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
-	checkPolicy         *connect.Client[v1.CheckPolicyRequest, v1.CheckPolicyResponse]
-	setPolicy           *connect.Client[v1.SetPolicyRequest, v1.SetPolicyResponse]
-	explainAccess       *connect.Client[v1.ExplainAccessRequest, v1.ExplainAccessResponse]
-	listRoutes          *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
-	setRouteApproved    *connect.Client[v1.SetRouteApprovedRequest, v1.SetRouteApprovedResponse]
-	getTopology         *connect.Client[v1.GetTopologyRequest, v1.GetTopologyResponse]
-	listExposures       *connect.Client[v1.ListExposuresRequest, v1.ListExposuresResponse]
-	setExposureApproved *connect.Client[v1.SetExposureApprovedRequest, v1.SetExposureApprovedResponse]
-	listAPIKeys         *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
-	createAPIKey        *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
-	expireAPIKey        *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
+	whoAmI               *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
+	listUsers            *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
+	createUser           *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
+	deleteUser           *connect.Client[v1.DeleteUserRequest, v1.DeleteUserResponse]
+	listNodes            *connect.Client[v1.ListNodesRequest, v1.ListNodesResponse]
+	deleteNode           *connect.Client[v1.DeleteNodeRequest, v1.DeleteNodeResponse]
+	listPreAuthKeys      *connect.Client[v1.ListPreAuthKeysRequest, v1.ListPreAuthKeysResponse]
+	createPreAuthKey     *connect.Client[v1.CreatePreAuthKeyRequest, v1.CreatePreAuthKeyResponse]
+	expirePreAuthKey     *connect.Client[v1.ExpirePreAuthKeyRequest, v1.ExpirePreAuthKeyResponse]
+	getPolicy            *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
+	checkPolicy          *connect.Client[v1.CheckPolicyRequest, v1.CheckPolicyResponse]
+	setPolicy            *connect.Client[v1.SetPolicyRequest, v1.SetPolicyResponse]
+	explainAccess        *connect.Client[v1.ExplainAccessRequest, v1.ExplainAccessResponse]
+	listRoutes           *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
+	setRouteApproved     *connect.Client[v1.SetRouteApprovedRequest, v1.SetRouteApprovedResponse]
+	getTopology          *connect.Client[v1.GetTopologyRequest, v1.GetTopologyResponse]
+	listPeerRelays       *connect.Client[v1.ListPeerRelaysRequest, v1.ListPeerRelaysResponse]
+	setPeerRelayApproved *connect.Client[v1.SetPeerRelayApprovedRequest, v1.SetPeerRelayApprovedResponse]
+	listExposures        *connect.Client[v1.ListExposuresRequest, v1.ListExposuresResponse]
+	setExposureApproved  *connect.Client[v1.SetExposureApprovedRequest, v1.SetExposureApprovedResponse]
+	listAPIKeys          *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
+	createAPIKey         *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
+	expireAPIKey         *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
 }
 
 // WhoAmI calls whalescale.v1.AdminService.WhoAmI.
@@ -362,6 +384,16 @@ func (c *adminServiceClient) GetTopology(ctx context.Context, req *connect.Reque
 	return c.getTopology.CallUnary(ctx, req)
 }
 
+// ListPeerRelays calls whalescale.v1.AdminService.ListPeerRelays.
+func (c *adminServiceClient) ListPeerRelays(ctx context.Context, req *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error) {
+	return c.listPeerRelays.CallUnary(ctx, req)
+}
+
+// SetPeerRelayApproved calls whalescale.v1.AdminService.SetPeerRelayApproved.
+func (c *adminServiceClient) SetPeerRelayApproved(ctx context.Context, req *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error) {
+	return c.setPeerRelayApproved.CallUnary(ctx, req)
+}
+
 // ListExposures calls whalescale.v1.AdminService.ListExposures.
 func (c *adminServiceClient) ListExposures(ctx context.Context, req *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error) {
 	return c.listExposures.CallUnary(ctx, req)
@@ -408,6 +440,8 @@ type AdminServiceHandler interface {
 	SetRouteApproved(context.Context, *connect.Request[v1.SetRouteApprovedRequest]) (*connect.Response[v1.SetRouteApprovedResponse], error)
 	// GetTopology returns the paths each online node reports to its peers.
 	GetTopology(context.Context, *connect.Request[v1.GetTopologyRequest]) (*connect.Response[v1.GetTopologyResponse], error)
+	ListPeerRelays(context.Context, *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error)
+	SetPeerRelayApproved(context.Context, *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error)
 	ListExposures(context.Context, *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error)
 	SetExposureApproved(context.Context, *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
@@ -518,6 +552,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("GetTopology")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListPeerRelaysHandler := connect.NewUnaryHandler(
+		AdminServiceListPeerRelaysProcedure,
+		svc.ListPeerRelays,
+		connect.WithSchema(adminServiceMethods.ByName("ListPeerRelays")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSetPeerRelayApprovedHandler := connect.NewUnaryHandler(
+		AdminServiceSetPeerRelayApprovedProcedure,
+		svc.SetPeerRelayApproved,
+		connect.WithSchema(adminServiceMethods.ByName("SetPeerRelayApproved")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListExposuresHandler := connect.NewUnaryHandler(
 		AdminServiceListExposuresProcedure,
 		svc.ListExposures,
@@ -582,6 +628,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceSetRouteApprovedHandler.ServeHTTP(w, r)
 		case AdminServiceGetTopologyProcedure:
 			adminServiceGetTopologyHandler.ServeHTTP(w, r)
+		case AdminServiceListPeerRelaysProcedure:
+			adminServiceListPeerRelaysHandler.ServeHTTP(w, r)
+		case AdminServiceSetPeerRelayApprovedProcedure:
+			adminServiceSetPeerRelayApprovedHandler.ServeHTTP(w, r)
 		case AdminServiceListExposuresProcedure:
 			adminServiceListExposuresHandler.ServeHTTP(w, r)
 		case AdminServiceSetExposureApprovedProcedure:
@@ -663,6 +713,14 @@ func (UnimplementedAdminServiceHandler) SetRouteApproved(context.Context, *conne
 
 func (UnimplementedAdminServiceHandler) GetTopology(context.Context, *connect.Request[v1.GetTopologyRequest]) (*connect.Response[v1.GetTopologyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetTopology is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListPeerRelays(context.Context, *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListPeerRelays is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SetPeerRelayApproved(context.Context, *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.SetPeerRelayApproved is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListExposures(context.Context, *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error) {

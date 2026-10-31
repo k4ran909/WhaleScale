@@ -34,6 +34,7 @@ Usage:
                               without a key, prints a link to sign in with your browser
   ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
             [--exit-node NAME]  send all internet traffic through NAME ("" to stop)
+            [--relay]           relay for peers that can't connect directly (needs approval)
                               start the tunnel (flags you pass replace saved ones)
   ws down                     stop the tunnel; wsd keeps running
   ws expose PORT --name NAME  publish http://localhost:PORT at https://NAME.<gateway domain>
@@ -216,6 +217,7 @@ func cmdUp(args []string) error {
 	advertise := fs.String("advertise-routes", "", "comma-separated subnets this machine routes to, e.g. 192.168.1.0/24")
 	exit := fs.Bool("advertise-exit-node", false, "offer this machine as an exit node (needs admin approval)")
 	exitNode := fs.String("exit-node", "", "send all internet traffic through this machine (name, FQDN or mesh IP); empty to stop")
+	offerRelay := fs.Bool("relay", false, "offer this machine as a UDP relay for peers that can't connect directly (best on a server with a public IP or port forward)")
 	fs.Parse(args)
 
 	_, path, err := loadState()
@@ -237,6 +239,9 @@ func cmdUp(args []string) error {
 	}
 	if set["exit-node"] {
 		prefs.ExitNode = strings.TrimSpace(*exitNode)
+	}
+	if set["relay"] {
+		prefs.Relay = *offerRelay
 	}
 	if set["advertise-routes"] || set["advertise-exit-node"] {
 		var routes []string
@@ -267,6 +272,9 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Println("tunnel up")
+	if got.Relay {
+		fmt.Println("  offering to relay for peers (approve it in the console or with 'whalescale relays approve')")
+	}
 	if got.ExitNode != "" {
 		fmt.Printf("  internet traffic goes through exit node %s (blocked, not leaked, while it is unavailable)\n", got.ExitNode)
 	}
@@ -443,6 +451,9 @@ func cmdStatus(args []string) error {
 		case p.Path == "direct":
 			path = "direct " + p.Addr
 			lat = p.Latency.Round(10 * time.Microsecond).String()
+		case p.Path == "peer-relay":
+			path = "peer-relay via " + p.Addr
+			lat = p.Latency.Round(10 * time.Microsecond).String()
 		}
 		fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\n", p.Name, first(p.Addresses), p.User, p.OS, path, lat)
 	}
@@ -462,6 +473,9 @@ func cmdStatus(args []string) error {
 		} else {
 			fmt.Printf("  published %s (localhost:%d): NOT LIVE: %s\n", x.Name, x.Port, x.Problem)
 		}
+	}
+	if s.Relay != "" {
+		fmt.Printf("  peer relay: %s\n", s.Relay)
 	}
 	if x := s.ExitNode; x != nil {
 		if x.Active {
@@ -529,6 +543,8 @@ func cmdPing(args []string) error {
 		}
 		if err != nil {
 			fmt.Println("timeout:", err)
+		} else if r.Via == "peer-relay" {
+			fmt.Printf("pong from %s via peer relay %s in %v\n", r.Peer, r.Relay, r.Latency.Round(10*time.Microsecond))
 		} else if r.Via == "direct" {
 			fmt.Printf("pong from %s via %s in %v\n", r.Peer, r.Addr, r.Latency.Round(10*time.Microsecond))
 			if *count <= 0 {

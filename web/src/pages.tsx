@@ -110,7 +110,7 @@ export function Topology() {
     for (const p of paths ?? []) m.set(`${p.fromNode}→${p.toNode}`, p);
     return m;
   }, [paths]);
-  const counts = { direct: 0, relay: 0, none: 0 };
+  const counts = { direct: 0, "peer-relay": 0, relay: 0, none: 0 };
   for (const p of paths ?? []) counts[p.path] = (counts[p.path] ?? 0) + 1;
 
   return (
@@ -121,7 +121,8 @@ export function Topology() {
       {error && <Banner kind="error">{error}</Banner>}
       <div className="stats">
         <Stat label="Direct paths" value={counts.direct} tone="ok" />
-        <Stat label="Relayed" value={counts.relay} tone="warn" />
+        <Stat label="Peer relay" value={counts["peer-relay"]} tone="ok" />
+        <Stat label="Server relay" value={counts.relay} tone="warn" />
         <Stat label="No path" value={counts.none} tone="bad" />
       </div>
       {names.length < 2 ? (
@@ -147,8 +148,8 @@ export function Topology() {
                     if (!p) return <td key={to} className="muted center">·</td>;
                     return (
                       <td key={to} className={`cell ${p.path}`} title={p.addr ? `${p.path} via ${p.addr}` : p.path}>
-                        <span className="cell-path">{p.path === "direct" ? "direct" : p.path === "relay" ? "relay" : "none"}</span>
-                        {p.path === "direct" && p.latencyMs !== undefined && (
+                        <span className="cell-path">{p.path}</span>
+                        {(p.path === "direct" || p.path === "peer-relay") && p.latencyMs !== undefined && (
                           <span className="cell-lat">{p.latencyMs.toFixed(1)} ms</span>
                         )}
                       </td>
@@ -397,6 +398,7 @@ export function Keys() {
 
 export function Routes() {
   const { data: routes, error, reload } = useLoad(api.listRoutes, 10000);
+  const relays = useLoad(api.listPeerRelays, 10000);
   const [msg, setMsg] = useState<string>();
   const pending = (routes ?? []).filter((r) => !r.approved).length;
   return (
@@ -439,6 +441,45 @@ export function Routes() {
                       }
                     >
                       {r.approved ? "Disable" : "Approve"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h2>Peer relays</h2>
+      <p className="muted">
+        A well-connected machine (a VPS, or a home server with a port forward) can relay UDP for peers that can't connect
+        directly, which is faster than the server's relay. It only ever sees encrypted traffic. Offer one with{" "}
+        <code>ws up --relay</code>.
+      </p>
+      {relays.data && relays.data.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Machine</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {relays.data.map((r) => (
+                <tr key={r.nodeId}>
+                  <td>
+                    <Dot on={r.online} />
+                    <strong>{r.nodeName}</strong>
+                  </td>
+                  <td>{r.approved ? <span className="ok-text">Relaying</span> : <span className="warn-text">Offered</span>}</td>
+                  <td className="right">
+                    <button
+                      className={r.approved ? "btn ghost" : "btn primary"}
+                      onClick={() => api.setPeerRelayApproved(r.nodeId, !r.approved).then(relays.reload, (e) => setMsg(errText(e)))}
+                    >
+                      {r.approved ? "Stop" : "Approve"}
                     </button>
                   </td>
                 </tr>

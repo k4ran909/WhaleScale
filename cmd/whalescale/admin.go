@@ -305,6 +305,48 @@ func cmdExposures(args []string) error {
 	return nil
 }
 
+func cmdRelays(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: whalescale relays list | approve NODE | unapprove NODE")
+	}
+	fs, db := adminFlags("relays " + args[0])
+	st, err := openStore(fs, db, args[1:])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	switch args[0] {
+	case "list":
+		nodes, err := st.ListNodes(ctx, "")
+		if err != nil {
+			return err
+		}
+		tw := table("NODE\tOFFERED\tAPPROVED")
+		for _, n := range nodes {
+			if n.RelayOffered || n.RelayApproved {
+				fmt.Fprintf(tw, "%s\t%v\t%v\n", n.Name, n.RelayOffered, n.RelayApproved)
+			}
+		}
+		tw.Flush()
+	case "approve", "unapprove":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: whalescale relays %s NODE", args[0])
+		}
+		id, err := nodeID(ctx, st, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		if err := st.SetRelayApproved(ctx, id, args[0] == "approve"); err != nil {
+			return err
+		}
+		fmt.Printf("%sd %s as a peer relay; running servers pick this up within 5s\n", args[0], fs.Arg(0))
+	default:
+		return fmt.Errorf("unknown relays subcommand %q", args[0])
+	}
+	return nil
+}
+
 // nodeID accepts a node ID or name.
 func nodeID(ctx context.Context, st *store.Store, s string) (uint64, error) {
 	if id, err := strconv.ParseUint(s, 10, 64); err == nil {

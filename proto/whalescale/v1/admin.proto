@@ -36,6 +36,9 @@ service AdminService {
   // GetTopology returns the paths each online node reports to its peers.
   rpc GetTopology(GetTopologyRequest) returns (GetTopologyResponse);
 
+  rpc ListPeerRelays(ListPeerRelaysRequest) returns (ListPeerRelaysResponse);
+  rpc SetPeerRelayApproved(SetPeerRelayApprovedRequest) returns (SetPeerRelayApprovedResponse);
+
   rpc ListExposures(ListExposuresRequest) returns (ListExposuresResponse);
   rpc SetExposureApproved(SetExposureApprovedRequest) returns (SetExposureApprovedResponse);
 
@@ -190,3 +193,17 @@ message ExplainAccessResponse {
   bool allowed = 1;
   repeated string reasons = 2;
 }
+
+message AdminPeerRelay {
+  uint64 node_id = 1;
+  string node_name = 2;
+  bool approved = 3;
+  bool online = 4;
+}
+message ListPeerRelaysRequest {}
+message ListPeerRelaysResponse { repeated AdminPeerRelay relays = 1; }
+message SetPeerRelayApprovedRequest {
+  uint64 node_id = 1;
+  bool approved = 2;
+}
+message SetPeerRelayApprovedResponse {}

@@ -73,6 +73,22 @@ sudo ws up --advertise-routes 192.168.1.0/24
 
 Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
 
+## Peer relays
+
+When two machines can't connect directly (both behind strict or carrier-grade NAT, as on Jio and Airtel mobile data), their traffic goes through the server's WebSocket relay. A peer relay is a faster UDP path. Any well-connected machine, such as a VPS or a home server with a port forward, can offer to forward for the others:
+
+```bash
+sudo ws up --relay                  # on the well-connected machine
+whalescale relays approve vps       # on the server, or approve it under Routes in the console
+ws status                           # peers now show "peer-relay via vps"
+```
+
+- **Path order:** direct first, then a peer relay (only after a ping through it succeeds), then the server relay.
+- **No new port:** it uses the machine's existing WireGuard UDP socket, so a port forward or NAT mapping it already has keeps working.
+- **What it sees:** only WireGuard ciphertext and sealed discovery messages.
+- **Who it serves:** only nodes the server lists. Registrations are sealed with each node's discovery key, and forwarding is accepted only from the address a node registered from, so nobody can register or send as another node.
+- **Withdrawal is safe:** taking approval away falls back to the server relay without dropping connections.
+
 ## Exit nodes
 
 Send all of a device's internet traffic through another machine, such as your home server when you're on café Wi-Fi.

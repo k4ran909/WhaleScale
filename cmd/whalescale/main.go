@@ -32,6 +32,7 @@ Usage:
   whalescale nodes       list [--user NAME] | delete ID
   whalescale routes      list | approve NODE PREFIX | unapprove NODE PREFIX
   whalescale exposures   list | approve NAME | unapprove NAME
+  whalescale relays      list | approve NODE | unapprove NODE
   whalescale policy      check FILE | explain SRC DST:PORT [--file FILE]
   whalescale migrate     apply pending database migrations and exit
   whalescale version
@@ -72,6 +73,8 @@ func main() {
 		err = cmdRoutes(args)
 	case "exposures":
 		err = cmdExposures(args)
+	case "relays":
+		err = cmdRelays(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "migrate":

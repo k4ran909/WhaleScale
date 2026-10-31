@@ -88,10 +88,17 @@ export interface Exposure {
   connected?: boolean;
 }
 
+export interface PeerRelay {
+  nodeId: string;
+  nodeName: string;
+  approved?: boolean;
+  online?: boolean;
+}
+
 export interface PathReport {
   fromNode: string;
   toNode: string;
-  path: "direct" | "relay" | "none";
+  path: "direct" | "peer-relay" | "relay" | "none";
   addr?: string;
   latencyMs?: number;
   updatedAt?: string;
@@ -120,6 +127,8 @@ export const api = {
   setRouteApproved: (nodeId: string, prefix: string, approved: boolean) =>
     call("SetRouteApproved", { nodeId, prefix, approved }),
   topology: () => call<{ paths?: PathReport[] }>("GetTopology").then((r) => r.paths ?? []),
+  listPeerRelays: () => call<{ relays?: PeerRelay[] }>("ListPeerRelays").then((r) => r.relays ?? []),
+  setPeerRelayApproved: (nodeId: string, approved: boolean) => call("SetPeerRelayApproved", { nodeId, approved }),
   listExposures: () =>
     call<{ exposures?: Exposure[]; gatewayDomain?: string }>("ListExposures").then((r) => ({
       exposures: r.exposures ?? [],

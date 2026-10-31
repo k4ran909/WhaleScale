@@ -352,6 +352,14 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 		changed = changed || rc
 	}
 	if err == nil {
+		var oc bool
+		oc, err = s.store.SetRelayOffered(ctx, self.ID, m.OfferRelay)
+		if oc {
+			s.log.Info("node relay offer changed", "name", self.Name, "offered", m.OfferRelay)
+		}
+		changed = changed || oc
+	}
+	if err == nil {
 		var ec bool
 		var taken []string
 		ec, taken, err = s.store.SetExposures(ctx, self.ID, exposures)
@@ -502,6 +510,22 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 			fr.Ports = append(fr.Ports, &v1.PortRange{First: uint32(pr.First), Last: uint32(pr.Last)})
 		}
 		nm.PacketFilter = append(nm.PacketFilter, fr)
+	}
+	nm.RelayOffered, nm.RelayApproved = self.RelayOffered, self.RelayApproved
+	for i := range all {
+		n := &all[i]
+		if n.ID == selfID || n.NodeKey == "" || n.DiscoKey == "" {
+			continue
+		}
+		if n.RelayOffered && n.RelayApproved {
+			nm.PeerRelays = append(nm.PeerRelays, &v1.PeerRelay{Name: n.Name, NodeKey: n.NodeKey, DiscoKey: n.DiscoKey,
+				Endpoints: n.Endpoints})
+		}
+		// A relay serves every node: it only forwards ciphertext, and who
+		// may talk to whom is still enforced by WireGuard and the filter.
+		if self.RelayOffered && self.RelayApproved {
+			nm.RelayClients = append(nm.RelayClients, &v1.RelayClient{NodeKey: n.NodeKey, DiscoKey: n.DiscoKey})
+		}
 	}
 	if err := s.addExposures(ctx, nm, selfID); err != nil {
 		s.log.Error("list exposures", "err", err)

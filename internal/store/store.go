@@ -72,6 +72,10 @@ type Node struct {
 	// admin approved.
 	AdvertisedRoutes []netip.Prefix
 	Routes           []netip.Prefix
+	// RelayOffered: the node volunteers as a peer relay; RelayApproved: an
+	// admin allowed it.
+	RelayOffered  bool
+	RelayApproved bool
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -350,7 +354,7 @@ func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64
 		IPv4: v4, IPv6: v6, OS: p.OS, Ephemeral: ephemeral, CreatedAt: now, LastSeen: now}, token, nil
 }
 
-const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints`
+const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints, n.relay_offered, n.relay_approved`
 
 // NodeByToken authenticates a node token and bumps last_seen.
 func (s *Store) NodeByToken(ctx context.Context, token string) (*Node, error) {
@@ -466,7 +470,7 @@ func scanNode(r scanner) (*Node, error) {
 	var created, seen int64
 	var eps string
 	if err := r.Scan(&n.ID, &n.UserID, &n.User, &n.Name, &n.MachineKey, &v4, &v6, &n.OS, &n.Ephemeral, &created, &seen,
-		&n.NodeKey, &n.DiscoKey, &eps); err != nil {
+		&n.NodeKey, &n.DiscoKey, &eps, &n.RelayOffered, &n.RelayApproved); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal([]byte(eps), &n.Endpoints); err != nil {
@@ -578,7 +582,9 @@ func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 		(SELECT COALESCE(group_concat(node_id || ':' || prefix || ':' || advertised || approved, ','), '')
 		   FROM (SELECT * FROM routes ORDER BY node_id, prefix)) ||
 		(SELECT COALESCE(group_concat(node_id || ':' || name || ':' || port || ':' || advertised || approved, ','), '')
-		   FROM (SELECT * FROM exposures ORDER BY name))`).Scan(&nodes, &idSum, &routes, &routeSig)
+		   FROM (SELECT * FROM exposures ORDER BY name)) ||
+		(SELECT COALESCE(group_concat(id || ':' || relay_offered || relay_approved, ','), '')
+		   FROM (SELECT id, relay_offered, relay_approved FROM nodes ORDER BY id))`).Scan(&nodes, &idSum, &routes, &routeSig)
 	sum := sha256.Sum256([]byte(routeSig))
 	return fmt.Sprintf("%d/%d/%d/%x", nodes, idSum, routes, sum[:8]), err
 }

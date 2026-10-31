@@ -110,3 +110,31 @@ func TestRoutes(t *testing.T) {
 		t.Fatal("re-advertised route lost its approval")
 	}
 }
+
+func TestRelayOffer(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	s.CreateUser(ctx, "karan")
+	_, key, _ := s.CreatePreAuthKey(ctx, "karan", true, false, time.Hour)
+	n, _, _ := s.RegisterNode(ctx, RegisterParams{AuthKey: key, MachineKey: "mk", Hostname: "vps"})
+	if changed, err := s.SetRelayOffered(ctx, n.ID, true); err != nil || !changed {
+		t.Fatalf("offer: %v %v", changed, err)
+	}
+	if changed, _ := s.SetRelayOffered(ctx, n.ID, true); changed {
+		t.Fatal("same offer reported as changed")
+	}
+	before, _ := s.Fingerprint(ctx)
+	if err := s.SetRelayApproved(ctx, n.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := s.Fingerprint(ctx); after == before {
+		t.Fatal("fingerprint unchanged after relay approval")
+	}
+	nodes, _ := s.ListNodes(ctx, "")
+	if !nodes[0].RelayOffered || !nodes[0].RelayApproved {
+		t.Fatalf("relay flags not stored: %+v", nodes[0])
+	}
+	if err := s.SetRelayApproved(ctx, 999, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown node: %v", err)
+	}
+}

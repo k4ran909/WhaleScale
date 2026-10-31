@@ -131,7 +131,7 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 	eng, err := engine.New(engine.Options{
 		State: st, StatePath: d.opts.StatePath, Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
 		Port: d.opts.Port, Log: d.log, AdvertiseRoutes: routes, AcceptRoutes: p.AcceptRoutes,
-		ExitNode: p.ExitNode, Exposures: p.Exposures,
+		ExitNode: p.ExitNode, Exposures: p.Exposures, OfferRelay: p.Relay,
 	})
 	if err != nil {
 		return err

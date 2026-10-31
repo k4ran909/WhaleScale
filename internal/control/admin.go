@@ -375,6 +375,41 @@ func (a *Admin) GetTopology(ctx context.Context, req *connect.Request[v1.GetTopo
 	return connect.NewResponse(&v1.GetTopologyResponse{Paths: a.svc.Topology()}), nil
 }
 
+// --- peer relays ---
+
+func (a *Admin) ListPeerRelays(ctx context.Context, req *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	nodes, err := a.svc.store.ListNodes(ctx, "")
+	if err != nil {
+		return nil, internal(a, "list nodes", err)
+	}
+	resp := &v1.ListPeerRelaysResponse{}
+	for i := range nodes {
+		n := &nodes[i]
+		if !n.RelayOffered && !n.RelayApproved {
+			continue
+		}
+		resp.Relays = append(resp.Relays, &v1.AdminPeerRelay{NodeId: n.ID, NodeName: n.Name,
+			Approved: n.RelayApproved, Online: a.svc.toProto(n).Online})
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (a *Admin) SetPeerRelayApproved(ctx context.Context, req *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error) {
+	id, err := a.auth(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	if err := a.svc.store.SetRelayApproved(ctx, req.Msg.NodeId, req.Msg.Approved); err != nil {
+		return nil, notFoundOr(a, "approve relay", err)
+	}
+	a.audit(id, "peer relay approval changed", "node_id", req.Msg.NodeId, "approved", req.Msg.Approved)
+	a.svc.NotifyAll()
+	return connect.NewResponse(&v1.SetPeerRelayApprovedResponse{}), nil
+}
+
 // --- gateway ---
 
 func (a *Admin) ListExposures(ctx context.Context, req *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error) {

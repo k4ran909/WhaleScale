@@ -107,6 +107,7 @@ Tether a laptop to mobile data (or put any machine behind CGNAT), install as in 
 - [ ] `ws netcheck` reports the NAT type (symmetric is expected on Jio/Airtel)
 - [ ] `ping <home-pc>.whale.internal` works (direct or relay; both count)
 - [ ] Path is: direct / relay (circle one). If relay: latency ____ ms, `iperf3` throughput ____ Mbps
+- [ ] If relayed: on the VPS (or any machine with a public IP), run `sudo ws up --relay` and `whalescale relays approve <it>`; the path becomes `peer-relay via <it>`. Latency ____ ms, throughput ____ Mbps (compare with the server relay above)
 
 ## 6. Access policy
 

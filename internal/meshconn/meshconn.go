@@ -58,6 +58,9 @@ type Options struct {
 	Control func(network, address string, c syscall.RawConn) error
 	// IncludeLoopback advertises 127.0.0.1 as an endpoint. Tests only.
 	IncludeLoopback bool
+	// DisableDirect never tries direct paths to peers (relays are still
+	// reached over UDP). Tests only: simulates two strict NATs.
+	DisableDirect bool
 	// OnEndpoints is called when the node's own candidate endpoints change.
 	OnEndpoints func([]netip.AddrPort)
 	// Exclude lists prefixes never to advertise or use as direct paths,
@@ -97,6 +100,8 @@ type Conn struct {
 	stunTx      map[stun.TxID]stunReq
 	stunResults map[netip.AddrPort]netip.AddrPort // server -> mapped
 	endpoints   []netip.AddrPort
+	peerRelays  map[key.Public]*relayState // relays we may use, by node key
+	relayServe  *relayServer               // non-nil while we relay for others
 }
 
 type stunReq struct {
@@ -110,9 +115,17 @@ type rxPacket struct {
 }
 
 type pingState struct {
-	to    netip.AddrPort // invalid means via relay
-	sent  time.Time
-	reply chan PingResult
+	to       netip.AddrPort // invalid means via a relay
+	viaRelay *relayState    // set when sent through a peer relay
+	sent     time.Time
+	reply    chan PingResult
+}
+
+// discoPath is how a disco message travelled: directly over UDP, through
+// a peer relay, or (both unset) through the server's relay.
+type discoPath struct {
+	udp       netip.AddrPort
+	peerRelay *relayState
 }
 
 type peer struct {
@@ -128,6 +141,11 @@ type peer struct {
 	lastPong    time.Time
 	lastCMM     time.Time
 	pings       map[disco.TxID]pingState
+
+	// Peer relay path, proven by a pong that came back through it.
+	relayVia     *relayState
+	relayPong    time.Time
+	relayLatency time.Duration
 
 	rx, tx atomic.Uint64
 }
@@ -176,6 +194,7 @@ func New(opts Options) (*Conn, error) {
 		byAddr:      map[netip.AddrPort]*peer{},
 		stunTx:      map[stun.TxID]stunReq{},
 		stunResults: map[netip.AddrPort]netip.AddrPort{},
+		peerRelays:  map[key.Public]*relayState{},
 	}
 	close(c.bindDone) // not open yet
 	go c.readUDP(pc4)
@@ -344,9 +363,11 @@ func (b *bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	}
 	c.mu.Lock()
 	p := c.peers[e.key]
-	var addr netip.AddrPort
+	var addr, relayAddr netip.AddrPort
 	if p != nil && p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration {
 		addr = p.bestAddr
+	} else if p != nil && p.relayVia != nil && time.Since(p.relayPong) < trustDuration {
+		relayAddr = p.relayVia.bestAddr
 	}
 	r := c.relay
 	c.mu.Unlock()
@@ -358,6 +379,8 @@ func (b *bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 		var err error
 		if addr.IsValid() {
 			err = c.writeUDP(buf, addr)
+		} else if relayAddr.IsValid() {
+			err = c.writeUDP(relayFrame(frameToRelay, e.key, buf), relayAddr)
 		} else if r != nil {
 			err = r.Send(e.key, buf)
 		} else {
@@ -439,8 +462,10 @@ func (c *Conn) readUDP(pc *net.UDPConn) {
 		switch {
 		case stun.Is(pkt):
 			c.handleSTUN(pkt)
+		case isRelayFrame(pkt):
+			c.handleRelayFrame(pkt, from)
 		case disco.Is(pkt):
-			c.handleDisco(pkt, from, key.Public{})
+			c.handleDisco(pkt, discoPath{udp: from}, key.Public{})
 		default:
 			c.mu.Lock()
 			p := c.byAddr[from]
@@ -455,7 +480,7 @@ func (c *Conn) readUDP(pc *net.UDPConn) {
 
 func (c *Conn) handleRelayPacket(rp relay.Packet) {
 	if disco.Is(rp.Data) {
-		c.handleDisco(rp.Data, netip.AddrPort{}, rp.Src)
+		c.handleDisco(rp.Data, discoPath{}, rp.Src)
 		return
 	}
 	c.mu.Lock()
@@ -468,9 +493,10 @@ func (c *Conn) handleRelayPacket(rp relay.Packet) {
 
 // --- disco ---
 
-// handleDisco processes a disco message that arrived either directly from
-// udpFrom, or via the relay from relayFrom.
-func (c *Conn) handleDisco(pkt []byte, udpFrom netip.AddrPort, relayFrom key.Public) {
+// handleDisco processes a disco message that arrived along path. relayFrom
+// is the node key a relay (server or peer) says sent it.
+func (c *Conn) handleDisco(pkt []byte, path discoPath, relayFrom key.Public) {
+	udpFrom := path.udp
 	sender, msg, err := disco.Open(c.opts.DiscoKey, pkt)
 	if err != nil {
 		return
@@ -496,7 +522,7 @@ func (c *Conn) handleDisco(pkt []byte, udpFrom netip.AddrPort, relayFrom key.Pub
 		}
 		c.mu.Unlock()
 		pong := disco.Seal(c.opts.DiscoKey, sender, &disco.Pong{TxID: m.TxID, Src: udpFrom})
-		c.sendDisco(p, pong, udpFrom)
+		c.sendDisco(p, pong, path) // back the way it came
 
 	case *disco.Pong:
 		ps, ok := p.pings[m.TxID]
@@ -521,11 +547,25 @@ func (c *Conn) handleDisco(pkt []byte, udpFrom netip.AddrPort, relayFrom key.Pub
 				p.lastPong = time.Now()
 			}
 		}
+		if r := path.peerRelay; r != nil && ps.viaRelay == r {
+			if p.relayVia != r || time.Since(p.relayPong) >= trustDuration {
+				if p.relayVia == nil || time.Since(p.relayPong) >= trustDuration || lat < p.relayLatency/2 {
+					c.log.Info("peer relay path", "peer", p.cfg.Name, "via", r.name, "latency", lat.Round(time.Microsecond))
+					p.relayVia = r
+				}
+			}
+			if p.relayVia == r {
+				p.relayPong, p.relayLatency = time.Now(), lat
+			}
+		}
 		c.mu.Unlock()
 		if ps.reply != nil {
 			res := PingResult{Latency: lat, Via: "relay"}
-			if viaUDP {
+			switch {
+			case viaUDP:
 				res.Via, res.Addr = "direct", udpFrom
+			case path.peerRelay != nil:
+				res.Via, res.Relay = "peer-relay", path.peerRelay.name
 			}
 			select {
 			case ps.reply <- res:
@@ -543,11 +583,19 @@ func (c *Conn) handleDisco(pkt []byte, udpFrom netip.AddrPort, relayFrom key.Pub
 	}
 }
 
-// sendDisco sends a sealed disco packet directly to addr, or via the relay
-// when addr is invalid.
-func (c *Conn) sendDisco(p *peer, pkt []byte, addr netip.AddrPort) {
-	if addr.IsValid() {
-		c.writeUDP(pkt, addr)
+// sendDisco sends a sealed disco packet along path.
+func (c *Conn) sendDisco(p *peer, pkt []byte, path discoPath) {
+	if path.udp.IsValid() {
+		c.writeUDP(pkt, path.udp)
+		return
+	}
+	if r := path.peerRelay; r != nil {
+		c.mu.Lock()
+		addr := r.bestAddr
+		c.mu.Unlock()
+		if addr.IsValid() {
+			c.writeUDP(relayFrame(frameToRelay, p.nodeKey, pkt), addr)
+		}
 		return
 	}
 	c.mu.Lock()
@@ -558,17 +606,20 @@ func (c *Conn) sendDisco(p *peer, pkt []byte, addr netip.AddrPort) {
 	}
 }
 
-func (c *Conn) sendPing(p *peer, to netip.AddrPort, reply chan PingResult) {
+func (c *Conn) sendPing(p *peer, path discoPath, reply chan PingResult) {
 	tx := disco.NewTxID()
 	c.mu.Lock()
-	p.pings[tx] = pingState{to: to, sent: time.Now(), reply: reply}
+	p.pings[tx] = pingState{to: path.udp, viaRelay: path.peerRelay, sent: time.Now(), reply: reply}
 	c.mu.Unlock()
 	pkt := disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.Ping{TxID: tx, NodeKey: c.opts.NodeKey})
-	c.sendDisco(p, pkt, to)
+	c.sendDisco(p, pkt, path)
 }
 
 // pingCandidates pings every known direct candidate of p.
 func (c *Conn) pingCandidates(p *peer, reply chan PingResult) {
+	if c.opts.DisableDirect {
+		return
+	}
 	c.mu.Lock()
 	cands := slices.Clone(p.candidates)
 	if p.bestAddr.IsValid() && !slices.Contains(cands, p.bestAddr) {
@@ -576,7 +627,7 @@ func (c *Conn) pingCandidates(p *peer, reply chan PingResult) {
 	}
 	c.mu.Unlock()
 	for _, a := range cands {
-		c.sendPing(p, a, reply)
+		c.sendPing(p, discoPath{udp: a}, reply)
 	}
 }
 
@@ -602,6 +653,7 @@ func (c *Conn) heartbeatLoop() {
 		}
 		myEps := slices.Clone(c.endpoints)
 		c.mu.Unlock()
+		c.helloRelays()
 
 		for _, p := range peers {
 			c.mu.Lock()
@@ -614,12 +666,13 @@ func (c *Conn) heartbeatLoop() {
 			c.mu.Unlock()
 
 			if trusted {
-				c.sendPing(p, best, nil) // keep the path and NAT mapping alive
+				c.sendPing(p, discoPath{udp: best}, nil) // keep the path and NAT mapping alive
 				continue
 			}
 			c.pingCandidates(p, nil)
+			c.probeViaRelays(p, nil)
 			if sendCMM && len(myEps) > 0 {
-				c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.CallMeMaybe{Endpoints: myEps}), netip.AddrPort{})
+				c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.CallMeMaybe{Endpoints: myEps}), discoPath{})
 			}
 		}
 	}
@@ -627,8 +680,9 @@ func (c *Conn) heartbeatLoop() {
 
 // PingResult describes the path a disco pong came back on.
 type PingResult struct {
-	Via     string // "direct" or "relay"
+	Via     string // "direct", "peer-relay" or "relay"
 	Addr    netip.AddrPort
+	Relay   string // peer relay name, for "peer-relay"
 	Latency time.Duration
 }
 
@@ -645,9 +699,10 @@ func (c *Conn) Ping(ctx context.Context, nodeKey key.Public) (PingResult, error)
 	c.mu.Lock()
 	direct := p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration
 	c.mu.Unlock()
-	// With a proven direct path, the relay would only win by being first.
+	// With a proven direct path, a relay would only win by being first.
 	if !direct {
-		c.sendPing(p, netip.AddrPort{}, reply)
+		c.sendPing(p, discoPath{}, reply)
+		c.probeViaRelays(p, reply)
 	}
 	c.pingCandidates(p, reply)
 	select {
@@ -824,7 +879,7 @@ func (c *Conn) Endpoints() []netip.AddrPort {
 type PeerStatus struct {
 	Name     string        `json:"name"`
 	NodeKey  string        `json:"node_key"`
-	Path     string        `json:"path"` // "direct", "relay" or "none"
+	Path     string        `json:"path"` // "direct", "peer-relay", "relay" or "none"
 	Addr     string        `json:"addr,omitempty"`
 	Latency  time.Duration `json:"latency_ns,omitempty"`
 	LastPong time.Time     `json:"last_pong,omitempty"`
@@ -842,6 +897,8 @@ func (c *Conn) Status() []PeerStatus {
 		switch {
 		case p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration:
 			s.Path, s.Addr, s.Latency, s.LastPong = "direct", p.bestAddr.String(), p.bestLatency, p.lastPong
+		case p.relayVia != nil && time.Since(p.relayPong) < trustDuration:
+			s.Path, s.Addr, s.Latency, s.LastPong = "peer-relay", p.relayVia.name, p.relayLatency, p.relayPong
 		case relayUp:
 			s.Path = "relay"
 		default:

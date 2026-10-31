@@ -95,6 +95,9 @@ message UpdateNodeRequest {
   // Local services this node wants published through the gateway. Only
   // name and port are read; they go live once an admin approves them.
   repeated Exposure exposures = 6;
+  // Offer this node as a UDP relay for peers that can't connect directly.
+  // It takes effect once an admin approves it.
+  bool offer_relay = 7;
 }
 
 // Exposure is a local HTTP service published at https://<name>.<gateway domain>.
@@ -143,6 +146,29 @@ message NetworkMap {
   repeated Exposure exposures = 8;
   // WebSocket URL of the gateway tunnel; empty when the gateway is off.
   string gateway_url = 9;
+  // Approved peer relays this node may use (never itself).
+  repeated PeerRelay peer_relays = 10;
+  // Set only for an approved relay: the nodes it may serve.
+  repeated RelayClient relay_clients = 11;
+  // Whether this node offers to relay, and whether that is approved.
+  bool relay_offered = 12;
+  bool relay_approved = 13;
+}
+
+// PeerRelay is a node that forwards UDP between peers that can't connect
+// directly. It shares the node's WireGuard socket and endpoints.
+message PeerRelay {
+  string name = 1;
+  string node_key = 2;
+  string disco_key = 3;
+  repeated string endpoints = 4;
+}
+
+// RelayClient is a node a relay serves; registrations are sealed with the
+// disco key, so the relay can check who is registering.
+message RelayClient {
+  string node_key = 1;
+  string disco_key = 2;
 }
 
 message DNSConfig {

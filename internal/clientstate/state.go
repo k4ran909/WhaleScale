@@ -39,6 +39,8 @@ type Prefs struct {
 	// Exposures publishes local services (name -> localhost port) at
 	// https://<name>.<gateway domain>.
 	Exposures map[string]uint16 `json:"exposures,omitempty"`
+	// Relay offers this node as a peer relay.
+	Relay bool `json:"relay,omitempty"`
 }
 
 // SystemDir is where a wsd service keeps its state. When it exists, ws and
