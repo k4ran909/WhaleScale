@@ -344,6 +344,15 @@ func cmdStatus(args []string) error {
 		fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\n", p.Name, first(p.Addresses), p.User, p.OS, path, lat)
 	}
 	tw.Flush()
+	for _, p := range s.Peers {
+		if len(p.Routes) > 0 || p.ExitNode {
+			extra := strings.Join(p.Routes, ", ")
+			if p.ExitNode {
+				extra = strings.TrimPrefix(extra+", exit node", ", ")
+			}
+			fmt.Printf("  %s routes %s\n", p.Name, extra)
+		}
+	}
 	relay := "disconnected"
 	if s.RelayConnected {
 		relay = "connected"

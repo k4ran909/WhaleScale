@@ -176,6 +176,7 @@ The research below (sources at the end) found these recurring problems in Tailsc
 - Docker image + install script + `doctor`
 - Path view + Prometheus metrics
 - **Done when:** a homelab user can replace Headscale end to end in under 15 minutes
+- **Status (2026-10-31):** built: web console (machines, topology, users, keys, routes, policy editor with live lint), admin API with API keys, OIDC console and device login, subnet routers (Linux) with approval, config file with conf.d and env layering, `configtest` and `doctor`, Prometheus metrics, path reporting, `ws up/down`, a service installer (systemd, Windows, launchd), a Docker image with Compose and Caddy, an install script, and a release workflow. Exit nodes can be advertised and approved, but client-side use moves to Phase 3. Not yet verified: the 15-minute walkthrough on a real VPS, OS TUN mode and the subnet router on real machines, the Windows service, and the Docker image.
 
 ### Phase 3: Differentiators (6–8 weeks)
 - QUIC relay, peer relays, NAT port prediction, UPnP/PCP

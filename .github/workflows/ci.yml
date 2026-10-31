@@ -27,6 +27,22 @@ jobs:
       - run: go vet ./...
       - run: go test -race -timeout 5m ./...
 
+  console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Check the embedded console build is current
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          git diff --exit-code -- dist/ || { echo "web/dist is stale: run 'make web' and commit"; exit 1; }
+
   build:
     needs: test
     runs-on: ubuntu-latest

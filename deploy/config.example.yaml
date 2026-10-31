@@ -1,0 +1,25 @@
+# /etc/whalescale/config.yaml — keys are the flags of 'whalescale serve'.
+# Local overrides belong in /etc/whalescale/conf.d/*.yaml (applied in name
+# order, never touched by upgrades). WHALESCALE_<KEY> env vars and flags
+# override both. Check with: whalescale configtest
+
+db: /var/lib/whalescale/whalescale.db
+listen: ":443"
+public-url: https://ws.example.com
+tls-cert: /etc/whalescale/tls/fullchain.pem
+tls-key: /etc/whalescale/tls/privkey.pem
+# Two ports let nodes detect symmetric NAT.
+stun-listen: ":3478,:3479"
+dns-suffix: whale.internal
+metrics-listen: "127.0.0.1:9090"
+log-level: info
+
+# Without 'policy', the access policy is edited in the web console.
+# policy: /etc/whalescale/policy.json
+
+# Browser login (console and 'ws login' without a key):
+# oidc-issuer: https://auth.example.com/application/o/whalescale/
+# oidc-client-id: whalescale
+# oidc-client-secret-file: /etc/whalescale/oidc-secret
+# oidc-admins: [you@example.com]
+# oidc-allowed-domains: [example.com]

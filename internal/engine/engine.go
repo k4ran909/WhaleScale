@@ -690,6 +690,8 @@ type PeerStatus struct {
 	Addresses []string `json:"addresses"`
 	OS        string   `json:"os"`
 	Online    bool     `json:"online"`
+	Routes    []string `json:"routes,omitempty"`
+	ExitNode  bool     `json:"exit_node,omitempty"`
 	meshconn.PeerStatus
 }
 
@@ -726,7 +728,8 @@ func (e *Engine) Status() Status {
 		paths[ps.NodeKey] = ps
 	}
 	for _, p := range nm.Peers {
-		ps := PeerStatus{Name: p.Name, FQDN: p.Fqdn, User: p.User, Addresses: p.Addresses, OS: p.Os, Online: p.Online}
+		ps := PeerStatus{Name: p.Name, FQDN: p.Fqdn, User: p.User, Addresses: p.Addresses, OS: p.Os, Online: p.Online,
+			Routes: p.Routes, ExitNode: p.ExitNode}
 		if path, ok := paths[p.NodeKey]; ok {
 			ps.PeerStatus = path
 		} else {

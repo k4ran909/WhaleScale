@@ -1,0 +1,42 @@
+# Whalescale server with automatic HTTPS (Caddy + Let's Encrypt).
+#
+#   1. Point a DNS name at this host, open TCP 80/443 and UDP 3478-3479.
+#   2. echo "WS_DOMAIN=ws.example.com" > .env
+#   3. docker compose up -d
+#   4. docker compose exec whalescale whalescale users create you
+#      docker compose exec whalescale whalescale apikeys create      # console sign-in
+#      docker compose exec whalescale whalescale preauthkeys create --user you
+#   5. Open https://ws.example.com
+services:
+  whalescale:
+    build: ..
+    restart: unless-stopped
+    environment:
+      WHALESCALE_PUBLIC_URL: https://${WS_DOMAIN:?set WS_DOMAIN in .env}
+      # Optional browser login with any OpenID Connect provider:
+      # WHALESCALE_OIDC_ISSUER: https://auth.example.com/application/o/whalescale/
+      # WHALESCALE_OIDC_CLIENT_ID: whalescale
+      # WHALESCALE_OIDC_CLIENT_SECRET: change-me
+      # WHALESCALE_OIDC_ADMINS: you@example.com
+    volumes:
+      - whalescale-data:/var/lib/whalescale
+    ports:
+      - "3478:3478/udp"
+      - "3479:3479/udp"
+      - "127.0.0.1:9090:9090" # Prometheus metrics, local only
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    environment:
+      WS_DOMAIN: ${WS_DOMAIN}
+    command: caddy reverse-proxy --from ${WS_DOMAIN} --to whalescale:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  whalescale-data:
+  caddy-data:

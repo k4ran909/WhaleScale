@@ -1,95 +1,137 @@
 # Whalescale
 
-A self-hosted mesh VPN: control plane, relay, STUN, clients and (soon) a web console, all yours. See [plan.md](plan.md) for the vision and roadmap.
+A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite. See [plan.md](plan.md) for the vision and roadmap.
 
-> **Status: Phase 1 (MVP mesh).** Nodes get WireGuard tunnels to each other, with direct paths found by NAT hole punching and a WebSocket relay as fallback. MagicDNS names, an ACL policy and `ws status/ping/netcheck` all work. Tested end to end in userspace mode. OS TUN mode is implemented for Linux, Windows and macOS but not yet tested on real machines; see [Known gaps](#known-gaps).
+> **Status: Phase 2 (usable product).** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, a system service and `ws up/down`. Exit nodes can be advertised and approved, but using one from a client comes later. See [Known gaps](#known-gaps).
 
 ## How it fits together
 
 ```
- ws login ──► whalescale serve ◄── wsd (node A)      wsd (node B)
-              control API + relay + STUN      ▲  WireGuard  ▲
-                                              └── direct UDP ┘   (or via relay)
+ browser ──► web console ─┐
+ ws login ───────────────►│ whalescale serve  (control API, admin API, relay, STUN, OIDC, metrics)
+                          └──────────────┬──────────────────────────────┐
+                                  wsd (node A)  ◄── WireGuard ──►  wsd (node B)
+                                                 direct UDP, or via relay
 ```
 
-- **`whalescale`** (server): registration, the network map stream, the policy engine, an embedded relay (`/relay`, WebSocket) and STUN (UDP).
-- **`wsd`** (agent): wireguard-go plus a custom socket layer that finds direct paths (sealed disco pings, STUN, call-me-maybe hole punching) and falls back to the relay. It also runs the packet filter and a MagicDNS resolver.
-- **`ws`** (CLI): `login`, `status`, `ping`, `netcheck`, `logout`.
+- **`whalescale`** (server): registration, the network map stream, the policy engine, the admin API and web console, browser login (OIDC), an embedded relay (`/relay`, WebSocket), STUN (UDP) and Prometheus metrics.
+- **`wsd`** (agent): wireguard-go plus a socket layer that finds direct paths (sealed disco pings, STUN, call-me-maybe hole punching) and falls back to the relay. It also runs the packet filter, the MagicDNS resolver and subnet routing.
+- **`ws`** (CLI): `login`, `up`, `down`, `status`, `ping`, `netcheck`, `logout`.
 
-## Quick start
+## Server setup
 
-On the server (a VPS with a public IP is ideal):
+### Docker (automatic HTTPS)
 
 ```bash
-whalescale users create karan
-whalescale preauthkeys create --user karan --reusable --expiration 24h
-whalescale serve --listen :443 --tls-cert cert.pem --tls-key key.pem \
-  --public-url https://ws.example.com --stun-listen :3478,:3479
+cd deploy
+echo "WS_DOMAIN=ws.example.com" > .env       # DNS must point here; open TCP 80/443, UDP 3478-3479
+docker compose up -d
+docker compose exec whalescale whalescale users create karan
+docker compose exec whalescale whalescale apikeys create     # sign in to https://ws.example.com with this
 ```
 
-Open TCP 443 and UDP 3478–3479. Two STUN ports let nodes detect symmetric NAT.
-
-On each PC (as root / Administrator for OS TUN mode):
+### Bare metal (Linux)
 
 ```bash
-WS_AUTHKEY=wskey-... ws login --server https://ws.example.com
-wsd                       # real interface; or: wsd --tun=userspace (no admin)
-ws status                 # peers + direct/relay path + latency
-ws ping laptop            # "pong from laptop via 203.0.113.7:41641 in 12ms"
-ws netcheck               # public address, NAT type, relay reachability
+curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --server
+sudoedit /etc/whalescale/config.yaml          # public-url, TLS; see deploy/config.example.yaml
+sudo whalescale configtest                    # shows every value and where it came from
+sudo systemctl enable --now whalescale
+sudo whalescale doctor                        # checks health, TLS expiry, relay, both STUN ports, OIDC
+```
+
+Settings layer as: config file, then `conf.d/*.yaml` (upgrades never touch these), then `WHALESCALE_*` environment variables, then flags. Unknown keys are errors.
+
+## Adding devices
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh   # installs ws + wsd service
+sudo ws login --server https://ws.example.com   # opens a browser login (OIDC), or use WS_AUTHKEY=wskey-...
+sudo ws up
+ws status                                       # peers, direct/relay path, latency
 ping laptop.whale.internal
 ```
 
-Run `ws` and `wsd` as the same user so they share the state file and socket. On Windows, OS TUN mode needs [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`.
+On Windows, unzip the release, put [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`, and in an Administrator terminal run `wsd install-service`, then `ws login --server ...` and `ws up`.
+
+## Web console
+
+Served at the server's URL. Sign in with an API key (`whalescale apikeys create`), or with your identity provider if OIDC is configured (only emails in `oidc-admins` get in). Pages:
+
+- **Machines:** online state, addresses, OS and routes.
+- **Topology:** a from/to matrix showing direct or relayed paths, with latency, as the nodes report it.
+- **Users**, **Keys** (pre-auth and API keys) and **Routes** (approve subnets and exit nodes).
+- **Access policy:** an editor with live validation and lint warnings.
+
+## Subnet routers
+
+On a Linux machine in your LAN (OS TUN mode):
+
+```bash
+sudo ws up --advertise-routes 192.168.1.0/24
+```
+
+Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
 
 ## Access policy
 
-Without `--policy`, every node can reach every other node. With a policy, anything not allowed is dropped by the receiving node, and replies to connections a node opened itself are still let in:
+Without one, every node can reach every other node. Edit it in the console, or point `policy:` at a JSON file (the server reloads it within 5 s; an invalid file keeps the previous policy). Receiving nodes drop anything not allowed. Replies to a node's own connections are always let back in.
 
 ```json
 {
   "groups": { "group:admins": ["karan"] },
   "acls": [
     { "action": "accept", "src": ["group:admins"], "dst": ["*:*"] },
-    { "action": "accept", "src": ["guest"], "dst": ["node:nas:445,8000-8100"] }
+    { "action": "accept", "src": ["guest"], "dst": ["node:nas:445,8000-8100"] },
+    { "action": "accept", "src": ["karan"], "dst": ["192.168.1.0/24:*"] }
   ]
 }
 ```
 
-Selectors are `*`, a user name, `group:NAME`, `node:NAME` or a CIDR. Check a policy with `whalescale policy check policy.json`. Unknown fields and undefined groups are errors, not silent no-ops. The server reloads the file within 5 s of a change, and if a new version is invalid it keeps the old one.
+Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
+
+## Operations
+
+| Command | What |
+|---|---|
+| `whalescale configtest` | Validate config; show each value and its source |
+| `whalescale doctor` | End-to-end checks of a running server |
+| `whalescale users / preauthkeys / apikeys / nodes / routes` | Admin from the server host |
+| `whalescale policy check FILE` | Validate and lint a policy file |
+| `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
+| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic |
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `cmd/whalescale`, `cmd/wsd`, `cmd/ws` | Server, agent, CLI |
-| `proto/`, `gen/` | API (protobuf / Connect-RPC) and generated code |
-| `internal/store` | SQLite + ordered migrations |
-| `internal/control`, `internal/server` | Control API, network maps, server assembly |
-| `internal/policy`, `internal/filter` | ACL compiler; stateful per-node packet filter |
-| `internal/meshconn` | WireGuard `conn.Bind`: path discovery, direct vs relay |
-| `internal/disco`, `internal/stun`, `internal/relay` | Sealed ping/pong/call-me-maybe; STUN; WebSocket relay |
-| `internal/engine`, `internal/localapi` | Agent core; `ws` ↔ `wsd` socket API |
-| `internal/dnsserver`, `internal/osnet` | MagicDNS; per-OS address/route/split-DNS setup |
+| `proto/`, `gen/` | APIs (protobuf / Connect-RPC) and generated code |
+| `web/` | Console source (React + TS); `web/dist` is the committed build embedded in the server |
+| `deploy/` | Docker Compose, install script, systemd unit, example config |
+| `internal/store`, `internal/config` | SQLite + migrations; config layering |
+| `internal/control`, `internal/server` | Control and admin APIs, OIDC, console, metrics |
+| `internal/policy`, `internal/filter` | ACL compiler; stateful packet filter |
+| `internal/meshconn`, `internal/disco`, `internal/stun`, `internal/relay` | Paths: direct vs relay |
+| `internal/engine`, `internal/daemon`, `internal/localapi` | Agent core, lifecycle, `ws` ↔ `wsd` API |
+| `internal/dnsserver`, `internal/osnet` | MagicDNS; per-OS addresses, routes, split DNS, forwarding |
 
 ## Known gaps
 
-- **OS TUN mode is untested on real machines.** The Linux (`ip`, `resolvectl`), Windows (`netsh`, NRPT) and macOS (`ifconfig`, `/etc/resolver`) paths compile but haven't been run yet. Userspace mode is covered by the end-to-end tests.
-- **No CGNAT test yet.** The Phase 1 acceptance test (3 PCs, one behind CGNAT) needs real hardware.
-- `wsd` runs in the foreground. A service install and `ws up/down` come in Phase 2.
-- Nodes still authenticate with a bearer token rather than a Noise handshake bound to the machine key.
-- Discovery pings every peer every 3 s, which is fine for small networks. Limiting it to active peers is Phase 4 work.
-- Linux uses wireguard-go, not kernel WireGuard.
+- **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
+- **Using an exit node** from a client isn't implemented yet (it needs per-OS policy routing). Advertising and approving exit nodes works.
+- Subnet routing is Linux-only for now.
+- Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key.
+- Discovery pings every peer every 3 s, which is fine for small networks; limiting it to active peers is Phase 4 work.
 
 ## Development
 
-Requires Go 1.27+.
+Requires Go 1.27+ and Node 22 (only to rebuild the console).
 
 ```bash
-go install github.com/bufbuild/buf/cmd/buf@v1.57.0
-go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
-go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1
-make generate test
+make generate test      # protobuf codegen + tests (needs buf, protoc-gen-go, protoc-gen-connect-go)
+make web                # rebuild web/dist after changing web/src (CI checks it is current)
+cd web && npm run dev   # console dev server, proxying to a local server on :8080
 ```
 
-`internal/engine` has the end-to-end tests: a real server and two agents in one process, covering the direct path, relay-only fallback and policy enforcement. Set `WS_TEST_LOG=1` to see their logs. SQLite is pure Go (`modernc.org/sqlite`), so builds need no CGO.
+End-to-end tests run real servers and agents in one process: direct paths, relay-only fallback, policy enforcement, subnet route approval, and OIDC console and device login against a fake identity provider (`internal/engine`, `internal/server`).
