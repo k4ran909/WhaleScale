@@ -131,6 +131,7 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 	eng, err := engine.New(engine.Options{
 		State: st, StatePath: d.opts.StatePath, Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
 		Port: d.opts.Port, Log: d.log, AdvertiseRoutes: routes, AcceptRoutes: p.AcceptRoutes,
+		ExitNode: p.ExitNode,
 	})
 	if err != nil {
 		return err
@@ -139,7 +140,8 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 		return err
 	}
 	d.eng, d.st = eng, st
-	d.log.Info("tunnel up", "node", st.NodeName, "advertise_routes", p.AdvertiseRoutes, "accept_routes", p.AcceptRoutes)
+	d.log.Info("tunnel up", "node", st.NodeName, "advertise_routes", p.AdvertiseRoutes, "accept_routes", p.AcceptRoutes,
+		"exit_node", p.ExitNode)
 	return nil
 }
 

@@ -29,8 +29,8 @@ func TestRelay(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ca := NewClient(url, "tok-a", log)
-	cb := NewClient(url, "tok-b", log)
+	ca := NewClient(url, "tok-a", nil, log)
+	cb := NewClient(url, "tok-b", nil, log)
 	go ca.Run(ctx)
 	go cb.Run(ctx)
 
@@ -55,7 +55,7 @@ func TestRelay(t *testing.T) {
 	}
 
 	// A client cannot spoof its source: the server stamps the authenticated key.
-	bad := NewClient(url, "nope", log)
+	bad := NewClient(url, "nope", nil, log)
 	bctx, bcancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer bcancel()
 	if err := bad.session(bctx); err == nil {

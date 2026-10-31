@@ -25,6 +25,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -52,6 +53,9 @@ type Options struct {
 	DiscoKey key.Private
 	NodeKey  key.Public
 	Log      *slog.Logger
+	// Control, if set, is applied to the UDP sockets (used to keep them off
+	// the tunnel when an exit node routes everything into it).
+	Control func(network, address string, c syscall.RawConn) error
 	// IncludeLoopback advertises 127.0.0.1 as an endpoint. Tests only.
 	IncludeLoopback bool
 	// OnEndpoints is called when the node's own candidate endpoints change.
@@ -143,12 +147,20 @@ func New(opts Options) (*Conn, error) {
 	if opts.Log == nil {
 		opts.Log = slog.Default()
 	}
-	pc4, err := net.ListenUDP("udp4", &net.UDPAddr{Port: int(opts.Port)})
+	lc := net.ListenConfig{Control: opts.Control}
+	listen := func(network string, port uint16) (*net.UDPConn, error) {
+		pc, err := lc.ListenPacket(context.Background(), network, fmt.Sprintf(":%d", port))
+		if err != nil {
+			return nil, err
+		}
+		return pc.(*net.UDPConn), nil
+	}
+	pc4, err := listen("udp4", opts.Port)
 	if err != nil {
 		return nil, fmt.Errorf("listen udp4: %w", err)
 	}
 	port := uint16(pc4.LocalAddr().(*net.UDPAddr).Port)
-	pc6, err := net.ListenUDP("udp6", &net.UDPAddr{Port: int(port)})
+	pc6, err := listen("udp6", port)
 	if err != nil {
 		opts.Log.Info("IPv6 UDP unavailable; continuing with IPv4 only", "err", err)
 		pc6 = nil

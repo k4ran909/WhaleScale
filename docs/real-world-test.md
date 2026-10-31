@@ -139,7 +139,31 @@ ping 192.168.1.1
 - [ ] Windows reaches a LAN host through the router
 - [ ] `sudo iptables -t nat -S | grep whalescale` shows the MASQUERADE rule; after `sudo ws down` it's gone
 
-## 8. Service lifecycle
+## 8. Exit node
+
+On the Linux machine (it must have internet access):
+
+```bash
+sudo ws up --advertise-exit-node
+```
+
+Approve both exit routes (`0.0.0.0/0`, `::/0`) in the console. Then on the Windows PC:
+
+```powershell
+.\ws.exe up --exit-node <linux-name>
+.\ws.exe status          # "exit node: <linux-name> (active)"
+curl.exe https://ifconfig.me
+```
+
+- [ ] `ifconfig.me` shows the Linux machine's public IP, not the PC's
+- [ ] `ping 8.8.8.8` works (replies come back through the exit node)
+- [ ] The PC's LAN still works (`ping` your router's LAN IP)
+- [ ] `ws status` shows peers still connected directly (the tunnel didn't loop into itself)
+- [ ] Stop the Linux machine's wsd: internet on the PC stops (fails closed); start it: internet comes back
+- [ ] Switch the PC from Wi-Fi to Ethernet (or tethering): the tunnel recovers within ~10 s
+- [ ] `ws up --exit-node=` (empty): traffic goes direct again, `route print` has no `0.0.0.0/1` routes
+
+## 9. Service lifecycle
 
 - [ ] Reboot each machine: the tunnel comes back up on its own
 - [ ] `ws down`: peers show it offline within ~30 s; `ws up` brings it back

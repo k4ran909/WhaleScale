@@ -175,6 +175,7 @@ type Client struct {
 	token string
 	log   *slog.Logger
 
+	hc   *http.Client
 	recv chan Packet
 	send chan []byte
 
@@ -182,8 +183,9 @@ type Client struct {
 	connected bool
 }
 
-func NewClient(url, token string, log *slog.Logger) *Client {
-	return &Client{url: url, token: token, log: log,
+// NewClient makes a relay client. hc may be nil for the default client.
+func NewClient(url, token string, hc *http.Client, log *slog.Logger) *Client {
+	return &Client{url: url, token: token, log: log, hc: hc,
 		recv: make(chan Packet, sendQueue), send: make(chan []byte, sendQueue)}
 }
 
@@ -248,6 +250,7 @@ func (c *Client) Run(ctx context.Context) {
 func (c *Client) session(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	conn, _, err := websocket.Dial(dctx, c.url, &websocket.DialOptions{
+		HTTPClient: c.hc,
 		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.token}},
 	})
 	cancel()

@@ -70,3 +70,29 @@ func TestStatefulReplies(t *testing.T) {
 		t.Fatal("different local port must not match the flow")
 	}
 }
+
+func icmpPacket(src, dst string, typ byte, id uint16) []byte {
+	b := ipv4Packet(protoICMP, src, dst, 0, 0)
+	b[20], b[21] = typ, 0
+	binary.BigEndian.PutUint16(b[24:26], id)
+	return b
+}
+
+func TestPingRepliesFromBeyondTheMesh(t *testing.T) {
+	f := New() // no rules: nobody may initiate
+	const me, lanHost = "100.64.0.1", "192.168.1.5"
+	reply := icmpPacket(lanHost, me, 0, 7)
+	if f.Inbound(reply) {
+		t.Fatal("unsolicited echo reply allowed")
+	}
+	f.Outbound(icmpPacket(me, lanHost, 8, 7))
+	if !f.Inbound(reply) {
+		t.Fatal("reply to our own ping was dropped")
+	}
+	if f.Inbound(icmpPacket(lanHost, me, 0, 8)) {
+		t.Fatal("echo reply with a different identifier allowed")
+	}
+	if f.Inbound(icmpPacket(lanHost, me, 8, 7)) {
+		t.Fatal("echo request from outside allowed by a reply flow")
+	}
+}

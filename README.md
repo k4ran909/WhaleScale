@@ -2,7 +2,7 @@
 
 A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite. See [plan.md](plan.md) for the vision and roadmap.
 
-> **Status: Phase 2 (usable product).** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, a system service and `ws up/down`. Exit nodes can be advertised and approved, but using one from a client comes later. See [Known gaps](#known-gaps).
+> **Status: Phase 3 in progress.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a system service and `ws up/down`. See [Known gaps](#known-gaps).
 
 ## How it fits together
 
@@ -73,6 +73,25 @@ sudo ws up --advertise-routes 192.168.1.0/24
 
 Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
 
+## Exit nodes
+
+Send all of a device's internet traffic through another machine, such as your home server when you're on café Wi-Fi.
+
+```bash
+sudo ws up --advertise-exit-node          # on the exit machine (Linux); approve it under Routes
+sudo ws up --exit-node homelab            # on the device; --exit-node= (empty) stops
+ws status                                 # "exit node: homelab (active)"
+```
+
+- **Fails closed.** If the exit node goes offline, internet traffic is blocked rather than leaking out of the local network, and resumes when it returns.
+- **Your LAN keeps working** (printers, the router's admin page), because local routes still win.
+- **The agent's own traffic stays off the tunnel** (WireGuard, discovery, the control connection, the relay):
+  - Linux: socket marks and policy routing, as wg-quick does.
+  - Windows: sockets pinned to the physical adapter (`IP_UNICAST_IF`).
+  - macOS: sockets pinned with `IP_BOUND_IF`.
+  - Switching networks (say, Wi-Fi to Ethernet) is picked up within 10 s.
+- **Policy:** exit traffic must be allowed by the policy. Allow-all covers it; otherwise grant `0.0.0.0/0:*` and `::/0:*` to the users who may use exit nodes.
+
 ## Access policy
 
 Without one, every node can reach every other node. Edit it in the console, or point `policy:` at a JSON file (the server reloads it within 5 s; an invalid file keeps the previous policy). Receiving nodes drop anything not allowed. Replies to a node's own connections are always let back in.
@@ -119,7 +138,7 @@ Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destinati
 ## Known gaps
 
 - **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
-- **Using an exit node** from a client isn't implemented yet (it needs per-OS policy routing). Advertising and approving exit nodes works.
+- **Exit nodes**: the exit side (forwarding + NAT) is Linux-only; DNS queries still go to the device's own DNS servers rather than through the exit node.
 - Subnet routing is Linux-only for now.
 - Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key.
 - Discovery pings every peer every 3 s, which is fine for small networks; limiting it to active peers is Phase 4 work.

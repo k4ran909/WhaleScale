@@ -59,6 +59,10 @@ type Options struct {
 	AdvertiseRoutes []netip.Prefix
 	// AcceptRoutes installs subnet routes other nodes offer.
 	AcceptRoutes bool
+	// ExitNode names a peer (name, FQDN or mesh IP) to send all internet
+	// traffic through. Traffic is dropped, not leaked, while it is
+	// unavailable.
+	ExitNode string
 	// Testing knobs.
 	IncludeLoopback bool
 	ForceRelay      bool
@@ -89,6 +93,10 @@ type Engine struct {
 	relayURL string
 	osCfg    *osnet.Config
 	osRoutes []netip.Prefix
+	hc       *http.Client
+	bypass   *osnet.Bypass
+	exitRts  *osnet.ExitRoutes
+	exitStat *ExitStatus
 	router   *osnet.Router
 	ready    chan struct{}
 	lastErr  string
@@ -126,12 +134,25 @@ func New(opts Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	var bypass *osnet.Bypass
+	if opts.ExitNode != "" && !opts.Userspace {
+		bypass = osnet.NewBypass()
+	}
 	hc := opts.HTTPClient
 	if hc == nil {
 		hc = &http.Client{}
+		if bypass != nil {
+			// The control connection and relay must not follow the catch-all
+			// routes into the tunnel they keep alive.
+			d := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second, Control: bypass.ControlDial}
+			hc.Transport = &http.Transport{
+				Proxy: http.ProxyFromEnvironment, DialContext: d.DialContext, ForceAttemptHTTP2: true,
+				TLSHandshakeTimeout: 10 * time.Second, IdleConnTimeout: 90 * time.Second,
+			}
+		}
 	}
 	e := &Engine{
-		opts: opts, log: opts.Log, nodeKey: nk, disco: dk,
+		opts: opts, log: opts.Log, nodeKey: nk, disco: dk, hc: hc, bypass: bypass,
 		api:     whalescalev1connect.NewControlServiceClient(hc, st.ServerURL),
 		filter:  filter.New(),
 		dns:     dnsserver.New(opts.Log),
@@ -153,9 +174,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	if e.opts.ForceRelay {
 		exclude = []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
 	}
-	port := e.opts.Port
-	conn, err := meshconn.New(meshconn.Options{
-		Port: port, DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
+	mopts := meshconn.Options{
+		Port: e.opts.Port, DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
 		IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay,
 		Exclude:         exclude,
 		OnEndpoints: func(eps []netip.AddrPort) {
@@ -165,20 +185,15 @@ func (e *Engine) Start(ctx context.Context) error {
 			}
 			e.epCh <- eps
 		},
-	})
-	if err != nil && port != 0 {
-		e.log.Warn("preferred UDP port busy; using a random one", "port", port, "err", err)
-		conn, err = meshconn.New(meshconn.Options{
-			DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
-			IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay, Exclude: exclude,
-			OnEndpoints: func(eps []netip.AddrPort) {
-				select {
-				case <-e.epCh:
-				default:
-				}
-				e.epCh <- eps
-			},
-		})
+	}
+	if e.bypass != nil {
+		mopts.Control = e.bypass.ControlListen
+	}
+	conn, err := meshconn.New(mopts)
+	if err != nil && mopts.Port != 0 {
+		e.log.Warn("preferred UDP port busy; using a random one", "port", mopts.Port, "err", err)
+		mopts.Port = 0
+		conn, err = meshconn.New(mopts)
 	}
 	if err != nil {
 		return err
@@ -204,6 +219,9 @@ func (e *Engine) Close() {
 	e.wg.Wait()
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.exitRts != nil {
+		e.exitRts.Close()
+	}
 	if e.router != nil {
 		e.router.Close()
 	}
@@ -350,7 +368,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	e.conn.SetSTUNServers(stunAddrs)
 	if len(nm.Relays) > 0 && nm.Relays[0] != e.relayURL {
 		e.relayURL = nm.Relays[0]
-		rc := relay.NewClient(e.relayURL, e.opts.State.NodeToken, e.log)
+		rc := relay.NewClient(e.relayURL, e.opts.State.NodeToken, e.hc, e.log)
 		e.relay = rc
 		e.conn.SetRelay(rc)
 		e.wg.Add(1)
@@ -362,6 +380,10 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	var subnets []netip.Prefix
 	claimed := map[netip.Prefix]bool{}
 	want := map[key.Public]string{}
+	var exit *ExitStatus
+	if e.opts.ExitNode != "" {
+		exit = &ExitStatus{Name: e.opts.ExitNode, Problem: "no peer named " + e.opts.ExitNode}
+	}
 	dnsNames := map[string][]netip.Addr{nm.Self.Name: {self.v4, self.v6}}
 	for _, p := range nm.Peers {
 		nk, err1 := key.ParsePublic(p.NodeKey)
@@ -392,9 +414,32 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 				subnets = append(subnets, r)
 			}
 		}
+		if exit != nil && matchesPeer(p, e.opts.ExitNode) {
+			exit.Name = p.Name
+			if !p.ExitNode {
+				exit.Problem = p.Name + " is not an approved exit node"
+			} else {
+				// Kept while the exit node is offline too, so traffic resumes
+				// the moment it returns.
+				cfg.WriteString("allowed_ip=0.0.0.0/0\nallowed_ip=::/0\n")
+				if p.Online {
+					exit.Problem, exit.Active = "", true
+				} else {
+					exit.Problem = p.Name + " is offline; internet traffic is blocked until it returns"
+				}
+			}
+		}
 		want[nk] = cfg.String()
 	}
 	e.conn.SetPeers(mpeers)
+	if exit != nil && (e.exitStat == nil || *exit != *e.exitStat) {
+		if exit.Problem != "" {
+			e.log.Warn("exit node unavailable", "exit_node", exit.Name, "problem", exit.Problem)
+		} else {
+			e.log.Info("using exit node", "exit_node", exit.Name)
+		}
+	}
+	e.exitStat = exit
 
 	var uapi strings.Builder
 	for k := range e.wgPeers {
@@ -555,6 +600,17 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		}
 		e.osCfg = &cfg
 		e.log.Info("tun up", "iface", ifname, "ipv4", self.v4, "ipv6", self.v6)
+		if e.opts.ExitNode != "" {
+			e.bypass.SetTunnel(ifname)
+			rts, err := osnet.StartExitRoutes(ifname)
+			if err != nil {
+				e.log.Error("could not route traffic to the exit node", "err", err)
+			} else {
+				e.exitRts = rts
+				e.wg.Add(1)
+				go e.bypassLoop()
+			}
+		}
 		if len(e.opts.AdvertiseRoutes) > 0 {
 			r, err := osnet.StartRouter(ifname, meshRange4, route6)
 			if err != nil {
@@ -567,6 +623,37 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		e.log.Warn("advertised routes need OS TUN mode on Linux; userspace mode can't forward")
 	}
 	return nil
+}
+
+// bypassLoop re-pins the agent's sockets when the physical network changes
+// (Wi-Fi to Ethernet, say), so the tunnel survives it.
+func (e *Engine) bypassLoop() {
+	defer e.wg.Done()
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-t.C:
+			if e.bypass.Refresh() {
+				e.log.Info("physical network changed; re-pinned the agent's sockets")
+			}
+		}
+	}
+}
+
+// matchesPeer reports whether target names p (name, FQDN or mesh IP).
+func matchesPeer(p *v1.Node, target string) bool {
+	t := strings.TrimSuffix(strings.ToLower(target), ".")
+	return p.Name == t || p.Fqdn == t || slices.Contains(p.Addresses, t)
+}
+
+// ExitStatus describes the exit node this node is set to use.
+type ExitStatus struct {
+	Name    string `json:"name"`
+	Active  bool   `json:"active"`
+	Problem string `json:"problem,omitempty"`
 }
 
 // syncOSRoutesLocked makes the OS route the accepted subnets into the TUN.
@@ -706,6 +793,7 @@ type Status struct {
 	Userspace      bool         `json:"userspace"`
 	LastError      string       `json:"last_error,omitempty"`
 	MapVersion     uint64       `json:"map_version"`
+	ExitNode       *ExitStatus  `json:"exit_node,omitempty"`
 }
 
 func (e *Engine) Status() Status {
@@ -723,6 +811,12 @@ func (e *Engine) Status() Status {
 		return st
 	}
 	st.Self, st.MapVersion = nm.Self, nm.Version
+	e.mu.Lock()
+	if e.exitStat != nil {
+		x := *e.exitStat
+		st.ExitNode = &x
+	}
+	e.mu.Unlock()
 	paths := map[string]meshconn.PeerStatus{}
 	for _, ps := range e.conn.Status() {
 		paths[ps.NodeKey] = ps

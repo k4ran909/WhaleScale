@@ -32,6 +32,7 @@ Usage:
   ws login  --server URL [--authkey KEY] [--hostname NAME]
                               without a key, prints a link to sign in with your browser
   ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
+            [--exit-node NAME]  send all internet traffic through NAME ("" to stop)
                               start the tunnel (flags you pass replace saved ones)
   ws down                     stop the tunnel; wsd keeps running
   ws status [--json]          peers and the path to each (direct / relay)
@@ -208,6 +209,7 @@ func cmdUp(args []string) error {
 	accept := fs.Bool("accept-routes", false, "use subnet routes other machines advertise")
 	advertise := fs.String("advertise-routes", "", "comma-separated subnets this machine routes to, e.g. 192.168.1.0/24")
 	exit := fs.Bool("advertise-exit-node", false, "offer this machine as an exit node (needs admin approval)")
+	exitNode := fs.String("exit-node", "", "send all internet traffic through this machine (name, FQDN or mesh IP); empty to stop")
 	fs.Parse(args)
 
 	_, path, err := loadState()
@@ -226,6 +228,9 @@ func cmdUp(args []string) error {
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if set["accept-routes"] {
 		prefs.AcceptRoutes = *accept
+	}
+	if set["exit-node"] {
+		prefs.ExitNode = strings.TrimSpace(*exitNode)
 	}
 	if set["advertise-routes"] || set["advertise-exit-node"] {
 		var routes []string
@@ -256,6 +261,9 @@ func cmdUp(args []string) error {
 		return err
 	}
 	fmt.Println("tunnel up")
+	if got.ExitNode != "" {
+		fmt.Printf("  internet traffic goes through exit node %s (blocked, not leaked, while it is unavailable)\n", got.ExitNode)
+	}
 	if got.AcceptRoutes {
 		fmt.Println("  accepting subnet routes from other machines")
 	}
@@ -351,6 +359,13 @@ func cmdStatus(args []string) error {
 				extra = strings.TrimPrefix(extra+", exit node", ", ")
 			}
 			fmt.Printf("  %s routes %s\n", p.Name, extra)
+		}
+	}
+	if x := s.ExitNode; x != nil {
+		if x.Active {
+			fmt.Printf("  exit node: %s (active)\n", x.Name)
+		} else {
+			fmt.Printf("  exit node: %s (NOT ACTIVE: %s)\n", x.Name, x.Problem)
 		}
 	}
 	relay := "disconnected"

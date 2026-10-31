@@ -179,6 +179,7 @@ The research below (sources at the end) found these recurring problems in Tailsc
 - **Status (2026-10-31):** built: web console (machines, topology, users, keys, routes, policy editor with live lint), admin API with API keys, OIDC console and device login, subnet routers (Linux) with approval, config file with conf.d and env layering, `configtest` and `doctor`, Prometheus metrics, path reporting, `ws up/down`, a service installer (systemd, Windows, launchd), a Docker image with Compose and Caddy, an install script, and a release workflow. Exit nodes can be advertised and approved, but client-side use moves to Phase 3. Not yet verified: the 15-minute walkthrough on a real VPS, OS TUN mode and the subnet router on real machines, the Windows service, and the Docker image.
 
 ### Phase 3: Differentiators (6–8 weeks)
+- **Status (2026-11-01):** exit nodes done on the client, carried over from Phase 2 (`ws up --exit-node`, fails closed, per-OS socket bypass). Next: Gateway, policy tests and `explain`, peer relays.
 - QUIC relay, peer relays, NAT port prediction, UPnP/PCP
 - Gateway (public ingress) + Serve with automatic TLS
 - Policy tests + `explain` + GitOps sync

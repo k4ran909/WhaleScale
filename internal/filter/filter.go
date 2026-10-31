@@ -59,6 +59,9 @@ type packet struct {
 	hasPorts bool
 	// Non-first IPv4 fragment: no transport header.
 	fragment bool
+	// ICMP echo request/reply, with its identifier.
+	echoRequest, echoReply bool
+	echoID                 uint16
 }
 
 func parse(b []byte) (packet, bool) {
@@ -102,16 +105,49 @@ func parse(b []byte) (packet, bool) {
 		p.dstPort = binary.BigEndian.Uint16(l4[2:4])
 		p.hasPorts = true
 	}
+	if (p.proto == protoICMP || p.proto == protoICMPv6) && len(l4) >= 8 {
+		request, reply := byte(8), byte(0)
+		if p.proto == protoICMPv6 {
+			request, reply = 128, 129
+		}
+		p.echoRequest, p.echoReply = l4[0] == request, l4[0] == reply
+		p.echoID = binary.BigEndian.Uint16(l4[4:6])
+	}
 	return p, true
+}
+
+// outboundKey and inboundKey match a reply to the flow its request created.
+// For ping, the echo identifier stands in for the port.
+func outboundKey(p packet) (flow, bool) {
+	switch {
+	case p.hasPorts:
+		return flow{proto: p.proto, remote: netip.AddrPortFrom(p.dst, p.dstPort), localPort: p.srcPort}, true
+	case p.echoRequest:
+		return flow{proto: p.proto, remote: netip.AddrPortFrom(p.dst, p.echoID)}, true
+	}
+	return flow{}, false
+}
+
+func inboundKey(p packet) (flow, bool) {
+	switch {
+	case p.hasPorts:
+		return flow{proto: p.proto, remote: netip.AddrPortFrom(p.src, p.srcPort), localPort: p.dstPort}, true
+	case p.echoReply:
+		return flow{proto: p.proto, remote: netip.AddrPortFrom(p.src, p.echoID)}, true
+	}
+	return flow{}, false
 }
 
 // Outbound records a packet leaving this node so replies are let back in.
 func (f *Filter) Outbound(b []byte) {
 	p, ok := parse(b)
-	if !ok || !p.hasPorts {
+	if !ok {
 		return
 	}
-	k := flow{proto: p.proto, remote: netip.AddrPortFrom(p.dst, p.dstPort), localPort: p.srcPort}
+	k, ok := outboundKey(p)
+	if !ok {
+		return
+	}
 	now := f.now()
 	f.flowMu.Lock()
 	if len(f.flows) >= maxFlows {
@@ -137,8 +173,9 @@ func (f *Filter) Inbound(b []byte) bool {
 	if !ok {
 		return false
 	}
-	if p.hasPorts {
-		k := flow{proto: p.proto, remote: netip.AddrPortFrom(p.src, p.srcPort), localPort: p.dstPort}
+	// Replies to traffic this node sent, including ping replies from hosts
+	// behind subnet routers and exit nodes, which no rule would name.
+	if k, ok := inboundKey(p); ok {
 		f.flowMu.Lock()
 		t, seen := f.flows[k]
 		if seen && f.now().Sub(t) <= flowTTL {

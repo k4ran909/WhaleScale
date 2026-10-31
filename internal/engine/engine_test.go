@@ -339,3 +339,69 @@ func TestSubnetRoutes(t *testing.T) {
 		t.Fatal("router's packet filter does not cover the approved subnet")
 	}
 }
+
+func TestExitNode(t *testing.T) {
+	n := newTestNet(t, "")
+	gw := n.nodeWith("gw", Options{AdvertiseRoutes: []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}})
+	client := n.nodeWith("roamer", Options{ExitNode: "gw"})
+	lost := n.nodeWith("lost", Options{ExitNode: "nope"})
+
+	exitState := func(e *Engine) ExitStatus {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if e.exitStat == nil {
+			return ExitStatus{}
+		}
+		return *e.exitStat
+	}
+	waitExit := func(e *Engine, ok func(ExitStatus) bool) ExitStatus {
+		t.Helper()
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			if s := exitState(e); ok(s) {
+				return s
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("exit status never matched: %+v", exitState(e))
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	routes := func() string {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return client.wgPeers[gw.nodeKey.Public()]
+	}
+
+	s := waitExit(client, func(s ExitStatus) bool { return strings.Contains(s.Problem, "not an approved exit node") })
+	if s.Active || strings.Contains(routes(), "0.0.0.0/0") {
+		t.Fatalf("unapproved exit node in use: %+v %q", s, routes())
+	}
+	waitExit(lost, func(s ExitStatus) bool { return strings.Contains(s.Problem, "no peer named nope") })
+
+	// Approve both exit routes the way an admin would.
+	ctx := context.Background()
+	routesList, _ := n.store.ListRoutes(ctx)
+	for _, r := range routesList {
+		if r.IsExit() {
+			if err := n.store.SetRouteApproved(ctx, r.NodeID, r.Prefix, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	s = waitExit(client, func(s ExitStatus) bool { return s.Active })
+	if s.Name != "gw" || !strings.Contains(routes(), "allowed_ip=0.0.0.0/0") || !strings.Contains(routes(), "allowed_ip=::/0") {
+		t.Fatalf("exit node not routed: %+v %q", s, routes())
+	}
+	if st := client.Status(); st.ExitNode == nil || !st.ExitNode.Active {
+		t.Fatalf("status does not report the exit node: %+v", st.ExitNode)
+	}
+	// Other nodes must not pick up default routes just because one exists.
+	lost.mu.Lock()
+	other := lost.wgPeers[gw.nodeKey.Public()]
+	lost.mu.Unlock()
+	if strings.Contains(other, "0.0.0.0/0") {
+		t.Fatal("a node that did not choose gw routes through it")
+	}
+}
