@@ -1956,6 +1956,284 @@ func (*ExpireAPIKeyResponse) Descriptor() ([]byte, []int) {
 	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{39}
 }
 
+type AdminExposure struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	NodeId   uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	NodeName string                 `protobuf:"bytes,2,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`
+	Name     string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Port     uint32                 `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	Approved bool                   `protobuf:"varint,5,opt,name=approved,proto3" json:"approved,omitempty"`
+	Url      string                 `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
+	// True while the node holds a gateway tunnel.
+	Connected     bool `protobuf:"varint,7,opt,name=connected,proto3" json:"connected,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminExposure) Reset() {
+	*x = AdminExposure{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminExposure) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminExposure) ProtoMessage() {}
+
+func (x *AdminExposure) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminExposure.ProtoReflect.Descriptor instead.
+func (*AdminExposure) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *AdminExposure) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *AdminExposure) GetNodeName() string {
+	if x != nil {
+		return x.NodeName
+	}
+	return ""
+}
+
+func (x *AdminExposure) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AdminExposure) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *AdminExposure) GetApproved() bool {
+	if x != nil {
+		return x.Approved
+	}
+	return false
+}
+
+func (x *AdminExposure) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *AdminExposure) GetConnected() bool {
+	if x != nil {
+		return x.Connected
+	}
+	return false
+}
+
+type ListExposuresRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListExposuresRequest) Reset() {
+	*x = ListExposuresRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListExposuresRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListExposuresRequest) ProtoMessage() {}
+
+func (x *ListExposuresRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListExposuresRequest.ProtoReflect.Descriptor instead.
+func (*ListExposuresRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{41}
+}
+
+type ListExposuresResponse struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Exposures []*AdminExposure       `protobuf:"bytes,1,rep,name=exposures,proto3" json:"exposures,omitempty"`
+	// Empty when the gateway is not configured.
+	GatewayDomain string `protobuf:"bytes,2,opt,name=gateway_domain,json=gatewayDomain,proto3" json:"gateway_domain,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListExposuresResponse) Reset() {
+	*x = ListExposuresResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListExposuresResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListExposuresResponse) ProtoMessage() {}
+
+func (x *ListExposuresResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListExposuresResponse.ProtoReflect.Descriptor instead.
+func (*ListExposuresResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ListExposuresResponse) GetExposures() []*AdminExposure {
+	if x != nil {
+		return x.Exposures
+	}
+	return nil
+}
+
+func (x *ListExposuresResponse) GetGatewayDomain() string {
+	if x != nil {
+		return x.GatewayDomain
+	}
+	return ""
+}
+
+type SetExposureApprovedRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Approved      bool                   `protobuf:"varint,3,opt,name=approved,proto3" json:"approved,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetExposureApprovedRequest) Reset() {
+	*x = SetExposureApprovedRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetExposureApprovedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetExposureApprovedRequest) ProtoMessage() {}
+
+func (x *SetExposureApprovedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetExposureApprovedRequest.ProtoReflect.Descriptor instead.
+func (*SetExposureApprovedRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *SetExposureApprovedRequest) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *SetExposureApprovedRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SetExposureApprovedRequest) GetApproved() bool {
+	if x != nil {
+		return x.Approved
+	}
+	return false
+}
+
+type SetExposureApprovedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetExposureApprovedResponse) Reset() {
+	*x = SetExposureApprovedResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetExposureApprovedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetExposureApprovedResponse) ProtoMessage() {}
+
+func (x *SetExposureApprovedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetExposureApprovedResponse.ProtoReflect.Descriptor instead.
+func (*SetExposureApprovedResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{44}
+}
+
 var File_whalescale_v1_admin_proto protoreflect.FileDescriptor
 
 const file_whalescale_v1_admin_proto_rawDesc = "" +
@@ -2068,7 +2346,24 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\"-\n" +
 	"\x13ExpireAPIKeyRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"\x16\n" +
-	"\x14ExpireAPIKeyResponse2\xa6\f\n" +
+	"\x14ExpireAPIKeyResponse\"\xb9\x01\n" +
+	"\rAdminExposure\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1b\n" +
+	"\tnode_name\x18\x02 \x01(\tR\bnodeName\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\rR\x04port\x12\x1a\n" +
+	"\bapproved\x18\x05 \x01(\bR\bapproved\x12\x10\n" +
+	"\x03url\x18\x06 \x01(\tR\x03url\x12\x1c\n" +
+	"\tconnected\x18\a \x01(\bR\tconnected\"\x16\n" +
+	"\x14ListExposuresRequest\"z\n" +
+	"\x15ListExposuresResponse\x12:\n" +
+	"\texposures\x18\x01 \x03(\v2\x1c.whalescale.v1.AdminExposureR\texposures\x12%\n" +
+	"\x0egateway_domain\x18\x02 \x01(\tR\rgatewayDomain\"e\n" +
+	"\x1aSetExposureApprovedRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\bapproved\x18\x03 \x01(\bR\bapproved\"\x1d\n" +
+	"\x1bSetExposureApprovedResponse2\xf0\r\n" +
 	"\fAdminService\x12E\n" +
 	"\x06WhoAmI\x12\x1c.whalescale.v1.WhoAmIRequest\x1a\x1d.whalescale.v1.WhoAmIResponse\x12N\n" +
 	"\tListUsers\x12\x1f.whalescale.v1.ListUsersRequest\x1a .whalescale.v1.ListUsersResponse\x12Q\n" +
@@ -2088,7 +2383,9 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"ListRoutes\x12 .whalescale.v1.ListRoutesRequest\x1a!.whalescale.v1.ListRoutesResponse\x12c\n" +
 	"\x10SetRouteApproved\x12&.whalescale.v1.SetRouteApprovedRequest\x1a'.whalescale.v1.SetRouteApprovedResponse\x12T\n" +
-	"\vGetTopology\x12!.whalescale.v1.GetTopologyRequest\x1a\".whalescale.v1.GetTopologyResponse\x12T\n" +
+	"\vGetTopology\x12!.whalescale.v1.GetTopologyRequest\x1a\".whalescale.v1.GetTopologyResponse\x12Z\n" +
+	"\rListExposures\x12#.whalescale.v1.ListExposuresRequest\x1a$.whalescale.v1.ListExposuresResponse\x12l\n" +
+	"\x13SetExposureApproved\x12).whalescale.v1.SetExposureApprovedRequest\x1a*.whalescale.v1.SetExposureApprovedResponse\x12T\n" +
 	"\vListAPIKeys\x12!.whalescale.v1.ListAPIKeysRequest\x1a\".whalescale.v1.ListAPIKeysResponse\x12W\n" +
 	"\fCreateAPIKey\x12\".whalescale.v1.CreateAPIKeyRequest\x1a#.whalescale.v1.CreateAPIKeyResponse\x12W\n" +
 	"\fExpireAPIKey\x12\".whalescale.v1.ExpireAPIKeyRequest\x1a#.whalescale.v1.ExpireAPIKeyResponseB?Z=github.com/k4ran909/whalescale/gen/whalescale/v1;whalescalev1b\x06proto3"
@@ -2105,109 +2402,119 @@ func file_whalescale_v1_admin_proto_rawDescGZIP() []byte {
 	return file_whalescale_v1_admin_proto_rawDescData
 }
 
-var file_whalescale_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_whalescale_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_whalescale_v1_admin_proto_goTypes = []any{
-	(*WhoAmIRequest)(nil),            // 0: whalescale.v1.WhoAmIRequest
-	(*WhoAmIResponse)(nil),           // 1: whalescale.v1.WhoAmIResponse
-	(*User)(nil),                     // 2: whalescale.v1.User
-	(*ListUsersRequest)(nil),         // 3: whalescale.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),        // 4: whalescale.v1.ListUsersResponse
-	(*CreateUserRequest)(nil),        // 5: whalescale.v1.CreateUserRequest
-	(*CreateUserResponse)(nil),       // 6: whalescale.v1.CreateUserResponse
-	(*DeleteUserRequest)(nil),        // 7: whalescale.v1.DeleteUserRequest
-	(*DeleteUserResponse)(nil),       // 8: whalescale.v1.DeleteUserResponse
-	(*ListNodesRequest)(nil),         // 9: whalescale.v1.ListNodesRequest
-	(*ListNodesResponse)(nil),        // 10: whalescale.v1.ListNodesResponse
-	(*DeleteNodeRequest)(nil),        // 11: whalescale.v1.DeleteNodeRequest
-	(*DeleteNodeResponse)(nil),       // 12: whalescale.v1.DeleteNodeResponse
-	(*PreAuthKey)(nil),               // 13: whalescale.v1.PreAuthKey
-	(*ListPreAuthKeysRequest)(nil),   // 14: whalescale.v1.ListPreAuthKeysRequest
-	(*ListPreAuthKeysResponse)(nil),  // 15: whalescale.v1.ListPreAuthKeysResponse
-	(*CreatePreAuthKeyRequest)(nil),  // 16: whalescale.v1.CreatePreAuthKeyRequest
-	(*CreatePreAuthKeyResponse)(nil), // 17: whalescale.v1.CreatePreAuthKeyResponse
-	(*ExpirePreAuthKeyRequest)(nil),  // 18: whalescale.v1.ExpirePreAuthKeyRequest
-	(*ExpirePreAuthKeyResponse)(nil), // 19: whalescale.v1.ExpirePreAuthKeyResponse
-	(*GetPolicyRequest)(nil),         // 20: whalescale.v1.GetPolicyRequest
-	(*GetPolicyResponse)(nil),        // 21: whalescale.v1.GetPolicyResponse
-	(*CheckPolicyRequest)(nil),       // 22: whalescale.v1.CheckPolicyRequest
-	(*CheckPolicyResponse)(nil),      // 23: whalescale.v1.CheckPolicyResponse
-	(*SetPolicyRequest)(nil),         // 24: whalescale.v1.SetPolicyRequest
-	(*SetPolicyResponse)(nil),        // 25: whalescale.v1.SetPolicyResponse
-	(*Route)(nil),                    // 26: whalescale.v1.Route
-	(*ListRoutesRequest)(nil),        // 27: whalescale.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),       // 28: whalescale.v1.ListRoutesResponse
-	(*SetRouteApprovedRequest)(nil),  // 29: whalescale.v1.SetRouteApprovedRequest
-	(*SetRouteApprovedResponse)(nil), // 30: whalescale.v1.SetRouteApprovedResponse
-	(*GetTopologyRequest)(nil),       // 31: whalescale.v1.GetTopologyRequest
-	(*GetTopologyResponse)(nil),      // 32: whalescale.v1.GetTopologyResponse
-	(*APIKey)(nil),                   // 33: whalescale.v1.APIKey
-	(*ListAPIKeysRequest)(nil),       // 34: whalescale.v1.ListAPIKeysRequest
-	(*ListAPIKeysResponse)(nil),      // 35: whalescale.v1.ListAPIKeysResponse
-	(*CreateAPIKeyRequest)(nil),      // 36: whalescale.v1.CreateAPIKeyRequest
-	(*CreateAPIKeyResponse)(nil),     // 37: whalescale.v1.CreateAPIKeyResponse
-	(*ExpireAPIKeyRequest)(nil),      // 38: whalescale.v1.ExpireAPIKeyRequest
-	(*ExpireAPIKeyResponse)(nil),     // 39: whalescale.v1.ExpireAPIKeyResponse
-	(*timestamppb.Timestamp)(nil),    // 40: google.protobuf.Timestamp
-	(*Node)(nil),                     // 41: whalescale.v1.Node
-	(*PathReport)(nil),               // 42: whalescale.v1.PathReport
+	(*WhoAmIRequest)(nil),               // 0: whalescale.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),              // 1: whalescale.v1.WhoAmIResponse
+	(*User)(nil),                        // 2: whalescale.v1.User
+	(*ListUsersRequest)(nil),            // 3: whalescale.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),           // 4: whalescale.v1.ListUsersResponse
+	(*CreateUserRequest)(nil),           // 5: whalescale.v1.CreateUserRequest
+	(*CreateUserResponse)(nil),          // 6: whalescale.v1.CreateUserResponse
+	(*DeleteUserRequest)(nil),           // 7: whalescale.v1.DeleteUserRequest
+	(*DeleteUserResponse)(nil),          // 8: whalescale.v1.DeleteUserResponse
+	(*ListNodesRequest)(nil),            // 9: whalescale.v1.ListNodesRequest
+	(*ListNodesResponse)(nil),           // 10: whalescale.v1.ListNodesResponse
+	(*DeleteNodeRequest)(nil),           // 11: whalescale.v1.DeleteNodeRequest
+	(*DeleteNodeResponse)(nil),          // 12: whalescale.v1.DeleteNodeResponse
+	(*PreAuthKey)(nil),                  // 13: whalescale.v1.PreAuthKey
+	(*ListPreAuthKeysRequest)(nil),      // 14: whalescale.v1.ListPreAuthKeysRequest
+	(*ListPreAuthKeysResponse)(nil),     // 15: whalescale.v1.ListPreAuthKeysResponse
+	(*CreatePreAuthKeyRequest)(nil),     // 16: whalescale.v1.CreatePreAuthKeyRequest
+	(*CreatePreAuthKeyResponse)(nil),    // 17: whalescale.v1.CreatePreAuthKeyResponse
+	(*ExpirePreAuthKeyRequest)(nil),     // 18: whalescale.v1.ExpirePreAuthKeyRequest
+	(*ExpirePreAuthKeyResponse)(nil),    // 19: whalescale.v1.ExpirePreAuthKeyResponse
+	(*GetPolicyRequest)(nil),            // 20: whalescale.v1.GetPolicyRequest
+	(*GetPolicyResponse)(nil),           // 21: whalescale.v1.GetPolicyResponse
+	(*CheckPolicyRequest)(nil),          // 22: whalescale.v1.CheckPolicyRequest
+	(*CheckPolicyResponse)(nil),         // 23: whalescale.v1.CheckPolicyResponse
+	(*SetPolicyRequest)(nil),            // 24: whalescale.v1.SetPolicyRequest
+	(*SetPolicyResponse)(nil),           // 25: whalescale.v1.SetPolicyResponse
+	(*Route)(nil),                       // 26: whalescale.v1.Route
+	(*ListRoutesRequest)(nil),           // 27: whalescale.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),          // 28: whalescale.v1.ListRoutesResponse
+	(*SetRouteApprovedRequest)(nil),     // 29: whalescale.v1.SetRouteApprovedRequest
+	(*SetRouteApprovedResponse)(nil),    // 30: whalescale.v1.SetRouteApprovedResponse
+	(*GetTopologyRequest)(nil),          // 31: whalescale.v1.GetTopologyRequest
+	(*GetTopologyResponse)(nil),         // 32: whalescale.v1.GetTopologyResponse
+	(*APIKey)(nil),                      // 33: whalescale.v1.APIKey
+	(*ListAPIKeysRequest)(nil),          // 34: whalescale.v1.ListAPIKeysRequest
+	(*ListAPIKeysResponse)(nil),         // 35: whalescale.v1.ListAPIKeysResponse
+	(*CreateAPIKeyRequest)(nil),         // 36: whalescale.v1.CreateAPIKeyRequest
+	(*CreateAPIKeyResponse)(nil),        // 37: whalescale.v1.CreateAPIKeyResponse
+	(*ExpireAPIKeyRequest)(nil),         // 38: whalescale.v1.ExpireAPIKeyRequest
+	(*ExpireAPIKeyResponse)(nil),        // 39: whalescale.v1.ExpireAPIKeyResponse
+	(*AdminExposure)(nil),               // 40: whalescale.v1.AdminExposure
+	(*ListExposuresRequest)(nil),        // 41: whalescale.v1.ListExposuresRequest
+	(*ListExposuresResponse)(nil),       // 42: whalescale.v1.ListExposuresResponse
+	(*SetExposureApprovedRequest)(nil),  // 43: whalescale.v1.SetExposureApprovedRequest
+	(*SetExposureApprovedResponse)(nil), // 44: whalescale.v1.SetExposureApprovedResponse
+	(*timestamppb.Timestamp)(nil),       // 45: google.protobuf.Timestamp
+	(*Node)(nil),                        // 46: whalescale.v1.Node
+	(*PathReport)(nil),                  // 47: whalescale.v1.PathReport
 }
 var file_whalescale_v1_admin_proto_depIdxs = []int32{
-	40, // 0: whalescale.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	45, // 0: whalescale.v1.User.created_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: whalescale.v1.ListUsersResponse.users:type_name -> whalescale.v1.User
 	2,  // 2: whalescale.v1.CreateUserResponse.user:type_name -> whalescale.v1.User
-	41, // 3: whalescale.v1.ListNodesResponse.nodes:type_name -> whalescale.v1.Node
-	40, // 4: whalescale.v1.PreAuthKey.expires_at:type_name -> google.protobuf.Timestamp
-	40, // 5: whalescale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
+	46, // 3: whalescale.v1.ListNodesResponse.nodes:type_name -> whalescale.v1.Node
+	45, // 4: whalescale.v1.PreAuthKey.expires_at:type_name -> google.protobuf.Timestamp
+	45, // 5: whalescale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
 	13, // 6: whalescale.v1.ListPreAuthKeysResponse.keys:type_name -> whalescale.v1.PreAuthKey
 	13, // 7: whalescale.v1.CreatePreAuthKeyResponse.key:type_name -> whalescale.v1.PreAuthKey
 	26, // 8: whalescale.v1.ListRoutesResponse.routes:type_name -> whalescale.v1.Route
-	42, // 9: whalescale.v1.GetTopologyResponse.paths:type_name -> whalescale.v1.PathReport
-	40, // 10: whalescale.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
-	40, // 11: whalescale.v1.APIKey.expires_at:type_name -> google.protobuf.Timestamp
-	40, // 12: whalescale.v1.APIKey.last_used:type_name -> google.protobuf.Timestamp
+	47, // 9: whalescale.v1.GetTopologyResponse.paths:type_name -> whalescale.v1.PathReport
+	45, // 10: whalescale.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
+	45, // 11: whalescale.v1.APIKey.expires_at:type_name -> google.protobuf.Timestamp
+	45, // 12: whalescale.v1.APIKey.last_used:type_name -> google.protobuf.Timestamp
 	33, // 13: whalescale.v1.ListAPIKeysResponse.keys:type_name -> whalescale.v1.APIKey
 	33, // 14: whalescale.v1.CreateAPIKeyResponse.key:type_name -> whalescale.v1.APIKey
-	0,  // 15: whalescale.v1.AdminService.WhoAmI:input_type -> whalescale.v1.WhoAmIRequest
-	3,  // 16: whalescale.v1.AdminService.ListUsers:input_type -> whalescale.v1.ListUsersRequest
-	5,  // 17: whalescale.v1.AdminService.CreateUser:input_type -> whalescale.v1.CreateUserRequest
-	7,  // 18: whalescale.v1.AdminService.DeleteUser:input_type -> whalescale.v1.DeleteUserRequest
-	9,  // 19: whalescale.v1.AdminService.ListNodes:input_type -> whalescale.v1.ListNodesRequest
-	11, // 20: whalescale.v1.AdminService.DeleteNode:input_type -> whalescale.v1.DeleteNodeRequest
-	14, // 21: whalescale.v1.AdminService.ListPreAuthKeys:input_type -> whalescale.v1.ListPreAuthKeysRequest
-	16, // 22: whalescale.v1.AdminService.CreatePreAuthKey:input_type -> whalescale.v1.CreatePreAuthKeyRequest
-	18, // 23: whalescale.v1.AdminService.ExpirePreAuthKey:input_type -> whalescale.v1.ExpirePreAuthKeyRequest
-	20, // 24: whalescale.v1.AdminService.GetPolicy:input_type -> whalescale.v1.GetPolicyRequest
-	22, // 25: whalescale.v1.AdminService.CheckPolicy:input_type -> whalescale.v1.CheckPolicyRequest
-	24, // 26: whalescale.v1.AdminService.SetPolicy:input_type -> whalescale.v1.SetPolicyRequest
-	27, // 27: whalescale.v1.AdminService.ListRoutes:input_type -> whalescale.v1.ListRoutesRequest
-	29, // 28: whalescale.v1.AdminService.SetRouteApproved:input_type -> whalescale.v1.SetRouteApprovedRequest
-	31, // 29: whalescale.v1.AdminService.GetTopology:input_type -> whalescale.v1.GetTopologyRequest
-	34, // 30: whalescale.v1.AdminService.ListAPIKeys:input_type -> whalescale.v1.ListAPIKeysRequest
-	36, // 31: whalescale.v1.AdminService.CreateAPIKey:input_type -> whalescale.v1.CreateAPIKeyRequest
-	38, // 32: whalescale.v1.AdminService.ExpireAPIKey:input_type -> whalescale.v1.ExpireAPIKeyRequest
-	1,  // 33: whalescale.v1.AdminService.WhoAmI:output_type -> whalescale.v1.WhoAmIResponse
-	4,  // 34: whalescale.v1.AdminService.ListUsers:output_type -> whalescale.v1.ListUsersResponse
-	6,  // 35: whalescale.v1.AdminService.CreateUser:output_type -> whalescale.v1.CreateUserResponse
-	8,  // 36: whalescale.v1.AdminService.DeleteUser:output_type -> whalescale.v1.DeleteUserResponse
-	10, // 37: whalescale.v1.AdminService.ListNodes:output_type -> whalescale.v1.ListNodesResponse
-	12, // 38: whalescale.v1.AdminService.DeleteNode:output_type -> whalescale.v1.DeleteNodeResponse
-	15, // 39: whalescale.v1.AdminService.ListPreAuthKeys:output_type -> whalescale.v1.ListPreAuthKeysResponse
-	17, // 40: whalescale.v1.AdminService.CreatePreAuthKey:output_type -> whalescale.v1.CreatePreAuthKeyResponse
-	19, // 41: whalescale.v1.AdminService.ExpirePreAuthKey:output_type -> whalescale.v1.ExpirePreAuthKeyResponse
-	21, // 42: whalescale.v1.AdminService.GetPolicy:output_type -> whalescale.v1.GetPolicyResponse
-	23, // 43: whalescale.v1.AdminService.CheckPolicy:output_type -> whalescale.v1.CheckPolicyResponse
-	25, // 44: whalescale.v1.AdminService.SetPolicy:output_type -> whalescale.v1.SetPolicyResponse
-	28, // 45: whalescale.v1.AdminService.ListRoutes:output_type -> whalescale.v1.ListRoutesResponse
-	30, // 46: whalescale.v1.AdminService.SetRouteApproved:output_type -> whalescale.v1.SetRouteApprovedResponse
-	32, // 47: whalescale.v1.AdminService.GetTopology:output_type -> whalescale.v1.GetTopologyResponse
-	35, // 48: whalescale.v1.AdminService.ListAPIKeys:output_type -> whalescale.v1.ListAPIKeysResponse
-	37, // 49: whalescale.v1.AdminService.CreateAPIKey:output_type -> whalescale.v1.CreateAPIKeyResponse
-	39, // 50: whalescale.v1.AdminService.ExpireAPIKey:output_type -> whalescale.v1.ExpireAPIKeyResponse
-	33, // [33:51] is the sub-list for method output_type
-	15, // [15:33] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	40, // 15: whalescale.v1.ListExposuresResponse.exposures:type_name -> whalescale.v1.AdminExposure
+	0,  // 16: whalescale.v1.AdminService.WhoAmI:input_type -> whalescale.v1.WhoAmIRequest
+	3,  // 17: whalescale.v1.AdminService.ListUsers:input_type -> whalescale.v1.ListUsersRequest
+	5,  // 18: whalescale.v1.AdminService.CreateUser:input_type -> whalescale.v1.CreateUserRequest
+	7,  // 19: whalescale.v1.AdminService.DeleteUser:input_type -> whalescale.v1.DeleteUserRequest
+	9,  // 20: whalescale.v1.AdminService.ListNodes:input_type -> whalescale.v1.ListNodesRequest
+	11, // 21: whalescale.v1.AdminService.DeleteNode:input_type -> whalescale.v1.DeleteNodeRequest
+	14, // 22: whalescale.v1.AdminService.ListPreAuthKeys:input_type -> whalescale.v1.ListPreAuthKeysRequest
+	16, // 23: whalescale.v1.AdminService.CreatePreAuthKey:input_type -> whalescale.v1.CreatePreAuthKeyRequest
+	18, // 24: whalescale.v1.AdminService.ExpirePreAuthKey:input_type -> whalescale.v1.ExpirePreAuthKeyRequest
+	20, // 25: whalescale.v1.AdminService.GetPolicy:input_type -> whalescale.v1.GetPolicyRequest
+	22, // 26: whalescale.v1.AdminService.CheckPolicy:input_type -> whalescale.v1.CheckPolicyRequest
+	24, // 27: whalescale.v1.AdminService.SetPolicy:input_type -> whalescale.v1.SetPolicyRequest
+	27, // 28: whalescale.v1.AdminService.ListRoutes:input_type -> whalescale.v1.ListRoutesRequest
+	29, // 29: whalescale.v1.AdminService.SetRouteApproved:input_type -> whalescale.v1.SetRouteApprovedRequest
+	31, // 30: whalescale.v1.AdminService.GetTopology:input_type -> whalescale.v1.GetTopologyRequest
+	41, // 31: whalescale.v1.AdminService.ListExposures:input_type -> whalescale.v1.ListExposuresRequest
+	43, // 32: whalescale.v1.AdminService.SetExposureApproved:input_type -> whalescale.v1.SetExposureApprovedRequest
+	34, // 33: whalescale.v1.AdminService.ListAPIKeys:input_type -> whalescale.v1.ListAPIKeysRequest
+	36, // 34: whalescale.v1.AdminService.CreateAPIKey:input_type -> whalescale.v1.CreateAPIKeyRequest
+	38, // 35: whalescale.v1.AdminService.ExpireAPIKey:input_type -> whalescale.v1.ExpireAPIKeyRequest
+	1,  // 36: whalescale.v1.AdminService.WhoAmI:output_type -> whalescale.v1.WhoAmIResponse
+	4,  // 37: whalescale.v1.AdminService.ListUsers:output_type -> whalescale.v1.ListUsersResponse
+	6,  // 38: whalescale.v1.AdminService.CreateUser:output_type -> whalescale.v1.CreateUserResponse
+	8,  // 39: whalescale.v1.AdminService.DeleteUser:output_type -> whalescale.v1.DeleteUserResponse
+	10, // 40: whalescale.v1.AdminService.ListNodes:output_type -> whalescale.v1.ListNodesResponse
+	12, // 41: whalescale.v1.AdminService.DeleteNode:output_type -> whalescale.v1.DeleteNodeResponse
+	15, // 42: whalescale.v1.AdminService.ListPreAuthKeys:output_type -> whalescale.v1.ListPreAuthKeysResponse
+	17, // 43: whalescale.v1.AdminService.CreatePreAuthKey:output_type -> whalescale.v1.CreatePreAuthKeyResponse
+	19, // 44: whalescale.v1.AdminService.ExpirePreAuthKey:output_type -> whalescale.v1.ExpirePreAuthKeyResponse
+	21, // 45: whalescale.v1.AdminService.GetPolicy:output_type -> whalescale.v1.GetPolicyResponse
+	23, // 46: whalescale.v1.AdminService.CheckPolicy:output_type -> whalescale.v1.CheckPolicyResponse
+	25, // 47: whalescale.v1.AdminService.SetPolicy:output_type -> whalescale.v1.SetPolicyResponse
+	28, // 48: whalescale.v1.AdminService.ListRoutes:output_type -> whalescale.v1.ListRoutesResponse
+	30, // 49: whalescale.v1.AdminService.SetRouteApproved:output_type -> whalescale.v1.SetRouteApprovedResponse
+	32, // 50: whalescale.v1.AdminService.GetTopology:output_type -> whalescale.v1.GetTopologyResponse
+	42, // 51: whalescale.v1.AdminService.ListExposures:output_type -> whalescale.v1.ListExposuresResponse
+	44, // 52: whalescale.v1.AdminService.SetExposureApproved:output_type -> whalescale.v1.SetExposureApprovedResponse
+	35, // 53: whalescale.v1.AdminService.ListAPIKeys:output_type -> whalescale.v1.ListAPIKeysResponse
+	37, // 54: whalescale.v1.AdminService.CreateAPIKey:output_type -> whalescale.v1.CreateAPIKeyResponse
+	39, // 55: whalescale.v1.AdminService.ExpireAPIKey:output_type -> whalescale.v1.ExpireAPIKeyResponse
+	36, // [36:56] is the sub-list for method output_type
+	16, // [16:36] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_whalescale_v1_admin_proto_init() }
@@ -2222,7 +2529,7 @@ func file_whalescale_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_whalescale_v1_admin_proto_rawDesc), len(file_whalescale_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   40,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

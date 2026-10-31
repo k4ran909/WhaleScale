@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -35,6 +36,12 @@ type Config struct {
 	PublicURL string
 	// OIDC reports whether browser login is configured.
 	OIDC bool
+	// GatewayDomain enables the gateway: exposures are published at
+	// https://<name>.<GatewayDomain>. GatewayURL is the tunnel endpoint.
+	GatewayDomain string
+	GatewayURL    string
+	// GatewayConnected reports whether a node holds a gateway tunnel.
+	GatewayConnected func(nodeID uint64) bool
 }
 
 type Service struct {
@@ -54,6 +61,7 @@ type Service struct {
 	online  map[uint64]int
 	paths   map[uint64]pathSet // node ID -> latest report
 	pending map[string]*pendingReg
+	taken   map[uint64][]string // exposure names a node asked for but another holds
 
 	stats Stats
 }
@@ -87,7 +95,7 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 	}
 	svc := &Service{store: s, log: log, cfg: cfg, policy: policy.AllowAll(), policySource: "default",
 		subs: map[uint64]map[chan struct{}]bool{}, online: map[uint64]int{},
-		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}}
+		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{}}
 	svc.version.Store(1)
 	return svc
 }
@@ -321,6 +329,10 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	exposures, err := parseExposures(m.Exposures)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	changed, err := s.store.UpdateNodeInfo(ctx, self.ID, store.NodeInfo{
 		NodeKey: m.NodeKey, DiscoKey: m.DiscoKey, Endpoints: m.Endpoints, OS: truncate(m.Os, 32),
 	})
@@ -331,6 +343,21 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 			s.log.Info("node routes changed", "name", self.Name, "advertised", routes)
 		}
 		changed = changed || rc
+	}
+	if err == nil {
+		var ec bool
+		var taken []string
+		ec, taken, err = s.store.SetExposures(ctx, self.ID, exposures)
+		if ec {
+			s.log.Info("node exposures changed", "name", self.Name, "count", len(exposures))
+		}
+		if len(taken) > 0 {
+			s.log.Warn("exposure names already taken", "name", self.Name, "taken", taken)
+		}
+		s.mu.Lock()
+		s.taken[self.ID] = taken
+		s.mu.Unlock()
+		changed = changed || ec
 	}
 	if errors.Is(err, store.ErrAlreadyExists) {
 		return nil, connect.NewError(connect.CodeAlreadyExists, err)
@@ -470,6 +497,9 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 		}
 		nm.PacketFilter = append(nm.PacketFilter, fr)
 	}
+	if err := s.addExposures(ctx, nm, selfID); err != nil {
+		s.log.Error("list exposures", "err", err)
+	}
 	return nm, nil
 }
 
@@ -499,6 +529,63 @@ func (s *Service) authenticate(ctx context.Context, header string) (*store.Node,
 }
 
 var meshRange4 = netip.MustParsePrefix("100.64.0.0/10")
+
+func parseExposures(in []*v1.Exposure) ([]store.ExposureRequest, error) {
+	if len(in) > 32 {
+		return nil, errors.New("too many exposures")
+	}
+	var out []store.ExposureRequest
+	for _, e := range in {
+		if !store.ValidExposureName(e.Name) {
+			return nil, fmt.Errorf("exposure name %q must be a DNS label (lowercase letters, digits, '-')", e.Name)
+		}
+		if e.Port == 0 || e.Port > 65535 {
+			return nil, fmt.Errorf("exposure %q: bad port %d", e.Name, e.Port)
+		}
+		out = append(out, store.ExposureRequest{Name: e.Name, Port: uint16(e.Port)})
+	}
+	return out, nil
+}
+
+// exposureURL is an exposure's public address, or "" without a gateway.
+func (s *Service) exposureURL(name string) string {
+	if s.cfg.GatewayDomain == "" {
+		return ""
+	}
+	return "https://" + name + "." + s.cfg.GatewayDomain
+}
+
+// addExposures puts the node's exposures, and why any aren't live, into
+// its network map.
+func (s *Service) addExposures(ctx context.Context, nm *v1.NetworkMap, selfID uint64) error {
+	list, err := s.store.NodeExposures(ctx, selfID)
+	if err != nil {
+		return err
+	}
+	if s.cfg.GatewayDomain != "" {
+		nm.GatewayUrl = s.cfg.GatewayURL
+	}
+	for _, e := range list {
+		if !e.Advertised {
+			continue
+		}
+		x := &v1.Exposure{Name: e.Name, Port: uint32(e.Port), Approved: e.Approved, Url: s.exposureURL(e.Name)}
+		switch {
+		case s.cfg.GatewayDomain == "":
+			x.Problem = "the server has no gateway domain configured"
+		case !e.Approved:
+			x.Problem = "waiting for an admin to approve it"
+		}
+		nm.Exposures = append(nm.Exposures, x)
+	}
+	s.mu.Lock()
+	taken := s.taken[selfID]
+	s.mu.Unlock()
+	for _, name := range taken {
+		nm.Exposures = append(nm.Exposures, &v1.Exposure{Name: name, Problem: "name taken by another machine"})
+	}
+	return nil
+}
 
 // parseAdvertised validates routes a node offers. Routes into the mesh's own
 // ranges would loop traffic back into the tunnel, so they are refused.

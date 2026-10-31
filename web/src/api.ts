@@ -78,6 +78,16 @@ export interface Route {
   exitNode?: boolean;
 }
 
+export interface Exposure {
+  nodeId: string;
+  nodeName: string;
+  name: string;
+  port: number;
+  approved?: boolean;
+  url?: string;
+  connected?: boolean;
+}
+
 export interface PathReport {
   fromNode: string;
   toNode: string;
@@ -108,6 +118,13 @@ export const api = {
   setRouteApproved: (nodeId: string, prefix: string, approved: boolean) =>
     call("SetRouteApproved", { nodeId, prefix, approved }),
   topology: () => call<{ paths?: PathReport[] }>("GetTopology").then((r) => r.paths ?? []),
+  listExposures: () =>
+    call<{ exposures?: Exposure[]; gatewayDomain?: string }>("ListExposures").then((r) => ({
+      exposures: r.exposures ?? [],
+      domain: r.gatewayDomain ?? "",
+    })),
+  setExposureApproved: (nodeId: string, name: string, approved: boolean) =>
+    call("SetExposureApproved", { nodeId, name, approved }),
 };
 
 export async function loginWithAPIKey(key: string) {

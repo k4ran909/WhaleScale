@@ -263,6 +263,46 @@ func cmdRoutes(args []string) error {
 	return nil
 }
 
+func cmdExposures(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: whalescale exposures list | approve NAME | unapprove NAME")
+	}
+	fs, db := adminFlags("exposures " + args[0])
+	st, err := openStore(fs, db, args[1:])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	switch args[0] {
+	case "list":
+		list, err := st.ListExposures(ctx)
+		if err != nil {
+			return err
+		}
+		tw := table("NAME\tNODE\tLOCAL PORT\tADVERTISED\tAPPROVED")
+		for _, e := range list {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%v\t%v\n", e.Name, e.NodeName, e.Port, e.Advertised, e.Approved)
+		}
+		tw.Flush()
+	case "approve", "unapprove":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: whalescale exposures %s NAME", args[0])
+		}
+		e, err := st.ExposureByName(ctx, fs.Arg(0))
+		if err != nil {
+			return fmt.Errorf("no exposure named %q", fs.Arg(0))
+		}
+		if err := st.SetExposureApproved(ctx, e.NodeID, e.Name, args[0] == "approve"); err != nil {
+			return err
+		}
+		fmt.Printf("%sd %s (port %d on %s); running servers pick this up within 5s\n", args[0], e.Name, e.Port, e.NodeName)
+	default:
+		return fmt.Errorf("unknown exposures subcommand %q", args[0])
+	}
+	return nil
+}
+
 // nodeID accepts a node ID or name.
 func nodeID(ctx context.Context, st *store.Store, s string) (uint64, error) {
 	if id, err := strconv.ParseUint(s, 10, 64); err == nil {

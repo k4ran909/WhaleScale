@@ -337,6 +337,44 @@ func (a *Admin) GetTopology(ctx context.Context, req *connect.Request[v1.GetTopo
 	return connect.NewResponse(&v1.GetTopologyResponse{Paths: a.svc.Topology()}), nil
 }
 
+// --- gateway ---
+
+func (a *Admin) ListExposures(ctx context.Context, req *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	list, err := a.svc.store.ListExposures(ctx)
+	if err != nil {
+		return nil, internal(a, "list exposures", err)
+	}
+	resp := &v1.ListExposuresResponse{GatewayDomain: a.svc.cfg.GatewayDomain}
+	for _, e := range list {
+		if !e.Advertised {
+			continue
+		}
+		x := &v1.AdminExposure{NodeId: e.NodeID, NodeName: e.NodeName, Name: e.Name, Port: uint32(e.Port),
+			Approved: e.Approved, Url: a.svc.exposureURL(e.Name)}
+		if a.svc.cfg.GatewayConnected != nil {
+			x.Connected = a.svc.cfg.GatewayConnected(e.NodeID)
+		}
+		resp.Exposures = append(resp.Exposures, x)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error) {
+	id, err := a.auth(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	if err := a.svc.store.SetExposureApproved(ctx, req.Msg.NodeId, req.Msg.Name, req.Msg.Approved); err != nil {
+		return nil, notFoundOr(a, "approve exposure", err)
+	}
+	a.audit(id, "exposure approval changed", "node_id", req.Msg.NodeId, "name", req.Msg.Name, "approved", req.Msg.Approved)
+	a.svc.NotifyAll()
+	return connect.NewResponse(&v1.SetExposureApprovedResponse{}), nil
+}
+
 // --- API keys ---
 
 func apiKeyProto(k *store.APIKey) *v1.APIKey {

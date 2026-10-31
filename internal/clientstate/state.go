@@ -36,6 +36,9 @@ type Prefs struct {
 	AcceptRoutes bool `json:"accept_routes,omitempty"`
 	// ExitNode sends all internet traffic through this peer.
 	ExitNode string `json:"exit_node,omitempty"`
+	// Exposures publishes local services (name -> localhost port) at
+	// https://<name>.<gateway domain>.
+	Exposures map[string]uint16 `json:"exposures,omitempty"`
 }
 
 // SystemDir is where a wsd service keeps its state. When it exists, ws and

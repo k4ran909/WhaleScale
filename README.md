@@ -2,7 +2,7 @@
 
 A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite. See [plan.md](plan.md) for the vision and roadmap.
 
-> **Status: Phase 3 in progress.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a system service and `ws up/down`. See [Known gaps](#known-gaps).
+> **Status: Phase 3 in progress.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`. See [Known gaps](#known-gaps).
 
 ## How it fits together
 
@@ -92,6 +92,32 @@ ws status                                 # "exit node: homelab (active)"
   - Switching networks (say, Wi-Fi to Ethernet) is picked up within 10 s.
 - **Policy:** exit traffic must be allowed by the policy. Allow-all covers it; otherwise grant `0.0.0.0/0:*` and `::/0:*` to the users who may use exit nodes.
 
+## Gateway: publish a service on the internet
+
+A self-hosted counterpart to Tailscale Funnel. A machine publishes a local web app at `https://<name>.<gateway domain>`, even from behind CGNAT. No port forwarding is needed.
+
+1. **On the server:** set `gateway-domain: apps.example.com` and add a wildcard DNS record `*.apps.example.com` pointing at the server. For HTTPS, either:
+   - set `tls-acme: true`: the server gets Let's Encrypt certificates itself, and port 443 must be reachable; or
+   - use the Docker Compose setup with `WS_GATEWAY_DOMAIN`: Caddy gets certificates on demand.
+2. **On the machine:**
+
+   ```bash
+   ws expose 8123 --name ha        # publishes http://localhost:8123
+   ws expose                       # shows the public URL and whether it is live
+   ws expose --remove ha
+   ```
+
+3. **Approve it:** in the console (Gateway) or with `whalescale exposures approve ha`. Until then nothing is reachable.
+
+How it works and what keeps it safe:
+
+- The machine keeps one WebSocket to the server and multiplexes requests over it (yamux).
+- Each request names the service, and the machine only ever connects to its own localhost ports that it chose to expose.
+- Certificates are only requested for live names, so strangers can't make the server request certificates for arbitrary hosts.
+- Names are first come, first served across all machines, and changing a published port needs approval again.
+- WebSockets and streaming responses pass through.
+- Apps see the visitor's address in `X-Forwarded-For`. The header is trusted from a reverse proxy on a private network, such as Caddy.
+
 ## Access policy
 
 Without one, every node can reach every other node. Edit it in the console, or point `policy:` at a JSON file (the server reloads it within 5 s; an invalid file keeps the previous policy). Receiving nodes drop anything not allowed. Replies to a node's own connections are always let back in.
@@ -115,7 +141,7 @@ Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destinati
 |---|---|
 | `whalescale configtest` | Validate config; show each value and its source |
 | `whalescale doctor` | End-to-end checks of a running server |
-| `whalescale users / preauthkeys / apikeys / nodes / routes` | Admin from the server host |
+| `whalescale users / preauthkeys / apikeys / nodes / routes / exposures` | Admin from the server host |
 | `whalescale policy check FILE` | Validate and lint a policy file |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic |

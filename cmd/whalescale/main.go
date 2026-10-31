@@ -31,6 +31,7 @@ Usage:
   whalescale apikeys     create [--expiration 2160h] | list | expire PREFIX
   whalescale nodes       list [--user NAME] | delete ID
   whalescale routes      list | approve NODE PREFIX | unapprove NODE PREFIX
+  whalescale exposures   list | approve NAME | unapprove NAME
   whalescale policy      check FILE
   whalescale migrate     apply pending database migrations and exit
   whalescale version
@@ -69,6 +70,8 @@ func main() {
 		err = cmdNodes(args)
 	case "routes":
 		err = cmdRoutes(args)
+	case "exposures":
+		err = cmdExposures(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "migrate":
@@ -94,13 +97,20 @@ func adminFlags(name string) (*flag.FlagSet, *string) {
 	return fs, db
 }
 
-// configuredDB reads 'db' from the server configuration without failing
-// admin commands on unrelated config problems.
+// configuredDB reads 'db' from the server configuration (file, conf.d,
+// environment), the same place 'serve' gets it.
+//
+// A broken configuration (a missing --config/WHALESCALE_CONFIG file, a
+// typo'd key) is fatal: silently falling back to ./whalescale.db would
+// make admin commands change the wrong database.
 func configuredDB() string {
-	if opts, _, err := loadServeConfig(nil, true); err == nil {
-		return opts.db
+	opts, _, err := loadServeConfig(nil, true)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: loading configuration:", err)
+		fmt.Fprintln(os.Stderr, "fix the config, or pass --db explicitly with WHALESCALE_CONFIG unset")
+		os.Exit(1)
 	}
-	return "whalescale.db"
+	return opts.db
 }
 
 func openStore(fs *flag.FlagSet, db *string, args []string) (*store.Store, error) {

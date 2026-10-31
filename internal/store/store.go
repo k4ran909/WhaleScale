@@ -566,8 +566,8 @@ func isUniqueErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-// Fingerprint changes whenever nodes are added or removed or routes are
-// advertised or approved, including by admin commands run against the
+// Fingerprint changes whenever nodes are added or removed, or routes or
+// exposures are advertised or approved, including by admin commands run against the
 // database while the server is up.
 func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 	var nodes, idSum, routes int64
@@ -576,7 +576,9 @@ func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 		(SELECT COUNT(*) FROM nodes), (SELECT COALESCE(SUM(id), 0) FROM nodes),
 		(SELECT COUNT(*) FROM routes),
 		(SELECT COALESCE(group_concat(node_id || ':' || prefix || ':' || advertised || approved, ','), '')
-		   FROM (SELECT * FROM routes ORDER BY node_id, prefix))`).Scan(&nodes, &idSum, &routes, &routeSig)
+		   FROM (SELECT * FROM routes ORDER BY node_id, prefix)) ||
+		(SELECT COALESCE(group_concat(node_id || ':' || name || ':' || port || ':' || advertised || approved, ','), '')
+		   FROM (SELECT * FROM exposures ORDER BY name))`).Scan(&nodes, &idSum, &routes, &routeSig)
 	sum := sha256.Sum256([]byte(routeSig))
 	return fmt.Sprintf("%d/%d/%d/%x", nodes, idSum, routes, sum[:8]), err
 }

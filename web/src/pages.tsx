@@ -537,3 +537,94 @@ export function Policy() {
     </Page>
   );
 }
+
+// ---------- Gateway ----------
+
+export function Gateway() {
+  const { data, error, reload } = useLoad(api.listExposures, 10000);
+  const [msg, setMsg] = useState<string>();
+  const exposures = data?.exposures ?? [];
+  const pending = exposures.filter((e) => !e.approved).length;
+  return (
+    <Page
+      title="Gateway"
+      lead="Machines can publish a local web service on the internet with automatic HTTPS. Nothing goes live until you approve it."
+    >
+      {error && <Banner kind="error">{error}</Banner>}
+      {msg && <Banner kind="error">{msg}</Banner>}
+      {data && !data.domain && (
+        <Banner kind="warn">
+          The gateway is off. Set <code>gateway-domain</code> (e.g. <code>apps.example.com</code>) in the server config and add a
+          wildcard DNS record <code>*.apps.example.com</code> pointing at the server.
+        </Banner>
+      )}
+      {pending > 0 && <Banner kind="warn">{pending} service(s) waiting for approval.</Banner>}
+      {data && exposures.length === 0 ? (
+        <Empty>
+          Nothing published. On a machine, run <code>ws expose 8123 --name ha</code> to publish <code>http://localhost:8123</code>
+          {data.domain ? (
+            <>
+              {" "}at <code>https://ha.{data.domain}</code>
+            </>
+          ) : null}
+          .
+        </Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Public address</th>
+                <th>Machine</th>
+                <th>Local port</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {exposures.map((e) => (
+                <tr key={e.nodeId + e.name}>
+                  <td>
+                    {e.approved && e.url ? (
+                      <a href={e.url} target="_blank" rel="noreferrer noopener" className="mono">
+                        {e.url}
+                      </a>
+                    ) : (
+                      <span className="mono">{e.url || e.name}</span>
+                    )}
+                  </td>
+                  <td>
+                    <Dot on={e.connected} />
+                    {e.nodeName}
+                  </td>
+                  <td className="mono">{e.port}</td>
+                  <td>
+                    {!e.approved ? (
+                      <span className="warn-text">Pending</span>
+                    ) : e.connected ? (
+                      <span className="ok-text">Live</span>
+                    ) : (
+                      <span className="muted">Approved, machine offline</span>
+                    )}
+                  </td>
+                  <td className="right">
+                    <button
+                      className={e.approved ? "btn ghost" : "btn primary"}
+                      onClick={() => api.setExposureApproved(e.nodeId, e.name, !e.approved).then(reload, (err) => setMsg(errText(err)))}
+                    >
+                      {e.approved ? "Take offline" : "Approve"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted small">
+        Approved services are reachable by anyone on the internet. Publish only apps with their own login, or keep them on the
+        mesh instead.
+      </p>
+    </Page>
+  );
+}

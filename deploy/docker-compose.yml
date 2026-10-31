@@ -2,6 +2,9 @@
 #
 #   1. Point a DNS name at this host, open TCP 80/443 and UDP 3478-3479.
 #   2. echo "WS_DOMAIN=ws.example.com" > .env
+#      Optional gateway (publish machines' services on the internet):
+#      add a wildcard record *.apps.example.com -> this host, then
+#      echo "WS_GATEWAY_DOMAIN=apps.example.com" >> .env
 #   3. docker compose up -d
 #   4. docker compose exec whalescale whalescale users create you
 #      docker compose exec whalescale whalescale apikeys create      # console sign-in
@@ -13,6 +16,7 @@ services:
     restart: unless-stopped
     environment:
       WHALESCALE_PUBLIC_URL: https://${WS_DOMAIN:?set WS_DOMAIN in .env}
+      WHALESCALE_GATEWAY_DOMAIN: ${WS_GATEWAY_DOMAIN:-}
       # Optional browser login with any OpenID Connect provider:
       # WHALESCALE_OIDC_ISSUER: https://auth.example.com/application/o/whalescale/
       # WHALESCALE_OIDC_CLIENT_ID: whalescale
@@ -30,11 +34,11 @@ services:
     restart: unless-stopped
     environment:
       WS_DOMAIN: ${WS_DOMAIN}
-    command: caddy reverse-proxy --from ${WS_DOMAIN} --to whalescale:8080
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
 volumes:

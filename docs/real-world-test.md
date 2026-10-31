@@ -163,7 +163,22 @@ curl.exe https://ifconfig.me
 - [ ] Switch the PC from Wi-Fi to Ethernet (or tethering): the tunnel recovers within ~10 s
 - [ ] `ws up --exit-node=` (empty): traffic goes direct again, `route print` has no `0.0.0.0/1` routes
 
-## 9. Service lifecycle
+## 9. Gateway
+
+On the VPS, set `gateway-domain: apps.example.com` (Docker: `WS_GATEWAY_DOMAIN` in `.env`) and add a DNS record `*.apps.example.com` pointing at the VPS. Then on a machine running some local web app (or `python -m http.server 8000`):
+
+```bash
+ws expose 8000 --name test
+whalescale exposures approve test     # on the server, or approve in the console
+```
+
+- [ ] `whalescale doctor` shows "gateway: *.apps.example.com resolves to this server"
+- [ ] `https://test.apps.example.com` loads from a phone on mobile data, with a valid certificate
+- [ ] Before approval it answers 404, and no certificate is requested
+- [ ] A WebSocket app (e.g. Home Assistant) works through it
+- [ ] "Take offline" in the console makes it 404 within seconds
+
+## 10. Service lifecycle
 
 - [ ] Reboot each machine: the tunnel comes back up on its own
 - [ ] `ws down`: peers show it offline within ~30 s; `ws up` brings it back

@@ -3,6 +3,7 @@ package engine
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -13,11 +14,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/coder/websocket"
 
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
@@ -35,6 +38,10 @@ type testNet struct {
 }
 
 func newTestNet(t *testing.T, policyJSON string) *testNet {
+	return newTestNetGateway(t, policyJSON, "")
+}
+
+func newTestNetGateway(t *testing.T, policyJSON, gatewayDomain string) *testNet {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -72,6 +79,7 @@ func newTestNet(t *testing.T, policyJSON string) *testNet {
 	t.Cleanup(hs.Close)
 	srv, err := server.New(st, server.Config{
 		PublicURL: hs.URL, STUN: []string{stunPC.LocalAddr().String()}, PolicyFile: policyFile, Log: log,
+		GatewayDomain: gatewayDomain,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -403,5 +411,119 @@ func TestExitNode(t *testing.T) {
 	lost.mu.Unlock()
 	if strings.Contains(other, "0.0.0.0/0") {
 		t.Fatal("a node that did not choose gw routes through it")
+	}
+}
+
+func TestGateway(t *testing.T) {
+	// A local service on the node: echoes what it saw.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ws" {
+			c, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer c.CloseNow()
+			typ, msg, err := c.Read(r.Context())
+			if err == nil {
+				c.Write(r.Context(), typ, append([]byte("echo: "), msg...))
+			}
+			return
+		}
+		fmt.Fprintf(w, "hello %s %s xff=%s", r.Host, r.URL.Path, r.Header.Get("X-Forwarded-For"))
+	}))
+	defer backend.Close()
+	_, portStr, _ := net.SplitHostPort(backend.Listener.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	n := newTestNetGateway(t, "", "apps.test")
+	n.nodeWith("nas", Options{Exposures: map[string]uint16{"ha": uint16(port)}})
+
+	get := func(host, path string) (int, string) {
+		req, _ := http.NewRequest("GET", n.url+path, nil)
+		req.Host = host
+		resp, err := httpClientForTest().Do(req)
+		if err != nil {
+			return 0, err.Error()
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+
+	// Wait for the exposure to reach the server; it isn't live yet.
+	ctx := context.Background()
+	var nasID uint64
+	deadline := time.Now().Add(10 * time.Second)
+	for nasID == 0 {
+		if e, err := n.store.ExposureByName(ctx, "ha"); err == nil && e.Advertised && e.NodeName == "nas" {
+			nasID = e.NodeID
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("exposure never advertised")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	// Names are first come, first served: a second machine asking for the
+	// same one is refused (checked at the end).
+	other := n.nodeWith("other", Options{Exposures: map[string]uint16{"ha": 9999}})
+	if code, _ := get("ha.apps.test", "/"); code != http.StatusNotFound {
+		t.Fatalf("unapproved exposure answered %d", code)
+	}
+	if code, _ := get(strings.TrimPrefix(n.url, "http://"), "/gateway/ask?domain=ha.apps.test"); code != http.StatusNotFound {
+		t.Fatalf("ask approved an unapproved name: %d", code)
+	}
+
+	if err := n.store.SetExposureApproved(ctx, nasID, "ha", true); err != nil {
+		t.Fatal(err)
+	}
+	var code int
+	var body string
+	deadline = time.Now().Add(15 * time.Second)
+	for {
+		code, body = get("ha.apps.test", "/lights")
+		if code == http.StatusOK || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if code != http.StatusOK || !strings.HasPrefix(body, "hello ha.apps.test /lights xff=") || strings.HasSuffix(body, "xff=") {
+		t.Fatalf("published service: %d %q", code, body)
+	}
+	// WebSockets (used by Home Assistant and many dashboards) pass through.
+	wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
+	defer wcancel()
+	wc, _, err := websocket.Dial(wctx, "ws"+strings.TrimPrefix(n.url, "http")+"/ws", &websocket.DialOptions{Host: "ha.apps.test"})
+	if err != nil {
+		t.Fatalf("websocket through the gateway: %v", err)
+	}
+	wc.Write(wctx, websocket.MessageText, []byte("ping"))
+	if _, msg, err := wc.Read(wctx); err != nil || string(msg) != "echo: ping" {
+		t.Fatalf("websocket echo = %q, %v", msg, err)
+	}
+	wc.Close(websocket.StatusNormalClosure, "")
+
+	if code, _ := get(strings.TrimPrefix(n.url, "http://"), "/gateway/ask?domain=ha.apps.test"); code != http.StatusOK {
+		t.Fatalf("ask refused a live name: %d", code)
+	}
+	if code, _ := get("nothing.apps.test", "/"); code != http.StatusNotFound {
+		t.Fatalf("unknown name answered %d", code)
+	}
+
+	// The second machine asked for the same name: it is told why it can't.
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		var problem string
+		for _, x := range other.Status().Exposures {
+			if x.Name == "ha" {
+				problem = x.Problem
+			}
+		}
+		if strings.Contains(problem, "taken") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no 'taken' problem reported: %+v", other.Status().Exposures)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

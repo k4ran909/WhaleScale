@@ -18,6 +18,7 @@ import (
 
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/control"
+	"github.com/k4ran909/whalescale/internal/gateway"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/relay"
 	"github.com/k4ran909/whalescale/internal/store"
@@ -33,6 +34,9 @@ type Config struct {
 	DNSSuffix  string
 	PolicyFile string
 	OIDC       *OIDCConfig
+	// GatewayDomain enables the gateway: <name>.<GatewayDomain> must resolve
+	// to this server (a wildcard DNS record).
+	GatewayDomain string
 	// Console is the built web console (web/dist). Nil disables it.
 	Console fs.FS
 	Log     *slog.Logger
@@ -45,6 +49,7 @@ type Server struct {
 	admin   *control.Admin
 	relay   *relay.Server
 	auth    *auth
+	gateway *gateway.Server
 	log     *slog.Logger
 	started time.Time
 
@@ -60,10 +65,19 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now()}
-	s.control = control.New(st, cfg.Log, control.Config{
+	ccfg := control.Config{
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
 		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil,
-	})
+	}
+	if cfg.GatewayDomain != "" {
+		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, tok string) (*store.Node, error) {
+			return st.NodeByToken(ctx, tok)
+		}, cfg.Log)
+		ccfg.GatewayDomain = s.gateway.Domain()
+		ccfg.GatewayURL = strings.TrimSuffix(relayURL, "/relay") + "/gateway"
+		ccfg.GatewayConnected = s.gateway.Connected
+	}
+	s.control = control.New(st, cfg.Log, ccfg)
 	s.admin = control.NewAdmin(s.control)
 	s.relay = relay.NewServer(s.control.RelayAuth, cfg.Log)
 	if s.auth, err = newAuth(context.Background(), s, cfg.OIDC); err != nil {
@@ -102,6 +116,10 @@ func (s *Server) Handler() http.Handler {
 	apath, ah := whalescalev1connect.NewAdminServiceHandler(s.admin)
 	mux.Handle(apath, ah)
 	mux.Handle("/relay", longLived(s.relay))
+	if s.gateway != nil {
+		mux.Handle("/gateway", longLived(s.gateway.TunnelHandler()))
+		mux.Handle("GET /gateway/ask", s.gateway.AskHandler())
+	}
 	s.auth.routes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.store.SchemaVersion(r.Context()); err != nil {
@@ -114,7 +132,31 @@ func (s *Server) Handler() http.Handler {
 		// Method-less: "GET /" conflicts with the API prefixes in ServeMux.
 		mux.Handle("/", consoleHandler(s.cfg.Console))
 	}
-	return mux
+	if s.gateway == nil {
+		return mux
+	}
+	// Requests for <name>.<gateway domain> are public traffic for a node;
+	// everything else is the server itself.
+	public := longLived(s.gateway)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := s.gateway.Match(r.Host); ok {
+			public.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+}
+
+// AllowTLSHost decides which names automatic TLS may get certificates for:
+// the server's own host and live gateway exposures.
+func (s *Server) AllowTLSHost(ctx context.Context, host string) error {
+	if u, err := url.Parse(s.cfg.PublicURL); err == nil && strings.EqualFold(host, u.Hostname()) {
+		return nil
+	}
+	if s.gateway != nil {
+		return s.gateway.AllowHost(ctx, host)
+	}
+	return fmt.Errorf("host %q is not served here", host)
 }
 
 // consoleHandler serves the single-page console, falling back to

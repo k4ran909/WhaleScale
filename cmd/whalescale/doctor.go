@@ -123,6 +123,24 @@ func cmdDoctor(args []string) error {
 		c.warn("only one STUN port: nodes can't detect symmetric NAT; use stun-listen: \":3478,:3479\"")
 	}
 
+	if o.gatewayDomain != "" {
+		// Any name under the gateway domain must reach this server.
+		probe := "doctor-check." + strings.Trim(o.gatewayDomain, ".")
+		want, err1 := net.LookupHost(pu.Hostname())
+		got, err2 := net.LookupHost(probe)
+		switch {
+		case err2 != nil:
+			c.fail("gateway: %s does not resolve; add a wildcard DNS record *.%s pointing at this server", probe, o.gatewayDomain)
+		case err1 == nil && !overlaps(want, got):
+			c.fail("gateway: *.%s resolves to %v but %s resolves to %v", o.gatewayDomain, got, pu.Hostname(), want)
+		default:
+			c.ok("gateway: *.%s resolves to this server", o.gatewayDomain)
+		}
+		if !o.tlsACME && o.certFile != "" {
+			c.warn("gateway: with tls-cert, the certificate must cover *.%s (or use tls-acme, or Caddy on-demand TLS)", o.gatewayDomain)
+		}
+	}
+
 	if o.oidcIssuer != "" {
 		r, err := hc.Get(strings.TrimRight(o.oidcIssuer, "/") + "/.well-known/openid-configuration")
 		if err != nil || r.StatusCode != http.StatusOK {
@@ -140,6 +158,17 @@ func cmdDoctor(args []string) error {
 		return fmt.Errorf("doctor found %d problem(s)", c.fails)
 	}
 	return nil
+}
+
+func overlaps(a, b []string) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func stunProbe(target string) (netip.AddrPort, error) {

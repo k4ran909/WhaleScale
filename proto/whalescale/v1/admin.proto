@@ -34,6 +34,9 @@ service AdminService {
   // GetTopology returns the paths each online node reports to its peers.
   rpc GetTopology(GetTopologyRequest) returns (GetTopologyResponse);
 
+  rpc ListExposures(ListExposuresRequest) returns (ListExposuresResponse);
+  rpc SetExposureApproved(SetExposureApprovedRequest) returns (SetExposureApprovedResponse);
+
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
@@ -149,3 +152,26 @@ message CreateAPIKeyResponse {
 }
 message ExpireAPIKeyRequest { string prefix = 1; }
 message ExpireAPIKeyResponse {}
+
+message AdminExposure {
+  uint64 node_id = 1;
+  string node_name = 2;
+  string name = 3;
+  uint32 port = 4;
+  bool approved = 5;
+  string url = 6;
+  // True while the node holds a gateway tunnel.
+  bool connected = 7;
+}
+message ListExposuresRequest {}
+message ListExposuresResponse {
+  repeated AdminExposure exposures = 1;
+  // Empty when the gateway is not configured.
+  string gateway_domain = 2;
+}
+message SetExposureApprovedRequest {
+  uint64 node_id = 1;
+  string name = 2;
+  bool approved = 3;
+}
+message SetExposureApprovedResponse {}

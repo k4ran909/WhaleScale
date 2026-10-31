@@ -8,10 +8,17 @@ listen: ":443"
 public-url: https://ws.example.com
 tls-cert: /etc/whalescale/tls/fullchain.pem
 tls-key: /etc/whalescale/tls/privkey.pem
+# Or let the server get certificates itself (port 443 must be reachable):
+# tls-acme: true
+# acme-email: you@example.com
 # Two ports let nodes detect symmetric NAT.
 stun-listen: ":3478,:3479"
 dns-suffix: whale.internal
 metrics-listen: "127.0.0.1:9090"
+
+# Gateway: machines publish services at <name>.<gateway-domain>.
+# Needs a wildcard DNS record *.apps.example.com pointing here.
+# gateway-domain: apps.example.com
 log-level: info
 
 # Without 'policy', the access policy is edited in the web console.

@@ -1,0 +1,21 @@
+# Caddy in front of Whalescale: automatic HTTPS for the server itself and,
+# when WS_GATEWAY_DOMAIN is set, for every published service.
+{
+	# Certificates for gateway names are fetched on first use, but only
+	# for names Whalescale says are live (approved and advertised).
+	on_demand_tls {
+		ask http://whalescale:8080/gateway/ask
+	}
+}
+
+{$WS_DOMAIN} {
+	reverse_proxy whalescale:8080
+}
+
+# Any other name: a published service (<name>.<gateway domain>).
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy whalescale:8080
+}

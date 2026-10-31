@@ -92,6 +92,21 @@ message UpdateNodeRequest {
   // Subnets (and 0.0.0.0/0, ::/0 for an exit node) this node offers.
   // They take effect once an admin approves them.
   repeated string advertised_routes = 5;
+  // Local services this node wants published through the gateway. Only
+  // name and port are read; they go live once an admin approves them.
+  repeated Exposure exposures = 6;
+}
+
+// Exposure is a local HTTP service published at https://<name>.<gateway domain>.
+message Exposure {
+  string name = 1;
+  // Port on the node's localhost.
+  uint32 port = 2;
+  bool approved = 3;
+  // Public URL, set by the server.
+  string url = 4;
+  // Why the exposure isn't live, e.g. "name taken by another machine".
+  string problem = 5;
 }
 
 message UpdateNodeResponse {}
@@ -124,6 +139,10 @@ message NetworkMap {
   repeated FilterRule packet_filter = 6;
   // Monotonic map version, for logging and debugging.
   uint64 version = 7;
+  // This node's exposures and their state.
+  repeated Exposure exposures = 8;
+  // WebSocket URL of the gateway tunnel; empty when the gateway is off.
+  string gateway_url = 9;
 }
 
 message DNSConfig {

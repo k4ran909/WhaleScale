@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -35,6 +36,9 @@ Usage:
             [--exit-node NAME]  send all internet traffic through NAME ("" to stop)
                               start the tunnel (flags you pass replace saved ones)
   ws down                     stop the tunnel; wsd keeps running
+  ws expose PORT --name NAME  publish http://localhost:PORT at https://NAME.<gateway domain>
+  ws expose --remove NAME     stop publishing it
+  ws expose                   list published services
   ws status [--json]          peers and the path to each (direct / relay)
   ws ping [-c N] NAME         disco ping; shows whether the reply came direct or via relay
   ws netcheck [--json]        public address, NAT type, relay reachability
@@ -58,6 +62,8 @@ func main() {
 		err = cmdUp(args)
 	case "down":
 		err = cmdDown(args)
+	case "expose":
+		err = cmdExpose(args)
 	case "status":
 		err = cmdStatus(args)
 	case "ping":
@@ -274,6 +280,95 @@ func cmdUp(args []string) error {
 	return nil
 }
 
+func cmdExpose(args []string) error {
+	fs := flag.NewFlagSet("expose", flag.ExitOnError)
+	name := fs.String("name", "", "public name: the service appears at https://NAME.<gateway domain>")
+	remove := fs.String("remove", "", "stop publishing this name")
+	// Accept "ws expose 8123 --name ha" as well as flags first.
+	var port string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		port, args = args[0], args[1:]
+	}
+	fs.Parse(args)
+	if port == "" && fs.NArg() > 0 {
+		port = fs.Arg(0)
+	}
+
+	_, path, err := loadState()
+	if err != nil {
+		return err
+	}
+	lc := localapi.NewClient(localapi.SocketPath(path))
+	prefs, err := lc.Prefs()
+	if errors.Is(err, localapi.ErrNotRunning) {
+		return errors.New("wsd is not running; start it first")
+	}
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case *remove != "":
+		if _, ok := prefs.Exposures[*remove]; !ok {
+			return fmt.Errorf("%q is not published", *remove)
+		}
+		delete(prefs.Exposures, *remove)
+	case port != "":
+		p, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || p == 0 {
+			return fmt.Errorf("bad port %q", port)
+		}
+		if *name == "" {
+			return errors.New("--name is required, e.g. ws expose 8123 --name ha")
+		}
+		if prefs.Exposures == nil {
+			prefs.Exposures = map[string]uint16{}
+		}
+		prefs.Exposures[strings.ToLower(*name)] = uint16(p)
+	default:
+		s, err := lc.Status()
+		if err != nil {
+			return err
+		}
+		if len(prefs.Exposures) == 0 {
+			fmt.Println("nothing published; try: ws expose 8123 --name ha")
+			return nil
+		}
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "NAME\tLOCAL\tPUBLIC URL\tSTATE")
+		for n, p := range prefs.Exposures {
+			url, state := "-", "starting"
+			for _, x := range s.Exposures {
+				if x.Name == n {
+					if x.Url != "" {
+						url = x.Url
+					}
+					state = "live"
+					if x.Problem != "" {
+						state = x.Problem
+					}
+				}
+			}
+			fmt.Fprintf(tw, "%s\tlocalhost:%d\t%s\t%s\n", n, p, url, state)
+		}
+		tw.Flush()
+		return nil
+	}
+	if prefs.Down {
+		return errors.New("the tunnel is down; run 'ws up' first")
+	}
+	if _, err := lc.Up(prefs); err != nil {
+		return err
+	}
+	if *remove != "" {
+		fmt.Printf("stopped publishing %s\n", *remove)
+	} else {
+		fmt.Printf("publishing localhost:%s as %q; an admin must approve it (console > Gateway, or 'whalescale exposures approve')\n", port, strings.ToLower(*name))
+		fmt.Println("check with: ws expose")
+	}
+	return nil
+}
+
 func cmdDown(args []string) error {
 	_, path, err := loadState()
 	if err != nil {
@@ -359,6 +454,13 @@ func cmdStatus(args []string) error {
 				extra = strings.TrimPrefix(extra+", exit node", ", ")
 			}
 			fmt.Printf("  %s routes %s\n", p.Name, extra)
+		}
+	}
+	for _, x := range s.Exposures {
+		if x.Problem == "" {
+			fmt.Printf("  published: %s -> localhost:%d\n", x.Url, x.Port)
+		} else {
+			fmt.Printf("  published %s (localhost:%d): NOT LIVE: %s\n", x.Name, x.Port, x.Problem)
 		}
 	}
 	if x := s.ExitNode; x != nil {

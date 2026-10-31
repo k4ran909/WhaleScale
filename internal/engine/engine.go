@@ -27,6 +27,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/dnsserver"
 	"github.com/k4ran909/whalescale/internal/filter"
+	"github.com/k4ran909/whalescale/internal/gateway"
 	"github.com/k4ran909/whalescale/internal/key"
 	"github.com/k4ran909/whalescale/internal/meshconn"
 	"github.com/k4ran909/whalescale/internal/osnet"
@@ -63,6 +64,9 @@ type Options struct {
 	// traffic through. Traffic is dropped, not leaked, while it is
 	// unavailable.
 	ExitNode string
+	// Exposures publishes local services (name -> localhost port) through
+	// the server's gateway, once an admin approves them.
+	Exposures map[string]uint16
 	// Testing knobs.
 	IncludeLoopback bool
 	ForceRelay      bool
@@ -97,6 +101,7 @@ type Engine struct {
 	bypass   *osnet.Bypass
 	exitRts  *osnet.ExitRoutes
 	exitStat *ExitStatus
+	gw       *gateway.Client
 	router   *osnet.Router
 	ready    chan struct{}
 	lastErr  string
@@ -245,9 +250,13 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	for _, r := range e.opts.AdvertiseRoutes {
 		routes = append(routes, r.Masked().String())
 	}
+	var exposures []*v1.Exposure
+	for name, port := range e.opts.Exposures {
+		exposures = append(exposures, &v1.Exposure{Name: name, Port: uint32(port)})
+	}
 	req := connect.NewRequest(&v1.UpdateNodeRequest{
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
-		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes,
+		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes, Exposures: exposures,
 	})
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
@@ -373,6 +382,14 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		e.conn.SetRelay(rc)
 		e.wg.Add(1)
 		go func() { defer e.wg.Done(); rc.Run(e.ctx) }()
+	}
+
+	// Gateway tunnel, for published local services.
+	if nm.GatewayUrl != "" && len(e.opts.Exposures) > 0 && e.gw == nil {
+		e.gw = gateway.NewClient(nm.GatewayUrl, e.opts.State.NodeToken, e.hc, e.log)
+		e.gw.SetExposures(e.opts.Exposures)
+		e.wg.Add(1)
+		go func() { defer e.wg.Done(); e.gw.Run(e.ctx) }()
 	}
 
 	// Peers: mesh socket first, so WireGuard's endpoints resolve.
@@ -784,16 +801,17 @@ type PeerStatus struct {
 
 type Status struct {
 	// State is "running", or "stopped" while the tunnel is down.
-	State          string       `json:"state"`
-	Self           *v1.Node     `json:"self"`
-	Peers          []PeerStatus `json:"peers"`
-	RelayURL       string       `json:"relay_url"`
-	RelayConnected bool         `json:"relay_connected"`
-	Endpoints      []string     `json:"endpoints"`
-	Userspace      bool         `json:"userspace"`
-	LastError      string       `json:"last_error,omitempty"`
-	MapVersion     uint64       `json:"map_version"`
-	ExitNode       *ExitStatus  `json:"exit_node,omitempty"`
+	State          string         `json:"state"`
+	Self           *v1.Node       `json:"self"`
+	Peers          []PeerStatus   `json:"peers"`
+	RelayURL       string         `json:"relay_url"`
+	RelayConnected bool           `json:"relay_connected"`
+	Endpoints      []string       `json:"endpoints"`
+	Userspace      bool           `json:"userspace"`
+	LastError      string         `json:"last_error,omitempty"`
+	MapVersion     uint64         `json:"map_version"`
+	ExitNode       *ExitStatus    `json:"exit_node,omitempty"`
+	Exposures      []*v1.Exposure `json:"exposures,omitempty"`
 }
 
 func (e *Engine) Status() Status {
@@ -810,7 +828,7 @@ func (e *Engine) Status() Status {
 	if nm == nil {
 		return st
 	}
-	st.Self, st.MapVersion = nm.Self, nm.Version
+	st.Self, st.MapVersion, st.Exposures = nm.Self, nm.Version, nm.Exposures
 	e.mu.Lock()
 	if e.exitStat != nil {
 		x := *e.exitStat

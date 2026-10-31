@@ -12,10 +12,13 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/k4ran909/whalescale/internal/config"
 	"github.com/k4ran909/whalescale/internal/policy"
@@ -31,7 +34,8 @@ type serveOpts struct {
 	certFile, keyFile, metricsListen, logLevel               string
 	oidcIssuer, oidcClientID, oidcSecret, oidcSecretFile     string
 	oidcAdmins, oidcUsers, oidcDomains                       string
-	console                                                  bool
+	gatewayDomain, acmeEmail, acmeCache                      string
+	console, tlsACME                                         bool
 }
 
 var secretSettings = map[string]bool{"oidc-client-secret": true}
@@ -47,6 +51,10 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.StringVar(&o.policyFile, "policy", "", "policy file (JSON); without it, the policy is edited in the console")
 	fs.StringVar(&o.certFile, "tls-cert", "", "TLS certificate file (PEM)")
 	fs.StringVar(&o.keyFile, "tls-key", "", "TLS private key file (PEM)")
+	fs.BoolVar(&o.tlsACME, "tls-acme", false, "get certificates from Let's Encrypt automatically (needs port 443 reachable from the internet)")
+	fs.StringVar(&o.acmeEmail, "acme-email", "", "contact email for Let's Encrypt (expiry warnings)")
+	fs.StringVar(&o.acmeCache, "acme-cache", "", "directory for ACME certificates (default: 'acme' next to the database)")
+	fs.StringVar(&o.gatewayDomain, "gateway-domain", "", "publish machines' services at <name>.<this domain>; needs a wildcard DNS record pointing here")
 	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
 	fs.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn or error")
 	fs.BoolVar(&o.console, "console", true, "serve the web console")
@@ -80,6 +88,20 @@ func (o *serveOpts) resolve() []error {
 	if (o.certFile == "") != (o.keyFile == "") {
 		errs = append(errs, errors.New("tls-cert and tls-key must be set together"))
 	}
+	if o.tlsACME {
+		if o.certFile != "" {
+			errs = append(errs, errors.New("use either tls-acme or tls-cert/tls-key, not both"))
+		}
+		if o.publicURL == "" {
+			errs = append(errs, errors.New("tls-acme needs public-url (the name to get a certificate for)"))
+		}
+		if o.acmeCache == "" {
+			o.acmeCache = filepath.Join(filepath.Dir(o.db), "acme")
+		}
+	}
+	if d := o.gatewayDomain; d != "" && (strings.Contains(d, "/") || strings.Contains(d, ":") || !strings.Contains(strings.Trim(d, "."), ".")) {
+		errs = append(errs, fmt.Errorf("gateway-domain %q must be a bare domain like apps.example.com", d))
+	}
 	for _, f := range []string{o.certFile, o.keyFile, o.policyFile} {
 		if f != "" {
 			if _, err := os.Stat(f); err != nil {
@@ -93,7 +115,7 @@ func (o *serveOpts) resolve() []error {
 			host = "127.0.0.1" + host
 		}
 		scheme := "http"
-		if o.certFile != "" {
+		if o.certFile != "" || o.tlsACME {
 			scheme = "https"
 		}
 		o.publicURL = scheme + "://" + host
@@ -174,6 +196,8 @@ func cmdConfigtest(args []string) error {
 		"oidc-issuer": o.oidcIssuer, "oidc-client-id": o.oidcClientID, "oidc-client-secret": o.oidcSecret,
 		"oidc-client-secret-file": o.oidcSecretFile, "oidc-admins": o.oidcAdmins,
 		"oidc-allowed-users": o.oidcUsers, "oidc-allowed-domains": o.oidcDomains,
+		"gateway-domain": o.gatewayDomain, "tls-acme": fmt.Sprint(o.tlsACME), "acme-email": o.acmeEmail,
+		"acme-cache": o.acmeCache,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -218,7 +242,7 @@ func cmdServe(args []string) error {
 	}
 	defer st.Close()
 
-	tlsOn := o.certFile != ""
+	tlsOn := o.certFile != "" || o.tlsACME
 	if !tlsOn && !isLoopback(o.listen) && !strings.HasPrefix(o.publicURL, "https://") {
 		log.Warn("serving plain HTTP on a non-loopback address: auth keys and node tokens travel in cleartext. Use --tls-cert/--tls-key or a TLS reverse proxy.")
 	}
@@ -244,7 +268,7 @@ func cmdServe(args []string) error {
 
 	cfg := server.Config{
 		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
-		OIDC: o.oidc(), Log: log,
+		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, Log: log,
 	}
 	if o.console {
 		cfg.Console = web.Dist()
@@ -277,12 +301,22 @@ func cmdServe(args []string) error {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}
+	if o.tlsACME {
+		m := &autocert.Manager{
+			Prompt: autocert.AcceptTOS, Email: o.acmeEmail, Cache: autocert.DirCache(o.acmeCache),
+			// Only our own name and live gateway exposures: strangers can't
+			// make us request certificates for arbitrary hosts.
+			HostPolicy: srv.AllowTLSHost,
+		}
+		hs.TLSConfig = m.TLSConfig()
+	}
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("whalescale listening", "addr", o.listen, "public_url", o.publicURL, "stun", stunAdvertise,
-			"tls", tlsOn, "oidc", o.oidcIssuer != "", "db", o.db, "version", version.Version)
+			"tls", tlsOn, "acme", o.tlsACME, "gateway_domain", o.gatewayDomain, "oidc", o.oidcIssuer != "",
+			"db", o.db, "version", version.Version)
 		if tlsOn {
-			errc <- hs.ListenAndServeTLS(o.certFile, o.keyFile)
+			errc <- hs.ListenAndServeTLS(o.certFile, o.keyFile) // empty with ACME: certs come from TLSConfig
 		} else {
 			errc <- hs.ListenAndServe()
 		}
