@@ -111,7 +111,8 @@ func (s *Server) Handler() http.Handler {
 		fmt.Fprintln(w, "ok")
 	})
 	if s.cfg.Console != nil {
-		mux.Handle("GET /", consoleHandler(s.cfg.Console))
+		// Method-less: "GET /" conflicts with the API prefixes in ServeMux.
+		mux.Handle("/", consoleHandler(s.cfg.Console))
 	}
 	return mux
 }
@@ -121,6 +122,10 @@ func (s *Server) Handler() http.Handler {
 func consoleHandler(dist fs.FS) http.Handler {
 	files := http.FileServerFS(dist)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		h := w.Header()
 		h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -275,4 +280,3 @@ func (s *Server) loadPolicyFile() error {
 	s.log.Info("policy loaded", "file", s.cfg.PolicyFile, "acls", len(p.ACLs))
 	return nil
 }
-

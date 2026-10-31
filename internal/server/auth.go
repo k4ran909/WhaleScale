@@ -278,4 +278,3 @@ func (a *auth) page(w http.ResponseWriter, code int, title, body string) {
 	w.WriteHeader(code)
 	pageTmpl.Execute(w, struct{ Title, Body string }{title, body})
 }
-
