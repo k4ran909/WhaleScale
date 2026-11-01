@@ -105,6 +105,29 @@ message Node {
   bool exit_node = 17;
   // SSH host public key (authorized_keys format), when the node runs SSH.
   string ssh_host_key = 18;
+  // A network lock key's signature over node_key. With the lock on, peers
+  // without a valid one are refused.
+  NodeSignature lock_signature = 19;
+}
+
+// LockState is one version of the network lock's trusted key list. It is
+// signed by a key trusted in the previous version (version 1 by one of its
+// own keys). Nodes remember the newest state they verified and accept only
+// states that follow from it, so the server can't change the list.
+message LockState {
+  uint64 version = 1;
+  // ed25519 public keys.
+  repeated bytes keys = 2;
+  // A disabled lock stops filtering peers; the next version can re-enable it.
+  bool disabled = 3;
+  bytes signer = 4;
+  bytes signature = 5;
+}
+
+// NodeSignature is a lock key's signature over a node's WireGuard key.
+message NodeSignature {
+  bytes signer = 1;
+  bytes signature = 2;
 }
 
 message RegisterRequest {
@@ -239,6 +262,9 @@ message NetworkMap {
   // certificate, hex. Empty when the server offers WebSocket only.
   string quic_relay = 16;
   string quic_relay_cert_sha256 = 17;
+  // Every network lock state, oldest first; empty when the lock was never
+  // turned on.
+  repeated LockState lock_chain = 18;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local

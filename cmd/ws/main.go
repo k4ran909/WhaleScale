@@ -24,6 +24,7 @@ import (
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/localapi"
+	"github.com/k4ran909/whalescale/internal/netlock"
 	"github.com/k4ran909/whalescale/internal/version"
 )
 
@@ -47,6 +48,8 @@ Usage:
   ws access list              what you may request, and your requests
   ws access request DST [--for 2h] [--reason TEXT] [--wait]
                               ask for temporary access, e.g. node:prod-db:5432
+  ws lock status|keygen|init|sign|add-key|remove-key|disable|enable
+                              network lock: only machines signed by your keys are accepted
   ws netcheck [--json]        public address, NAT type, relay reachability
   ws logout
   ws version
@@ -74,6 +77,8 @@ func main() {
 		err = cmdSSH(args)
 	case "access":
 		err = cmdAccess(args[1:])
+	case "lock":
+		err = cmdLock(args[1:])
 	case "status":
 		err = cmdStatus(args)
 	case "ping":
@@ -107,7 +112,17 @@ func cmdLogin(args []string) error {
 	server := fs.String("server", "", "control server URL, e.g. https://ws.example.com")
 	authKey := fs.String("authkey", os.Getenv("WS_AUTHKEY"), "pre-auth key from 'whalescale preauthkeys create'")
 	hostname := fs.String("hostname", "", "node name (default: this machine's hostname)")
+	lockTrust := fs.String("lock-trust", "", "network lock keys (wslock:..., comma-separated) to require; without it the first lock state seen is trusted")
 	fs.Parse(args)
+	var trust []string
+	for _, k := range strings.Split(*lockTrust, ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			if _, err := netlock.ParsePublic(k); err != nil {
+				return err
+			}
+			trust = append(trust, k)
+		}
+	}
 
 	if *server == "" {
 		return errors.New("--server is required")
@@ -166,6 +181,7 @@ func cmdLogin(args []string) error {
 		}
 	}
 	st.NodeToken, st.NodeID, st.NodeName = token, n.Id, n.Name
+	st.LockTrust = trust
 	if err := clientstate.Save(path, st); err != nil {
 		return fmt.Errorf("registered, but saving state failed: %w", err)
 	}

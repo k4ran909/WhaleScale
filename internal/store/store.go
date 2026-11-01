@@ -76,6 +76,9 @@ type Node struct {
 	// admin allowed it.
 	RelayOffered  bool
 	RelayApproved bool
+	// LockSignature is a network lock signature over NodeKey (an encoded
+	// NodeSignature), filled by ListNodes.
+	LockSignature []byte
 	SSHHostKey    string
 }
 
@@ -430,7 +433,10 @@ func (s *Store) ListNodes(ctx context.Context, user string) ([]Node, error) {
 		return nil, err
 	}
 	rows.Close()
-	return out, s.attachRoutes(ctx, out)
+	if err := s.attachRoutes(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, s.attachLockSignatures(ctx, out)
 }
 
 // NodeInfo is what an agent reports about itself after registering.
@@ -598,9 +604,10 @@ func isUniqueErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-// Fingerprint changes whenever nodes are added or removed, or routes or
-// exposures are advertised or approved, including by admin commands run against the
-// database while the server is up.
+// Fingerprint changes whenever nodes are added or removed; routes,
+// exposures or peer relays are advertised or approved; or network lock data
+// changes, including by admin commands run against the database while the
+// server is up.
 func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 	var nodes, idSum, routes int64
 	var routeSig string
@@ -612,7 +619,10 @@ func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 		(SELECT COALESCE(group_concat(node_id || ':' || name || ':' || port || ':' || advertised || approved, ','), '')
 		   FROM (SELECT * FROM exposures ORDER BY name)) ||
 		(SELECT COALESCE(group_concat(id || ':' || relay_offered || relay_approved, ','), '')
-		   FROM (SELECT id, relay_offered, relay_approved FROM nodes ORDER BY id))`).Scan(&nodes, &idSum, &routes, &routeSig)
+		   FROM (SELECT id, relay_offered, relay_approved FROM nodes ORDER BY id)) ||
+		(SELECT 'L' || COUNT(*) || ':' || COALESCE(MAX(version), 0) FROM lock_chain) ||
+		(SELECT COALESCE(group_concat(node_key || ':' || hex(signature), ','), '')
+		   FROM (SELECT * FROM lock_signatures ORDER BY node_key))`).Scan(&nodes, &idSum, &routes, &routeSig)
 	sum := sha256.Sum256([]byte(routeSig))
 	return fmt.Sprintf("%d/%d/%d/%x", nodes, idSum, routes, sum[:8]), err
 }

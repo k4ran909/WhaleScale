@@ -42,6 +42,7 @@ type snapshot struct {
 	filters   map[uint64]*nodeFilter
 
 	dns          *v1.DNSConfig
+	lockChain    []*v1.LockState
 	exposures    map[uint64][]store.Exposure
 	taken        map[uint64][]string
 	peerRelays   []relayEntry[*v1.PeerRelay]
@@ -95,6 +96,7 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 	version := s.version.Load()
 	var nodes []store.Node
 	var exposures map[uint64][]store.Exposure
+	var chain []*v1.LockState
 	// Cleared before reading, so a write landing mid-read marks it again.
 	if s.storeDirty.Swap(false) || prev == nil {
 		var err error
@@ -111,8 +113,12 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 		for _, e := range list {
 			exposures[e.NodeID] = append(exposures[e.NodeID], e)
 		}
+		if chain, err = lockChain(ctx, s.store); err != nil {
+			s.storeDirty.Store(true)
+			return nil, err
+		}
 	} else {
-		nodes, exposures = prev.nodes, prev.exposures
+		nodes, exposures, chain = prev.nodes, prev.exposures, prev.lockChain
 	}
 	s.mu.Lock()
 	online := maps.Clone(s.online)
@@ -124,7 +130,7 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 
 	snap := &snapshot{version: version, nodes: nodes, index: make(map[uint64]int, len(nodes)),
 		protos: make([]*v1.Node, len(nodes)), hashes: make([]uint64, len(nodes)), wire: make([][]byte, len(nodes)),
-		dns: &v1.DNSConfig{Suffix: s.cfg.DNSSuffix}, exposures: exposures, taken: taken}
+		dns: &v1.DNSConfig{Suffix: s.cfg.DNSSuffix}, exposures: exposures, taken: taken, lockChain: chain}
 	if prev != nil {
 		snap.prevVersion = prev.version
 	}
@@ -305,6 +311,7 @@ func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 		FlowLogs:      s.cfg.FlowLogs,
 		QuicRelay:     s.cfg.QUICRelay,
 		SshRules:      snap.filters[n.ID].ssh,
+		LockChain:     snap.lockChain,
 	}
 	nm.QuicRelayCertSha256 = s.cfg.QUICRelayPin
 	for _, r := range snap.peerRelays {

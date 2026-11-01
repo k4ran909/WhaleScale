@@ -50,6 +50,12 @@ service AdminService {
   // The audit log of admin and security-relevant actions, newest first.
   rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
 
+  // Network lock. The server stores and relays what admins sign on their
+  // own machines; it holds no lock keys and can't sign anything itself.
+  rpc GetLock(GetLockRequest) returns (GetLockResponse);
+  rpc UpdateLock(UpdateLockRequest) returns (UpdateLockResponse);
+  rpc SignNodes(SignNodesRequest) returns (SignNodesResponse);
+
   // Temporary access requests: list, approve or deny, revoke.
   rpc ListAccessRequests(ListAccessRequestsRequest) returns (ListAccessRequestsResponse);
   rpc DecideAccess(DecideAccessRequest) returns (DecideAccessResponse);
@@ -245,6 +251,24 @@ message GetRecordingResponse {
   Recording recording = 1;
   bytes data = 2;
 }
+
+message GetLockRequest {}
+message GetLockResponse {
+  repeated LockState chain = 1;
+}
+message UpdateLockRequest {
+  // The next version, signed by a key trusted in the current one.
+  LockState state = 1;
+}
+message UpdateLockResponse {}
+message SignNodesRequest {
+  repeated SignedNodeKey signatures = 1;
+}
+message SignedNodeKey {
+  string node_key = 1;
+  NodeSignature signature = 2;
+}
+message SignNodesResponse {}
 
 message ListAccessRequestsRequest {
   // Also decided, revoked and expired requests (newest first).

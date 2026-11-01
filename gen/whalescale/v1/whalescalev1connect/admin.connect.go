@@ -95,6 +95,12 @@ const (
 	// AdminServiceListAuditEventsProcedure is the fully-qualified name of the AdminService's
 	// ListAuditEvents RPC.
 	AdminServiceListAuditEventsProcedure = "/whalescale.v1.AdminService/ListAuditEvents"
+	// AdminServiceGetLockProcedure is the fully-qualified name of the AdminService's GetLock RPC.
+	AdminServiceGetLockProcedure = "/whalescale.v1.AdminService/GetLock"
+	// AdminServiceUpdateLockProcedure is the fully-qualified name of the AdminService's UpdateLock RPC.
+	AdminServiceUpdateLockProcedure = "/whalescale.v1.AdminService/UpdateLock"
+	// AdminServiceSignNodesProcedure is the fully-qualified name of the AdminService's SignNodes RPC.
+	AdminServiceSignNodesProcedure = "/whalescale.v1.AdminService/SignNodes"
 	// AdminServiceListAccessRequestsProcedure is the fully-qualified name of the AdminService's
 	// ListAccessRequests RPC.
 	AdminServiceListAccessRequestsProcedure = "/whalescale.v1.AdminService/ListAccessRequests"
@@ -145,6 +151,11 @@ type AdminServiceClient interface {
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
+	// Network lock. The server stores and relays what admins sign on their
+	// own machines; it holds no lock keys and can't sign anything itself.
+	GetLock(context.Context, *connect.Request[v1.GetLockRequest]) (*connect.Response[v1.GetLockResponse], error)
+	UpdateLock(context.Context, *connect.Request[v1.UpdateLockRequest]) (*connect.Response[v1.UpdateLockResponse], error)
+	SignNodes(context.Context, *connect.Request[v1.SignNodesRequest]) (*connect.Response[v1.SignNodesResponse], error)
 	// Temporary access requests: list, approve or deny, revoke.
 	ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error)
 	DecideAccess(context.Context, *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error)
@@ -309,6 +320,24 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		getLock: connect.NewClient[v1.GetLockRequest, v1.GetLockResponse](
+			httpClient,
+			baseURL+AdminServiceGetLockProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetLock")),
+			connect.WithClientOptions(opts...),
+		),
+		updateLock: connect.NewClient[v1.UpdateLockRequest, v1.UpdateLockResponse](
+			httpClient,
+			baseURL+AdminServiceUpdateLockProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("UpdateLock")),
+			connect.WithClientOptions(opts...),
+		),
+		signNodes: connect.NewClient[v1.SignNodesRequest, v1.SignNodesResponse](
+			httpClient,
+			baseURL+AdminServiceSignNodesProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SignNodes")),
+			connect.WithClientOptions(opts...),
+		),
 		listAccessRequests: connect.NewClient[v1.ListAccessRequestsRequest, v1.ListAccessRequestsResponse](
 			httpClient,
 			baseURL+AdminServiceListAccessRequestsProcedure,
@@ -374,6 +403,9 @@ type adminServiceClient struct {
 	listRecordings       *connect.Client[v1.ListRecordingsRequest, v1.ListRecordingsResponse]
 	getRecording         *connect.Client[v1.GetRecordingRequest, v1.GetRecordingResponse]
 	listAuditEvents      *connect.Client[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse]
+	getLock              *connect.Client[v1.GetLockRequest, v1.GetLockResponse]
+	updateLock           *connect.Client[v1.UpdateLockRequest, v1.UpdateLockResponse]
+	signNodes            *connect.Client[v1.SignNodesRequest, v1.SignNodesResponse]
 	listAccessRequests   *connect.Client[v1.ListAccessRequestsRequest, v1.ListAccessRequestsResponse]
 	decideAccess         *connect.Client[v1.DecideAccessRequest, v1.DecideAccessResponse]
 	revokeAccess         *connect.Client[v1.RevokeAccessRequest, v1.RevokeAccessResponse]
@@ -502,6 +534,21 @@ func (c *adminServiceClient) ListAuditEvents(ctx context.Context, req *connect.R
 	return c.listAuditEvents.CallUnary(ctx, req)
 }
 
+// GetLock calls whalescale.v1.AdminService.GetLock.
+func (c *adminServiceClient) GetLock(ctx context.Context, req *connect.Request[v1.GetLockRequest]) (*connect.Response[v1.GetLockResponse], error) {
+	return c.getLock.CallUnary(ctx, req)
+}
+
+// UpdateLock calls whalescale.v1.AdminService.UpdateLock.
+func (c *adminServiceClient) UpdateLock(ctx context.Context, req *connect.Request[v1.UpdateLockRequest]) (*connect.Response[v1.UpdateLockResponse], error) {
+	return c.updateLock.CallUnary(ctx, req)
+}
+
+// SignNodes calls whalescale.v1.AdminService.SignNodes.
+func (c *adminServiceClient) SignNodes(ctx context.Context, req *connect.Request[v1.SignNodesRequest]) (*connect.Response[v1.SignNodesResponse], error) {
+	return c.signNodes.CallUnary(ctx, req)
+}
+
 // ListAccessRequests calls whalescale.v1.AdminService.ListAccessRequests.
 func (c *adminServiceClient) ListAccessRequests(ctx context.Context, req *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error) {
 	return c.listAccessRequests.CallUnary(ctx, req)
@@ -562,6 +609,11 @@ type AdminServiceHandler interface {
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
+	// Network lock. The server stores and relays what admins sign on their
+	// own machines; it holds no lock keys and can't sign anything itself.
+	GetLock(context.Context, *connect.Request[v1.GetLockRequest]) (*connect.Response[v1.GetLockResponse], error)
+	UpdateLock(context.Context, *connect.Request[v1.UpdateLockRequest]) (*connect.Response[v1.UpdateLockResponse], error)
+	SignNodes(context.Context, *connect.Request[v1.SignNodesRequest]) (*connect.Response[v1.SignNodesResponse], error)
 	// Temporary access requests: list, approve or deny, revoke.
 	ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error)
 	DecideAccess(context.Context, *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error)
@@ -722,6 +774,24 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceGetLockHandler := connect.NewUnaryHandler(
+		AdminServiceGetLockProcedure,
+		svc.GetLock,
+		connect.WithSchema(adminServiceMethods.ByName("GetLock")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceUpdateLockHandler := connect.NewUnaryHandler(
+		AdminServiceUpdateLockProcedure,
+		svc.UpdateLock,
+		connect.WithSchema(adminServiceMethods.ByName("UpdateLock")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSignNodesHandler := connect.NewUnaryHandler(
+		AdminServiceSignNodesProcedure,
+		svc.SignNodes,
+		connect.WithSchema(adminServiceMethods.ByName("SignNodes")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListAccessRequestsHandler := connect.NewUnaryHandler(
 		AdminServiceListAccessRequestsProcedure,
 		svc.ListAccessRequests,
@@ -808,6 +878,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceGetRecordingHandler.ServeHTTP(w, r)
 		case AdminServiceListAuditEventsProcedure:
 			adminServiceListAuditEventsHandler.ServeHTTP(w, r)
+		case AdminServiceGetLockProcedure:
+			adminServiceGetLockHandler.ServeHTTP(w, r)
+		case AdminServiceUpdateLockProcedure:
+			adminServiceUpdateLockHandler.ServeHTTP(w, r)
+		case AdminServiceSignNodesProcedure:
+			adminServiceSignNodesHandler.ServeHTTP(w, r)
 		case AdminServiceListAccessRequestsProcedure:
 			adminServiceListAccessRequestsHandler.ServeHTTP(w, r)
 		case AdminServiceDecideAccessProcedure:
@@ -923,6 +999,18 @@ func (UnimplementedAdminServiceHandler) GetRecording(context.Context, *connect.R
 
 func (UnimplementedAdminServiceHandler) ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListAuditEvents is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetLock(context.Context, *connect.Request[v1.GetLockRequest]) (*connect.Response[v1.GetLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetLock is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) UpdateLock(context.Context, *connect.Request[v1.UpdateLockRequest]) (*connect.Response[v1.UpdateLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.UpdateLock is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SignNodes(context.Context, *connect.Request[v1.SignNodesRequest]) (*connect.Response[v1.SignNodesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.SignNodes is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error) {

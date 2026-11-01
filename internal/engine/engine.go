@@ -97,14 +97,17 @@ type Options struct {
 }
 
 type Engine struct {
-	opts    Options
-	log     *slog.Logger
-	nodeKey key.Private
-	disco   key.Private
-	api     whalescalev1connect.ControlServiceClient
-	conn    *meshconn.Conn
-	filter  *filter.Filter
-	dns     *dnsserver.Server
+	opts Options
+	log  *slog.Logger
+	// lockHead is the network lock state this node trusts; only the map
+	// stream goroutine touches it.
+	lockHead *v1.LockState
+	nodeKey  key.Private
+	disco    key.Private
+	api      whalescalev1connect.ControlServiceClient
+	conn     *meshconn.Conn
+	filter   *filter.Filter
+	dns      *dnsserver.Server
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -124,12 +127,14 @@ type Engine struct {
 	bypass   *osnet.Bypass
 	exitRts  *osnet.ExitRoutes
 	exitStat *ExitStatus
-	gw       *gateway.Client
-	portmap  *portmap.Client
-	sshKey   ssh.Signer
-	router   *osnet.Router
-	ready    chan struct{}
-	lastErr  string
+	// lockStatus is the latest network lock check, for Status.
+	lockStatus *LockStatus
+	gw         *gateway.Client
+	portmap    *portmap.Client
+	sshKey     ssh.Signer
+	router     *osnet.Router
+	ready      chan struct{}
+	lastErr    string
 
 	epCh chan []netip.AddrPort
 }
@@ -196,6 +201,7 @@ func New(opts Options) (*Engine, error) {
 		ready:   make(chan struct{}),
 		epCh:    make(chan []netip.AddrPort, 1),
 	}
+	e.lockHead = e.loadLockHead()
 	return e, nil
 }
 
@@ -401,7 +407,7 @@ func (e *Engine) streamOnce() error {
 		default:
 			continue
 		}
-		if err := e.apply(nm); err != nil {
+		if err := e.apply(e.enforceLock(nm)); err != nil {
 			e.log.Error("apply network map", "err", err)
 			e.mu.Lock()
 			e.lastErr = err.Error()
@@ -1047,7 +1053,8 @@ type Status struct {
 	ExitNode       *ExitStatus    `json:"exit_node,omitempty"`
 	Exposures      []*v1.Exposure `json:"exposures,omitempty"`
 	// Relay is "", "offered (waiting for approval)" or "relaying".
-	Relay string `json:"relay,omitempty"`
+	Relay string      `json:"relay,omitempty"`
+	Lock  *LockStatus `json:"lock,omitempty"`
 }
 
 func (e *Engine) Status() Status {
@@ -1065,6 +1072,9 @@ func (e *Engine) Status() Status {
 		return st
 	}
 	st.Self, st.MapVersion, st.Exposures = nm.Self, nm.Version, nm.Exposures
+	e.mu.Lock()
+	st.Lock = e.lockStatus
+	e.mu.Unlock()
 	switch {
 	case e.opts.OfferRelay && nm.RelayApproved:
 		st.Relay = "relaying for peers that can't connect directly"

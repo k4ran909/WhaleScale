@@ -111,6 +111,24 @@ TIME      REPORTED BY  CLIENT  SERVER    PROTO  VERDICT  SENT  RECEIVED
 
 The console's Flows page shows the same, filterable by machine, time range and verdict. Logging never changes enforcement: it uses its own table, so policy changes still apply immediately, even to open connections.
 
+## Network lock
+
+By default, every machine trusts the control server to say who its peers are. With the network lock on, a machine accepts a peer only if one of *your* lock keys signed that peer's WireGuard key. The keys live on admins' own machines, never on the server, so even a compromised server can't add a machine to your network or change which keys are trusted.
+
+```bash
+ws lock keygen --out ~/wslock.key                 # on your laptop; prints wslock:...
+export WS_API_KEY=wsapi-...                        # from 'whalescale apikeys create'
+ws lock init --key ~/wslock.key --trust wslock:<a colleague's key>   # turn it on, sign every machine
+ws lock sign --key ~/wslock.key                    # later: sign machines added since
+ws lock status                                     # on any machine
+```
+
+- **New machines start out refused.** Until someone runs `ws lock sign`, other machines refuse a new one, and its `ws lock status` says so.
+- **Changing the trusted keys:** `add-key` / `remove-key` change who's trusted. Each change must be signed by a currently trusted key, and every machine checks that itself.
+- **No rollback.** A machine remembers the newest key list it has verified and never goes back to an older one or a different history. If the server sends lock data that doesn't verify, the machine keeps enforcing what it knows and reports the problem in `ws lock status`.
+- **Turning it off:** `ws lock disable` stops filtering (signed like any change); `enable` turns it back on.
+- **First contact:** a machine trusts the first key list it sees. To rule out a malicious server at that moment, log in with `ws login --lock-trust wslock:...`.
+
 ## Audit log
 
 Every change to users, machines, keys, route/relay/gateway approvals and the access policy is recorded with who made it. That covers the console, the admin API, `whalescale` commands on the server host, node registrations, console sign-ins, and policy updates from Git or the policy file. Actors look like `oidc:you@example.com`, `api-key:ab12cd`, `cli:root`, `user:alice` or `git`.

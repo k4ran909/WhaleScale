@@ -763,5 +763,6 @@ func (s *Service) nodeProto(n *store.Node, online bool) *v1.Node {
 		Endpoints:        n.Endpoints,
 		Online:           online,
 		Fqdn:             n.Name + "." + s.cfg.DNSSuffix,
+		LockSignature:    lockSignature(n.LockSignature),
 	}
 }

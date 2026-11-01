@@ -24,7 +24,13 @@ type State struct {
 	NodeName  string `json:"node_name,omitempty"`
 	// SSHHostKey is the mesh SSH server's private host key (OpenSSH PEM).
 	SSHHostKey string `json:"ssh_host_key,omitempty"`
-	Prefs      Prefs  `json:"prefs"`
+	// LockHead is the newest network lock state this node has verified
+	// (an encoded LockState, base64). Later states must follow from it.
+	LockHead string `json:"lock_head,omitempty"`
+	// LockTrust pins the lock keys ("wslock:...") this node accepts the
+	// first lock state from, instead of trusting whatever comes first.
+	LockTrust []string `json:"lock_trust,omitempty"`
+	Prefs     Prefs    `json:"prefs"`
 }
 
 // Prefs are the settings 'ws up' and 'ws down' change.

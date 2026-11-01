@@ -3,7 +3,11 @@ package engine
 import (
 	"bufio"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"fmt"
+	"github.com/k4ran909/whalescale/internal/netlock"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"log/slog"
 	"net"
@@ -788,5 +792,90 @@ func TestAccessGrant(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("access survived revocation")
 		}
+	}
+}
+
+// With the network lock on, machines accept only peers a trusted key
+// signed, and nothing the server forges changes that.
+func TestNetworkLock(t *testing.T) {
+	n := newTestNet(t, "")
+	a := n.node("lock-a", false)
+	b := n.node("lock-b", false)
+	c := n.node("lock-c", false)
+	echo(t, b, 7200)
+	echo(t, c, 7200)
+	if err := roundTrip(a, c, 7200, 10*time.Second); err != nil {
+		t.Fatalf("before the lock: %v", err)
+	}
+
+	ctx := context.Background()
+	_, apiKey, _ := n.store.CreateAPIKey(ctx, time.Hour)
+	admin := whalescalev1connect.NewAdminServiceClient(httpClientForTest(), n.url)
+	call := func(r connect.AnyRequest) connect.AnyRequest {
+		r.Header().Set("Authorization", "Bearer "+apiKey)
+		return r
+	}
+	alice, _ := netlock.GenerateKey()
+	v1s := &v1.LockState{Version: 1, Keys: [][]byte{alice.Public().(ed25519.PublicKey)}}
+	netlock.SignState(v1s, alice)
+	if _, err := admin.UpdateLock(ctx, call(connect.NewRequest(&v1.UpdateLockRequest{State: v1s})).(*connect.Request[v1.UpdateLockRequest])); err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := admin.ListNodes(ctx, call(connect.NewRequest(&v1.ListNodesRequest{})).(*connect.Request[v1.ListNodesRequest]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyOf := map[string]string{}
+	var sigs []*v1.SignedNodeKey
+	for _, nd := range nodes.Msg.Nodes {
+		keyOf[nd.Name] = nd.NodeKey
+		if nd.Name == "lock-c" {
+			continue // c stays unsigned
+		}
+		k, _ := base64.StdEncoding.DecodeString(nd.NodeKey)
+		sigs = append(sigs, &v1.SignedNodeKey{NodeKey: nd.NodeKey, Signature: netlock.SignNode(alice, k)})
+	}
+	if _, err := admin.SignNodes(ctx, call(connect.NewRequest(&v1.SignNodesRequest{Signatures: sigs})).(*connect.Request[v1.SignNodesRequest])); err != nil {
+		t.Fatal(err)
+	}
+
+	waitLock := func(e *Engine, ok func(*LockStatus) bool, what string) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+			if l := e.Status().Lock; l != nil && ok(l) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: lock status %+v", what, e.Status().Lock)
+			}
+		}
+	}
+	waitLock(a, func(l *LockStatus) bool {
+		return l.Enabled && l.SelfSigned && slices.Equal(l.LockedOut, []string{"lock-c"})
+	}, "a refuses c")
+	waitLock(c, func(l *LockStatus) bool { return l.Enabled && !l.SelfSigned }, "c knows it's unsigned")
+	if err := roundTrip(a, b, 7200, 10*time.Second); err != nil {
+		t.Fatalf("signed peers: %v", err)
+	}
+	if err := roundTrip(a, c, 7200, 2*time.Second); err == nil {
+		t.Fatal("reached an unsigned machine")
+	}
+
+	// A malicious server: it signs c with its own key and appends a lock
+	// version trusting that key, straight into the database.
+	mallory, _ := netlock.GenerateKey()
+	ck, _ := base64.StdEncoding.DecodeString(keyOf["lock-c"])
+	forgedSig, _ := proto.Marshal(netlock.SignNode(mallory, ck))
+	n.store.SetLockSignature(ctx, keyOf["lock-c"], forgedSig)
+	forged := &v1.LockState{Version: 2, Keys: [][]byte{mallory.Public().(ed25519.PublicKey)}}
+	netlock.SignState(forged, mallory)
+	fb, _ := proto.Marshal(forged)
+	n.store.AppendLockState(ctx, 2, fb) // the server's watcher notices within 100 ms
+	waitLock(a, func(l *LockStatus) bool { return l.Error != "" }, "a notices the forgery")
+	if l := a.Status().Lock; !l.Enabled || l.Version != 1 || !slices.Equal(l.LockedOut, []string{"lock-c"}) {
+		t.Fatalf("after forgery: %+v", l)
+	}
+	if err := roundTrip(a, c, 7200, 2*time.Second); err == nil {
+		t.Fatal("the forged signature let c in")
 	}
 }

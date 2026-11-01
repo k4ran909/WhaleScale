@@ -54,6 +54,14 @@ func Apply(cur *v1.NetworkMap, d *v1.NetworkMapDelta) (*v1.NetworkMap, error) {
 	return next, nil
 }
 
+// WithPeers returns a copy of m with a different peer list, sharing
+// everything else.
+func WithPeers(m *v1.NetworkMap, peers []*v1.Node) *v1.NetworkMap {
+	out := shallowCopy(m)
+	out.Self, out.PacketFilter, out.Version, out.Peers = m.Self, m.PacketFilter, m.Version, peers
+	return out
+}
+
 // shallowCopy copies the settings fields of a map, sharing their contents.
 func shallowCopy(m *v1.NetworkMap) *v1.NetworkMap {
 	return &v1.NetworkMap{
@@ -70,5 +78,6 @@ func shallowCopy(m *v1.NetworkMap) *v1.NetworkMap {
 		FlowLogs:            m.FlowLogs,
 		QuicRelay:           m.QuicRelay,
 		QuicRelayCertSha256: m.QuicRelayCertSha256,
+		LockChain:           m.LockChain,
 	}
 }
