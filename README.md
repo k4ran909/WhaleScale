@@ -261,6 +261,21 @@ When two machines can't connect directly, Whalescale tries, in order:
 3. **A peer relay:** see below.
 4. **The server relay, preferably over QUIC:** UDP datagrams on `relay-quic-listen` (default `:3480`). This avoids the slowdown of tunneling TCP inside the TCP-based WebSocket relay. The relay's self-signed certificate is pinned through the network map, so it needs no public CA and works behind Caddy. Where UDP is blocked, nodes fall back to the WebSocket relay over HTTPS and retry QUIC every 10 minutes. `ws status` shows which one is in use.
 
+## Roaming and multipath
+
+Connections survive the network changing under them:
+
+- **Dead paths are noticed in about 2 seconds.**
+  - While traffic flows over a direct path that has gone quiet, the machine probes it, and an unanswered probe moves traffic to a relay at once.
+  - Seeing a peer's traffic arrive through a relay is treated as a sign its direct path just died.
+  - Before this, a dead path was only dropped after its 6.5-second trust window.
+- **Network changes trigger an immediate recheck.** When the machine's addresses change (Wi-Fi off, onto cellular), it does four things right away:
+  - reconnects the relay, whose old connection may be silently dead;
+  - re-runs STUN;
+  - advertises its new addresses;
+  - re-proves every direct path, keeping traffic on the relay meanwhile.
+- **`ws up --multipath`** sends every packet over the direct path *and* a relay. WireGuard drops whichever copy arrives second, so a dying link loses nothing; in tests, cutting the direct path left no gap beyond the normal packet spacing. It uses twice the bandwidth while a direct path is up, so it's for links where a two-second blip matters (calls, SSH over flaky Wi-Fi).
+
 ## Peer relays
 
 When two machines can't connect directly (both behind strict or carrier-grade NAT, as on Jio and Airtel mobile data), their traffic goes through the server's WebSocket relay. A peer relay is a faster UDP path. Any well-connected machine, such as a VPS or a home server with a port forward, can offer to forward for the others:

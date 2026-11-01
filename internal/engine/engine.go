@@ -86,6 +86,9 @@ type Options struct {
 	// OfferRelay volunteers this node as a UDP relay for peers that can't
 	// connect directly; it starts relaying once an admin approves.
 	OfferRelay bool
+	// Multipath sends every packet over the direct path and a relay at
+	// once, so a path dying loses nothing (see meshconn.Options.Redundant).
+	Multipath bool
 	// PortMap asks the home router (PCP, NAT-PMP or UPnP) to forward the
 	// WireGuard port, making this node directly reachable.
 	PortMap bool
@@ -259,6 +262,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		Port: e.opts.Port, DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
 		OnPQ: e.pq.Handle, PSKID: e.pq.PSKID, OnPeerPSKID: e.pq.Observe,
 		IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay,
+		Redundant:       e.opts.Multipath,
 		DisableDirect:   e.opts.NoDirect,
 		Exclude:         exclude,
 		OnEndpoints: func(eps []netip.AddrPort) {

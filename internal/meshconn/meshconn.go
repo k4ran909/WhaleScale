@@ -42,9 +42,14 @@ const (
 	trustDuration  = 6500 * time.Millisecond
 	pingTimeout    = 5 * time.Second
 	callMeMaybeGap = 5 * time.Second
-	stunInterval   = 20 * time.Second
-	recvQueue      = 1024
-	maxPacket      = 65535
+	// A direct path in use that has gone quiet this long gets a probe; a
+	// probe unanswered for probeTimeout takes the path out of use at once,
+	// rather than when its trust runs out.
+	quietProbe   = time.Second
+	probeTimeout = time.Second
+	stunInterval = 20 * time.Second
+	recvQueue    = 1024
+	maxPacket    = 65535
 )
 
 // Options configure a Conn.
@@ -69,6 +74,10 @@ type Options struct {
 	// Post-quantum key exchange hooks (see internal/pq). OnPQ gets PQ*
 	// disco messages from peers; PSKID says what to put in pings to a
 	// peer; OnPeerPSKID gets what a peer's ping says.
+	// Redundant sends every packet over the direct path and a relay at
+	// once, so losing either costs nothing (WireGuard drops the duplicate
+	// that arrives second). Twice the bandwidth while a direct path is up.
+	Redundant   bool
 	OnPQ        func(peer key.Public, m disco.Message)
 	PSKID       func(peer key.Public) [8]byte
 	OnPeerPSKID func(peer key.Public, id [8]byte)
@@ -109,6 +118,26 @@ type Conn struct {
 	mapped      netip.AddrPort             // router port mapping, if any
 	peerRelays  map[key.Public]*relayState // relays we may use, by node key
 	relayServe  *relayServer               // non-nil while we relay for others
+
+	// udpFilter, when set, drops UDP to or from addresses it rejects. Tests
+	// use it to make a path fail the way a dropped Wi-Fi link would.
+	udpFilter atomic.Pointer[func(netip.AddrPort) bool]
+}
+
+// SetUDPFilter drops UDP packets to and from addresses for which drop
+// returns true (nil removes the filter). For tests: it simulates a path
+// that stops working.
+func (c *Conn) SetUDPFilter(drop func(netip.AddrPort) bool) {
+	if drop == nil {
+		c.udpFilter.Store(nil)
+		return
+	}
+	c.udpFilter.Store(&drop)
+}
+
+func (c *Conn) filtered(a netip.AddrPort) bool {
+	f := c.udpFilter.Load()
+	return f != nil && (*f)(a)
 }
 
 type stunReq struct {
@@ -146,6 +175,8 @@ type peer struct {
 	bestAddr    netip.AddrPort
 	bestLatency time.Duration
 	lastPong    time.Time
+	lastRecv    time.Time // last packet from bestAddr
+	probeSent   time.Time // last health probe of bestAddr
 	lastCMM     time.Time
 	lastSpray   time.Time // symmetric-NAT port prediction
 	pings       map[disco.TxID]pingState
@@ -157,6 +188,18 @@ type peer struct {
 
 	rx, tx atomic.Uint64
 }
+
+// directOK reports whether the direct path is usable: proven by a recent
+// pong and not failing a health probe. Called with Conn.mu held.
+func (p *peer) directOK(now time.Time) bool {
+	if !p.bestAddr.IsValid() || now.Sub(p.lastPong) >= trustDuration {
+		return false
+	}
+	return !p.probing() || now.Sub(p.probeSent) <= probeTimeout
+}
+
+// probing reports whether a health probe is waiting for its pong.
+func (p *peer) probing() bool { return p.probeSent.After(p.lastPong) }
 
 // endpoint is a conn.Endpoint naming a peer by node key.
 type endpoint struct{ key key.Public }
@@ -211,6 +254,7 @@ func New(opts Options) (*Conn, error) {
 	}
 	go c.heartbeatLoop()
 	go c.stunLoop()
+	go c.netWatchLoop()
 	c.updateEndpoints()
 	return c, nil
 }
@@ -372,8 +416,20 @@ func (b *bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	c.mu.Lock()
 	p := c.peers[e.key]
 	var addr, relayAddr netip.AddrPort
-	if p != nil && p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration {
+	probe := false
+	now := time.Now()
+	if p != nil && p.directOK(now) {
 		addr = p.bestAddr
+		// Sending into a path we haven't heard from lately: check it's
+		// still there, so a dead link costs a second or two, not the
+		// whole trust window.
+		heard := p.lastRecv
+		if p.lastPong.After(heard) {
+			heard = p.lastPong
+		}
+		if now.Sub(heard) > quietProbe && !p.probing() {
+			p.probeSent, probe = now, true
+		}
 	} else if p != nil && p.relayVia != nil && time.Since(p.relayPong) < trustDuration {
 		relayAddr = p.relayVia.bestAddr
 	}
@@ -382,11 +438,31 @@ func (b *bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	if p == nil {
 		return fmt.Errorf("unknown peer %s", e.key.ShortString())
 	}
+	if probe {
+		go c.sendPing(p, discoPath{udp: addr}, nil)
+	}
+	// The copy in redundant mode goes through a peer relay if one is
+	// proven, else the server relay.
+	var spareRelay netip.AddrPort
+	if addr.IsValid() && c.opts.Redundant {
+		c.mu.Lock()
+		if p.relayVia != nil && time.Since(p.relayPong) < trustDuration {
+			spareRelay = p.relayVia.bestAddr
+		}
+		c.mu.Unlock()
+	}
 	var firstErr error
 	for _, buf := range bufs {
 		var err error
 		if addr.IsValid() {
 			err = c.writeUDP(buf, addr)
+			if c.opts.Redundant {
+				if spareRelay.IsValid() {
+					c.writeUDP(relayFrame(frameToRelay, e.key, buf), spareRelay)
+				} else if r != nil {
+					r.Send(e.key, buf)
+				}
+			}
 		} else if relayAddr.IsValid() {
 			err = c.writeUDP(relayFrame(frameToRelay, e.key, buf), relayAddr)
 		} else if r != nil {
@@ -443,6 +519,9 @@ func (c *Conn) deliver(data []byte, p *peer) {
 // --- sockets ---
 
 func (c *Conn) writeUDP(b []byte, to netip.AddrPort) error {
+	if c.filtered(to) {
+		return nil
+	}
 	pc := c.pc4
 	if to.Addr().Is6() {
 		if c.pc6 == nil {
@@ -466,6 +545,9 @@ func (c *Conn) readUDP(pc *net.UDPConn) {
 			continue
 		}
 		from = netip.AddrPortFrom(from.Addr().Unmap(), from.Port())
+		if c.filtered(from) {
+			continue
+		}
 		pkt := buf[:n]
 		switch {
 		case stun.Is(pkt):
@@ -477,6 +559,9 @@ func (c *Conn) readUDP(pc *net.UDPConn) {
 		default:
 			c.mu.Lock()
 			p := c.byAddr[from]
+			if p != nil && from == p.bestAddr {
+				p.lastRecv = time.Now()
+			}
 			c.mu.Unlock()
 			if p == nil {
 				continue // not a verified path; WireGuard would reject it anyway
@@ -495,8 +580,26 @@ func (c *Conn) handleRelayPacket(rp relay.Packet) {
 	p := c.peers[rp.Src]
 	c.mu.Unlock()
 	if p != nil {
+		c.suspectDirect(p)
 		c.deliver(rp.Data, p)
 	}
+}
+
+// suspectDirect handles data from p that came through a relay while we
+// still send to it directly: usually the peer just lost the direct path.
+// Stop using it until a probe proves it, rather than discovering the
+// loss on our own a second later. A working path is back within an RTT.
+func (c *Conn) suspectDirect(p *peer) {
+	c.mu.Lock()
+	now := time.Now()
+	if !p.directOK(now) || p.probing() {
+		c.mu.Unlock()
+		return
+	}
+	p.probeSent = now.Add(-probeTimeout - time.Millisecond) // an overdue probe: not OK
+	addr := p.bestAddr
+	c.mu.Unlock()
+	c.sendPing(p, discoPath{udp: addr}, nil)
 }
 
 // --- disco ---
@@ -701,7 +804,7 @@ func (c *Conn) heartbeatLoop() {
 
 		for _, p := range peers {
 			c.mu.Lock()
-			trusted := p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration
+			trusted := p.directOK(time.Now())
 			best := p.bestAddr
 			sendCMM := !trusted && time.Since(p.lastCMM) >= callMeMaybeGap
 			if sendCMM {
@@ -924,6 +1027,79 @@ func (c *Conn) updateEndpoints() {
 	}
 }
 
+// netWatchInterval is how often the machine's addresses are checked.
+const netWatchInterval = 2 * time.Second
+
+// netWatchLoop notices the machine's network changing (Wi-Fi off, onto
+// cellular, a new address) by watching its addresses, which works the
+// same on every OS.
+func (c *Conn) netWatchLoop() {
+	t := time.NewTicker(netWatchInterval)
+	defer t.Stop()
+	last := c.localAddrs()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-t.C:
+		}
+		if now := c.localAddrs(); !slices.Equal(now, last) {
+			last = now
+			c.NetworkChanged()
+		}
+	}
+}
+
+// localAddrs lists the machine's usable unicast addresses, sorted, leaving
+// out the mesh's own ranges (our tunnel coming up isn't a network change).
+func (c *Conn) localAddrs() []netip.Addr {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []netip.Addr
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipn.IP)
+		if !ok {
+			continue
+		}
+		ip = ip.Unmap()
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() || c.excluded(ip) {
+			continue
+		}
+		out = append(out, ip)
+	}
+	slices.SortFunc(out, func(a, b netip.Addr) int { return a.Compare(b) })
+	return out
+}
+
+// NetworkChanged reacts to the machine's network changing. Rather than
+// waiting for timeouts: reconnect the relay (its connection may be dead
+// without either end knowing), learn our new public address, tell peers,
+// and check every direct path, keeping traffic on the relay meanwhile.
+func (c *Conn) NetworkChanged() {
+	c.log.Info("network changed; rechecking paths")
+	c.mu.Lock()
+	r := c.relay
+	peers := make([]*peer, 0, len(c.peers))
+	for _, p := range c.peers {
+		peers = append(peers, p)
+	}
+	c.mu.Unlock()
+	if r != nil {
+		r.Reconnect()
+	}
+	c.sendSTUN()
+	c.updateEndpoints()
+	for _, p := range peers {
+		c.suspectDirect(p)
+	}
+}
+
 // Endpoints returns this node's current candidate endpoints.
 func (c *Conn) Endpoints() []netip.AddrPort {
 	c.mu.Lock()
@@ -952,7 +1128,7 @@ func (c *Conn) Status() []PeerStatus {
 	for _, p := range c.peers {
 		s := PeerStatus{Name: p.cfg.Name, NodeKey: p.nodeKey.String(), RxBytes: p.rx.Load(), TxBytes: p.tx.Load()}
 		switch {
-		case p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration:
+		case p.directOK(time.Now()):
 			s.Path, s.Addr, s.Latency, s.LastPong = "direct", p.bestAddr.String(), p.bestLatency, p.lastPong
 		case p.relayVia != nil && time.Since(p.relayPong) < trustDuration:
 			s.Path, s.Addr, s.Latency, s.LastPong = "peer-relay", p.relayVia.name, p.relayLatency, p.relayPong

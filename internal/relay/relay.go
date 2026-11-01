@@ -206,6 +206,50 @@ type Client struct {
 	mu        sync.Mutex
 	connected bool
 	transport string
+	// The current session's cancel, and whether Reconnect asked for a
+	// fresh one (no backoff, not a QUIC failure).
+	cancelSession context.CancelFunc
+	reconnectNow  bool
+	reconnects    int
+}
+
+// Reconnect drops the current relay session and starts a new one at once.
+// Called when the machine's network changed: the old connection may be
+// dead without either end knowing yet.
+func (c *Client) Reconnect() {
+	c.mu.Lock()
+	cancel := c.cancelSession
+	c.reconnectNow = true
+	c.reconnects++
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// Reconnects counts Reconnect calls (for tests and status).
+func (c *Client) Reconnects() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reconnects
+}
+
+// newSession returns a context for one session that Reconnect can end.
+func (c *Client) newSession(ctx context.Context) (context.Context, context.CancelFunc) {
+	sctx, cancel := context.WithCancel(ctx)
+	c.mu.Lock()
+	c.cancelSession = cancel
+	c.mu.Unlock()
+	return sctx, cancel
+}
+
+// takeReconnect reports, and clears, a pending Reconnect.
+func (c *Client) takeReconnect() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r := c.reconnectNow
+	c.reconnectNow = false
+	return r
 }
 
 // NewClient makes a relay client. hc may be nil for the default client.
@@ -278,10 +322,16 @@ func (c *Client) Run(ctx context.Context) {
 		start := time.Now()
 		var err error
 		if c.quicAddr != "" && (c.quicFails < 2 || time.Since(c.quicFailed) > quicRetryAfter) {
-			err = c.sessionQUIC(ctx)
+			qctx, qcancel := c.newSession(ctx)
+			err = c.sessionQUIC(qctx)
+			qcancel()
 			c.setConnected(false, "")
 			if ctx.Err() != nil {
 				return
+			}
+			if c.takeReconnect() {
+				backoff = time.Second
+				continue
 			}
 			if time.Since(start) < 30*time.Second {
 				c.quicFails++
@@ -291,15 +341,21 @@ func (c *Client) Run(ctx context.Context) {
 			}
 			c.quicFails = 0
 		} else {
-			sctx, cancel := ctx, context.CancelFunc(func() {})
+			base, bcancel := c.newSession(ctx)
+			sctx, cancel := base, context.CancelFunc(func() {})
 			if c.quicAddr != "" {
-				sctx, cancel = context.WithTimeout(ctx, wsUpgradeAfter)
+				sctx, cancel = context.WithTimeout(base, wsUpgradeAfter)
 			}
 			err = c.session(sctx)
 			cancel()
+			bcancel()
 			c.setConnected(false, "")
 			if ctx.Err() != nil {
 				return
+			}
+			if c.takeReconnect() {
+				backoff = time.Second
+				continue
 			}
 			if errors.Is(sctx.Err(), context.DeadlineExceeded) {
 				c.quicFails = 0 // planned: go back and try QUIC

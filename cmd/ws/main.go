@@ -36,6 +36,7 @@ Usage:
   ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
             [--exit-node NAME]  send all internet traffic through NAME ("" to stop)
             [--relay]           relay for peers that can't connect directly (needs approval)
+            [--multipath]       send over the direct path and a relay at once: no loss when a link drops
             [--ssh]             run the mesh SSH server (the policy's "ssh" rules decide who may log in)
   ws ssh [USER@]HOST [CMD]    ssh to a peer, trusting its host key from the network map
                               start the tunnel (flags you pass replace saved ones)
@@ -283,6 +284,7 @@ func cmdUp(args []string) error {
 	exit := fs.Bool("advertise-exit-node", false, "offer this machine as an exit node (needs admin approval)")
 	exitNode := fs.String("exit-node", "", "send all internet traffic through this machine (name, FQDN or mesh IP); empty to stop")
 	runSSH := fs.Bool("ssh", false, "run the mesh SSH server on port 22 of this machine's mesh address")
+	multipath := fs.Bool("multipath", false, "send traffic over the direct path and a relay at once: a dropped link loses nothing (uses twice the bandwidth)")
 	offerRelay := fs.Bool("relay", false, "offer this machine as a UDP relay for peers that can't connect directly (best on a server with a public IP or port forward)")
 	fs.Parse(args)
 
@@ -308,6 +310,9 @@ func cmdUp(args []string) error {
 	}
 	if set["relay"] {
 		prefs.Relay = *offerRelay
+	}
+	if set["multipath"] {
+		prefs.Multipath = *multipath
 	}
 	if set["ssh"] {
 		prefs.SSH = *runSSH

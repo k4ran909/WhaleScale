@@ -168,6 +168,7 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 		State: st, StatePath: d.statePath(), Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
 		Port: d.opts.Port, Log: d.log, AdvertiseRoutes: routes, AcceptRoutes: p.AcceptRoutes,
 		ExitNode: p.ExitNode, Exposures: p.Exposures, OfferRelay: p.Relay, PortMap: d.opts.PortMap, SSH: p.SSH,
+		Multipath: p.Multipath,
 	})
 	if err != nil {
 		return err

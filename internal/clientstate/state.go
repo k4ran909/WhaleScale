@@ -52,6 +52,8 @@ type Prefs struct {
 	// SSH runs the mesh SSH server; the access policy's "ssh" rules decide
 	// who may log in.
 	SSH bool `json:"ssh,omitempty"`
+	// Multipath sends traffic over the direct path and a relay at once.
+	Multipath bool `json:"multipath,omitempty"`
 }
 
 // SystemDir is where a wsd service keeps its state. When it exists, ws and

@@ -130,3 +130,61 @@ func TestQUICRelay(t *testing.T) {
 		t.Fatal("unauthenticated QUIC client connected")
 	}
 }
+
+// Reconnect (after a network change) replaces the session at once, with no
+// backoff, and traffic carries on.
+func TestReconnect(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, _ := key.NewPrivate()
+	b, _ := key.NewPrivate()
+	tokens := map[string]key.Public{"tok-a": a.Public(), "tok-b": b.Public()}
+	srv := NewServer(func(_ context.Context, tok string) (key.Public, error) {
+		if k, ok := tokens[tok]; ok {
+			return k, nil
+		}
+		return key.Public{}, errors.New("bad token")
+	}, log)
+	hs := httptest.NewServer(srv)
+	defer hs.Close()
+	wsURL := "ws" + strings.TrimPrefix(hs.URL, "http")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ca := NewClient(wsURL, "tok-a", nil, log)
+	cb := NewClient(wsURL, "tok-b", nil, log)
+	go ca.Run(ctx)
+	go cb.Run(ctx)
+	waitConnected(t, ca, cb)
+
+	start := time.Now()
+	ca.Reconnect()
+	// It drops and comes back well inside the 1 s minimum backoff it would
+	// otherwise wait.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if time.Since(start) > 50*time.Millisecond && ca.Connected() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("not reconnected")
+		}
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("reconnect took %v", took)
+	}
+	if ca.Reconnects() != 1 {
+		t.Fatalf("Reconnects = %d", ca.Reconnects())
+	}
+	// Wait for the server to register the new session, then send.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		ca.Send(b.Public(), []byte("after reconnect"))
+		select {
+		case p := <-cb.Recv():
+			if string(p.Data) == "after reconnect" {
+				return
+			}
+		case <-time.After(100 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no traffic after reconnecting")
+		}
+	}
+}

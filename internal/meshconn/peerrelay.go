@@ -312,5 +312,6 @@ func (c *Conn) fromRelay(src key.Public, payload []byte, from netip.AddrPort) {
 	}
 	data := make([]byte, len(payload))
 	copy(data, payload)
+	c.suspectDirect(p)
 	c.deliver(data, p)
 }
