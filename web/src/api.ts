@@ -124,6 +124,20 @@ export interface Flow {
   bytesRecv?: string;
 }
 
+export interface AccessRequest {
+  id: string;
+  nodeName: string;
+  user: string;
+  dst: string;
+  durationSeconds?: string;
+  reason?: string;
+  status: "pending" | "approved" | "denied" | "revoked" | "expired";
+  requestedAt?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  expiresAt?: string;
+}
+
 export interface AuditEvent {
   id: string;
   at?: string;
@@ -184,6 +198,10 @@ export const api = {
   setPeerRelayApproved: (nodeId: string, approved: boolean) => call("SetPeerRelayApproved", { nodeId, approved }),
   queryFlows: (q: { node?: string; sinceSeconds?: number; deniedOnly?: boolean; limit?: number }) =>
     call<{ flows?: Flow[]; enabled?: boolean }>("QueryFlows", q).then((r) => ({ flows: r.flows ?? [], enabled: !!r.enabled })),
+  listAccessRequests: (includeClosed: boolean) =>
+    call<{ requests?: AccessRequest[] }>("ListAccessRequests", { includeClosed }).then((r) => r.requests ?? []),
+  decideAccess: (id: string, approve: boolean) => call("DecideAccess", { id, approve }),
+  revokeAccess: (id: string) => call("RevokeAccess", { id }),
   listAuditEvents: (q: { sinceSeconds?: number; actor?: string; action?: string; limit?: number; verify?: boolean }) =>
     call<{ events?: AuditEvent[]; verification?: AuditVerification }>("ListAuditEvents", q).then((r) => ({
       events: r.events ?? [],

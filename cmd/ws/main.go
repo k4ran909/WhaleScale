@@ -44,6 +44,9 @@ Usage:
   ws expose                   list published services
   ws status [--json]          peers and the path to each (direct / relay)
   ws ping [-c N] NAME         disco ping; shows whether the reply came direct or via relay
+  ws access list              what you may request, and your requests
+  ws access request DST [--for 2h] [--reason TEXT] [--wait]
+                              ask for temporary access, e.g. node:prod-db:5432
   ws netcheck [--json]        public address, NAT type, relay reachability
   ws logout
   ws version
@@ -69,6 +72,8 @@ func main() {
 		err = cmdExpose(args)
 	case "ssh":
 		err = cmdSSH(args)
+	case "access":
+		err = cmdAccess(args[1:])
 	case "status":
 		err = cmdStatus(args)
 	case "ping":
@@ -726,4 +731,105 @@ func cmdLogout(args []string) error {
 
 func isLocal(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+func cmdAccess(args []string) error {
+	usage := errors.New("usage: ws access request DST [--for 2h] [--reason TEXT] [--wait] | list")
+	if len(args) == 0 {
+		return usage
+	}
+	st, _, err := loadState()
+	if err != nil {
+		return err
+	}
+	c := client(st.ServerURL)
+	authed := func(r connect.AnyRequest) { r.Header().Set("Authorization", "Bearer "+st.NodeToken) }
+	ctx := context.Background()
+	switch args[0] {
+	case "list":
+		req := connect.NewRequest(&v1.ListAccessRequest{})
+		authed(req)
+		resp, err := c.ListAccess(ctx, req)
+		if err != nil {
+			return err
+		}
+		if len(resp.Msg.Requestable) == 0 {
+			fmt.Println("The access policy lets this machine request nothing.")
+		} else {
+			fmt.Println("You can request:")
+			for _, r := range resp.Msg.Requestable {
+				how := "needs approval"
+				if r.AutoApprove {
+					how = "granted at once"
+				}
+				fmt.Printf("  %-32s up to %v, %s\n", r.Dst, time.Duration(r.MaxDurationSeconds)*time.Second, how)
+			}
+		}
+		if len(resp.Msg.Requests) > 0 {
+			fmt.Println()
+			tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(tw, "ID\tSTATUS\tACCESS\tFOR\tUNTIL")
+			for _, a := range resp.Msg.Requests {
+				until := "-"
+				if a.ExpiresAt != nil {
+					until = a.ExpiresAt.AsTime().Local().Format(time.DateTime)
+				}
+				fmt.Fprintf(tw, "%d\t%s\t%s\t%v\t%s\n", a.Id, a.Status, a.Dst, time.Duration(a.DurationSeconds)*time.Second, until)
+			}
+			tw.Flush()
+		}
+		return nil
+	case "request":
+		fs := flag.NewFlagSet("access request", flag.ExitOnError)
+		dur := fs.Duration("for", 0, "how long (default: the longest the policy allows)")
+		reason := fs.String("reason", "", "why you need it (shown to the approver and kept in the audit log)")
+		wait := fs.Bool("wait", false, "wait for the decision")
+		// Allow the destination before or after the flags.
+		var dst string
+		if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
+			dst, args = args[1], args[1:]
+		}
+		fs.Parse(args[1:])
+		if dst == "" && fs.NArg() == 1 {
+			dst = fs.Arg(0)
+		}
+		if dst == "" {
+			return usage
+		}
+		req := connect.NewRequest(&v1.RequestAccessRequest{Dst: dst, DurationSeconds: uint64(*dur / time.Second), Reason: *reason})
+		authed(req)
+		resp, err := c.RequestAccess(ctx, req)
+		if err != nil {
+			return err
+		}
+		a := resp.Msg.Request
+		for *wait && a.Status == "pending" {
+			fmt.Fprintf(os.Stderr, "\rrequest %d is waiting for an admin to approve it...", a.Id)
+			time.Sleep(3 * time.Second)
+			lr := connect.NewRequest(&v1.ListAccessRequest{})
+			authed(lr)
+			list, err := c.ListAccess(ctx, lr)
+			if err != nil {
+				return err
+			}
+			for _, r := range list.Msg.Requests {
+				if r.Id == a.Id {
+					a = r
+				}
+			}
+		}
+		if *wait {
+			fmt.Fprintln(os.Stderr)
+		}
+		switch a.Status {
+		case "approved":
+			fmt.Printf("access to %s granted until %s\n", a.Dst, a.ExpiresAt.AsTime().Local().Format(time.DateTime))
+		case "pending":
+			fmt.Printf("request %d for %s sent; an admin has to approve it ('ws access list' shows its status)\n", a.Id, a.Dst)
+		default:
+			fmt.Printf("request %d for %s was %s\n", a.Id, a.Dst, a.Status)
+		}
+		return nil
+	}
+	return usage
 }

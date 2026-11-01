@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, loginWithAPIKey, logout } from "./api";
-import { Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users } from "./pages";
+import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users } from "./pages";
 import { errText } from "./ui";
 
 const tabs = [
@@ -12,6 +12,7 @@ const tabs = [
   { id: "routes", label: "Routes", view: Routes },
   { id: "gateway", label: "Gateway", view: Gateway },
   { id: "policy", label: "Access policy", view: Policy },
+  { id: "access", label: "Access requests", view: Access },
   { id: "recordings", label: "SSH recordings", view: Recordings },
   { id: "audit", label: "Audit log", view: Audit },
 ] as const;

@@ -126,6 +126,9 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	} else if err := s.loadInitialPolicy(); err != nil {
 		return nil, err
 	}
+	if err := s.control.RefreshGrants(context.Background()); err != nil {
+		return nil, fmt.Errorf("load access grants: %w", err)
+	}
 	return s, nil
 }
 
@@ -356,6 +359,10 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 		if fp, err := s.store.Fingerprint(ctx); err == nil && fp != last {
 			last = fp
 			s.control.NotifyAll()
+		}
+		// Expires grants on time, and picks up CLI decisions.
+		if err := s.control.RefreshGrants(ctx); err != nil {
+			s.log.Error("refresh access grants", "err", err)
 		}
 		if s.cfg.PolicyFile != "" {
 			if fi, err := os.Stat(s.cfg.PolicyFile); err == nil && !fi.ModTime().Equal(s.policyMod) {

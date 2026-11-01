@@ -50,6 +50,11 @@ service AdminService {
   // The audit log of admin and security-relevant actions, newest first.
   rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
 
+  // Temporary access requests: list, approve or deny, revoke.
+  rpc ListAccessRequests(ListAccessRequestsRequest) returns (ListAccessRequestsResponse);
+  rpc DecideAccess(DecideAccessRequest) returns (DecideAccessResponse);
+  rpc RevokeAccess(RevokeAccessRequest) returns (RevokeAccessResponse);
+
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
@@ -240,6 +245,25 @@ message GetRecordingResponse {
   Recording recording = 1;
   bytes data = 2;
 }
+
+message ListAccessRequestsRequest {
+  // Also decided, revoked and expired requests (newest first).
+  bool include_closed = 1;
+}
+message ListAccessRequestsResponse {
+  repeated AccessRequest requests = 1;
+}
+message DecideAccessRequest {
+  uint64 id = 1;
+  bool approve = 2;
+}
+message DecideAccessResponse {
+  AccessRequest request = 1;
+}
+message RevokeAccessRequest {
+  uint64 id = 1;
+}
+message RevokeAccessResponse {}
 
 message ListAuditEventsRequest {
   // Only events in the last N seconds; 0 means all.

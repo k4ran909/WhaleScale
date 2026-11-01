@@ -194,7 +194,21 @@ Add to the policy (console): `"ssh": [{"action": "accept", "src": ["<your user>"
 - [ ] Logging in as `root` (not in the rule) is refused
 - [ ] The session appears under "SSH recordings" in the console; "View" shows what you typed commands produced
 
-## 11. Service lifecycle
+## 11. Temporary access and audit log
+
+Change the policy so the Windows PC can't reach the Linux machine, and add `"access_requests": [{"src": ["<your user>"], "dst": ["node:<linux-name>:22"], "max_duration": "1h"}]`. From the Windows PC:
+
+```powershell
+.\ws.exe access request node:<linux-name>:22 --for 10m --reason "test" --wait
+```
+
+- [ ] The request shows on the console's Access requests page; approving it lets `ws access request --wait` finish
+- [ ] SSH (port 22) to the Linux machine works; other ports still don't
+- [ ] "Revoke" cuts new connections within ~5 s; after 10 minutes an unrevoked grant ends by itself
+- [ ] The console's Audit log lists the request, approval and expiry with who did each; "Verify chain" says intact
+- [ ] On the VPS, `whalescale audit --verify` agrees
+
+## 12. Service lifecycle
 
 - [ ] Reboot each machine: the tunnel comes back up on its own
 - [ ] `ws down`: peers show it offline within ~30 s; `ws up` brings it back

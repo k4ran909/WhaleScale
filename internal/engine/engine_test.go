@@ -739,3 +739,54 @@ func TestFlowLogs(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}
 }
+
+// A machine with no standing access asks for some, gets it once an admin
+// approves, and loses it again on revocation, all over real connections.
+func TestAccessGrant(t *testing.T) {
+	n := newTestNet(t, `{"acls":[{"action":"accept","src":["node:jit-db"],"dst":["node:jit-db:*"]}],
+		"access_requests":[{"src":["alice"],"dst":["node:jit-db:7100"],"max_duration":"1h"}]}`)
+	db := n.node("jit-db", false)
+	dev := n.node("jit-dev", false)
+	echo(t, db, 7100)
+	echo(t, db, 7101)
+	if err := roundTrip(dev, db, 7100, 2*time.Second); err == nil {
+		t.Fatal("reached the database without a grant")
+	}
+
+	api := whalescalev1connect.NewControlServiceClient(httpClientForTest(), n.url)
+	ask := func(dst string) (*connect.Response[v1.RequestAccessResponse], error) {
+		req := connect.NewRequest(&v1.RequestAccessRequest{Dst: dst, DurationSeconds: 600, Reason: "deploy"})
+		req.Header().Set("Authorization", "Bearer "+dev.opts.State.NodeToken)
+		return api.RequestAccess(context.Background(), req)
+	}
+	if _, err := ask("node:jit-db:22"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("request outside the policy: %v", err)
+	}
+	resp, err := ask("node:jit-db:7100")
+	if err != nil || resp.Msg.Request.Status != "pending" {
+		t.Fatalf("request: %v, %v", resp, err)
+	}
+	id := resp.Msg.Request.Id
+
+	// Approved the way the CLI does it: straight in the database, picked
+	// up by the server's watcher.
+	ctx := context.Background()
+	if _, err := n.store.DecideAccessRequest(ctx, id, true, "cli:test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := roundTrip(dev, db, 7100, 15*time.Second); err != nil {
+		t.Fatalf("no access after approval: %v", err)
+	}
+	if err := roundTrip(dev, db, 7101, 2*time.Second); err == nil {
+		t.Fatal("the grant opened more than the requested port")
+	}
+
+	if _, err := n.store.RevokeAccessGrant(ctx, id, "cli:test"); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); roundTrip(dev, db, 7100, time.Second) == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("access survived revocation")
+		}
+	}
+}

@@ -1048,3 +1048,106 @@ export function Audit() {
     </Page>
   );
 }
+
+function forDuration(seconds?: string): string {
+  const s = Number(seconds ?? 0);
+  if (s % 3600 === 0) return `${s / 3600} h`;
+  return `${Math.round(s / 60)} min`;
+}
+
+export function Access() {
+  const [closed, setClosed] = useState(false);
+  const [list, setList] = useState<import("./api").AccessRequest[]>();
+  const [error, setError] = useState<string>();
+  const load = () =>
+    api.listAccessRequests(closed).then(
+      (l) => (setList(l), setError(undefined)),
+      (e) => setError(errText(e)),
+    );
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, [closed]);
+  const act = (p: Promise<unknown>) => p.then(load, (e) => setError(errText(e)));
+  const pending = (list ?? []).filter((r) => r.status === "pending");
+
+  return (
+    <Page
+      title="Access requests"
+      lead={
+        <>
+          Temporary access people asked for with <code>ws access request</code>, under the policy's{" "}
+          <code>access_requests</code> rules. Approved access ends on its own when the time is up.
+        </>
+      }
+      actions={
+        <label className="check">
+          <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} /> Show past requests
+        </label>
+      }
+    >
+      {error && <Banner kind="error">{error}</Banner>}
+      {pending.length > 0 && <Banner kind="warn">{pending.length} waiting for a decision.</Banner>}
+      {list && list.length === 0 ? (
+        <Empty>{closed ? "No requests yet." : "Nothing pending and no active grants."}</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Machine</th>
+                <th>Access</th>
+                <th>For</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {(list ?? []).map((r) => {
+                const active = r.status === "approved" && !!r.expiresAt && new Date(r.expiresAt) > new Date();
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.nodeName}</strong>
+                      <div className="sub">{r.user} · {timeAgo(r.requestedAt)}</div>
+                    </td>
+                    <td className="mono">{r.dst}</td>
+                    <td>{forDuration(r.durationSeconds)}</td>
+                    <td>{r.reason || <span className="sub">none given</span>}</td>
+                    <td>
+                      {r.status === "pending" && <span className="warn-text">Waiting</span>}
+                      {active && <span className="ok-text">Active, ends {timeUntil(r.expiresAt)}</span>}
+                      {!active && r.status !== "pending" && (
+                        <span className="sub">
+                          {r.status === "approved" ? "expired" : r.status}
+                          {r.decidedBy ? ` by ${r.decidedBy}` : ""}
+                        </span>
+                      )}
+                    </td>
+                    <td className="actions">
+                      {r.status === "pending" && (
+                        <>
+                          <button className="btn primary" onClick={() => act(api.decideAccess(r.id, true))}>
+                            Approve
+                          </button>{" "}
+                          <button className="btn ghost" onClick={() => act(api.decideAccess(r.id, false))}>
+                            Deny
+                          </button>
+                        </>
+                      )}
+                      {active && (
+                        <ConfirmButton label="Revoke" confirm="Revoke now?" onConfirm={() => act(api.revokeAccess(r.id))} />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Page>
+  );
+}

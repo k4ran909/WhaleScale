@@ -128,6 +128,9 @@ type Explanation struct {
 // RuleText renders acls[i] for messages.
 func (p *Policy) RuleText(i int) string {
 	a := p.ACLs[i]
+	if a.Origin != "" {
+		return fmt.Sprintf("%s: %s → %s", a.Origin, strings.Join(a.Src, ", "), strings.Join(a.Dst, ", "))
+	}
 	return fmt.Sprintf("acls[%d]: %s → %s", i, strings.Join(a.Src, ", "), strings.Join(a.Dst, ", "))
 }
 

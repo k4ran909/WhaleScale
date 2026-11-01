@@ -219,6 +219,24 @@ Without one, every node can reach every other node. Edit it in the console, or p
 Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
 
 
+### Temporary access
+
+Instead of standing access to sensitive machines, let people ask for it when they need it:
+
+```json
+"access_requests": [
+  { "src": ["group:eng"], "dst": ["node:prod-db:5432"], "max_duration": "4h" },
+  { "src": ["group:oncall"], "dst": ["node:prod-db:22"], "max_duration": "1h", "auto_approve": true }
+]
+```
+
+```bash
+ws access list                                             # what you may request, your requests
+ws access request node:prod-db:5432 --for 2h --reason "migrating orders table" --wait
+```
+
+An admin approves or denies it on the console's **Access requests** page, or with `whalescale access list | approve ID | deny ID`. Access starts at approval and ends by itself when the time is up (`revoke` ends it early). `auto_approve` rules are for break-glass access: granted at once, still audited. The grant covers only the machine that asked and only the requested ports (a subset of the rule's ports is fine). Requests left undecided expire after 24 hours. Every step is in the audit log, and `explain` names the grant when one is what allows a connection.
+
 ### Device limits
 
 Cap how many machines each person can add:
@@ -294,6 +312,7 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 | `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
 | `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
 | `whalescale audit [--since 24h] [--actor X] [--action X] / --verify` | Audit log; check its hash chain |
+| `whalescale access list [--all] / approve ID / deny ID / revoke ID` | Temporary access requests |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots and policy compiles |
 

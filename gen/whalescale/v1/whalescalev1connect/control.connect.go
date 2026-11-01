@@ -53,6 +53,12 @@ const (
 	// ControlServiceUploadRecordingProcedure is the fully-qualified name of the ControlService's
 	// UploadRecording RPC.
 	ControlServiceUploadRecordingProcedure = "/whalescale.v1.ControlService/UploadRecording"
+	// ControlServiceRequestAccessProcedure is the fully-qualified name of the ControlService's
+	// RequestAccess RPC.
+	ControlServiceRequestAccessProcedure = "/whalescale.v1.ControlService/RequestAccess"
+	// ControlServiceListAccessProcedure is the fully-qualified name of the ControlService's ListAccess
+	// RPC.
+	ControlServiceListAccessProcedure = "/whalescale.v1.ControlService/ListAccess"
 )
 
 // ControlServiceClient is a client for the whalescale.v1.ControlService service.
@@ -76,6 +82,11 @@ type ControlServiceClient interface {
 	ReportStatus(context.Context, *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error)
 	// UploadRecording stores a finished, recorded SSH session.
 	UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error)
+	// Asks for temporary access under the policy's access_requests rules.
+	// Approved grants expire on their own.
+	RequestAccess(context.Context, *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error)
+	// This node's recent requests, and what it may request.
+	ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error)
 }
 
 // NewControlServiceClient constructs a client for the whalescale.v1.ControlService service. By
@@ -131,6 +142,18 @@ func NewControlServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(controlServiceMethods.ByName("UploadRecording")),
 			connect.WithClientOptions(opts...),
 		),
+		requestAccess: connect.NewClient[v1.RequestAccessRequest, v1.RequestAccessResponse](
+			httpClient,
+			baseURL+ControlServiceRequestAccessProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("RequestAccess")),
+			connect.WithClientOptions(opts...),
+		),
+		listAccess: connect.NewClient[v1.ListAccessRequest, v1.ListAccessResponse](
+			httpClient,
+			baseURL+ControlServiceListAccessProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("ListAccess")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -143,6 +166,8 @@ type controlServiceClient struct {
 	streamNetworkMap *connect.Client[v1.StreamNetworkMapRequest, v1.StreamNetworkMapResponse]
 	reportStatus     *connect.Client[v1.ReportStatusRequest, v1.ReportStatusResponse]
 	uploadRecording  *connect.Client[v1.UploadRecordingRequest, v1.UploadRecordingResponse]
+	requestAccess    *connect.Client[v1.RequestAccessRequest, v1.RequestAccessResponse]
+	listAccess       *connect.Client[v1.ListAccessRequest, v1.ListAccessResponse]
 }
 
 // Register calls whalescale.v1.ControlService.Register.
@@ -180,6 +205,16 @@ func (c *controlServiceClient) UploadRecording(ctx context.Context, req *connect
 	return c.uploadRecording.CallUnary(ctx, req)
 }
 
+// RequestAccess calls whalescale.v1.ControlService.RequestAccess.
+func (c *controlServiceClient) RequestAccess(ctx context.Context, req *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error) {
+	return c.requestAccess.CallUnary(ctx, req)
+}
+
+// ListAccess calls whalescale.v1.ControlService.ListAccess.
+func (c *controlServiceClient) ListAccess(ctx context.Context, req *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error) {
+	return c.listAccess.CallUnary(ctx, req)
+}
+
 // ControlServiceHandler is an implementation of the whalescale.v1.ControlService service.
 type ControlServiceHandler interface {
 	// Register enrolls a new node. With an auth_key it completes at once.
@@ -201,6 +236,11 @@ type ControlServiceHandler interface {
 	ReportStatus(context.Context, *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error)
 	// UploadRecording stores a finished, recorded SSH session.
 	UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error)
+	// Asks for temporary access under the policy's access_requests rules.
+	// Approved grants expire on their own.
+	RequestAccess(context.Context, *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error)
+	// This node's recent requests, and what it may request.
+	ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error)
 }
 
 // NewControlServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -252,6 +292,18 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 		connect.WithSchema(controlServiceMethods.ByName("UploadRecording")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controlServiceRequestAccessHandler := connect.NewUnaryHandler(
+		ControlServiceRequestAccessProcedure,
+		svc.RequestAccess,
+		connect.WithSchema(controlServiceMethods.ByName("RequestAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
+	controlServiceListAccessHandler := connect.NewUnaryHandler(
+		ControlServiceListAccessProcedure,
+		svc.ListAccess,
+		connect.WithSchema(controlServiceMethods.ByName("ListAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/whalescale.v1.ControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ControlServiceRegisterProcedure:
@@ -268,6 +320,10 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 			controlServiceReportStatusHandler.ServeHTTP(w, r)
 		case ControlServiceUploadRecordingProcedure:
 			controlServiceUploadRecordingHandler.ServeHTTP(w, r)
+		case ControlServiceRequestAccessProcedure:
+			controlServiceRequestAccessHandler.ServeHTTP(w, r)
+		case ControlServiceListAccessProcedure:
+			controlServiceListAccessHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -303,4 +359,12 @@ func (UnimplementedControlServiceHandler) ReportStatus(context.Context, *connect
 
 func (UnimplementedControlServiceHandler) UploadRecording(context.Context, *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.UploadRecording is not implemented"))
+}
+
+func (UnimplementedControlServiceHandler) RequestAccess(context.Context, *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.RequestAccess is not implemented"))
+}
+
+func (UnimplementedControlServiceHandler) ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.ListAccess is not implemented"))
 }

@@ -31,6 +31,50 @@ service ControlService {
   rpc ReportStatus(ReportStatusRequest) returns (ReportStatusResponse);
   // UploadRecording stores a finished, recorded SSH session.
   rpc UploadRecording(UploadRecordingRequest) returns (UploadRecordingResponse);
+  // Asks for temporary access under the policy's access_requests rules.
+  // Approved grants expire on their own.
+  rpc RequestAccess(RequestAccessRequest) returns (RequestAccessResponse);
+  // This node's recent requests, and what it may request.
+  rpc ListAccess(ListAccessRequest) returns (ListAccessResponse);
+}
+
+message RequestAccessRequest {
+  // "selector:ports", as a rule's dst lists it (ports may be a subset).
+  string dst = 1;
+  // 0 means the rule's maximum.
+  uint64 duration_seconds = 2;
+  string reason = 3;
+}
+message RequestAccessResponse {
+  AccessRequest request = 1;
+}
+message ListAccessRequest {}
+message ListAccessResponse {
+  repeated AccessRequest requests = 1;
+  repeated RequestableAccess requestable = 2;
+}
+message RequestableAccess {
+  string dst = 1;
+  uint64 max_duration_seconds = 2;
+  bool auto_approve = 3;
+}
+
+// AccessRequest is a request for temporary access from one node. While
+// approved and unexpired it is a grant.
+message AccessRequest {
+  uint64 id = 1;
+  string node_name = 2;
+  string user = 3;
+  string dst = 4;
+  uint64 duration_seconds = 5;
+  string reason = 6;
+  // "pending", "approved", "denied", "revoked" or "expired".
+  string status = 7;
+  google.protobuf.Timestamp requested_at = 8;
+  string decided_by = 9;
+  google.protobuf.Timestamp decided_at = 10;
+  // Set once approved.
+  google.protobuf.Timestamp expires_at = 11;
 }
 
 message Node {

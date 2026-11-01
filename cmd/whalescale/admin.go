@@ -369,6 +369,69 @@ func cmdRelays(args []string) error {
 	return nil
 }
 
+func cmdAccess(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: whalescale access list [--all] | approve ID | deny ID | revoke ID")
+	}
+	fs, db := adminFlags("access " + args[0])
+	all := fs.Bool("all", false, "list: include decided, revoked and expired requests")
+	st, err := openStore(fs, db, args[1:])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if args[0] == "list" {
+		list, err := st.ListAccessRequests(ctx, store.AccessFilter{Open: !*all})
+		if err != nil {
+			return err
+		}
+		tw := table("ID\tSTATUS\tMACHINE\tUSER\tACCESS\tFOR\tUNTIL\tREASON")
+		for _, a := range list {
+			until := "-"
+			if !a.ExpiresAt.IsZero() {
+				until = a.ExpiresAt.Format(time.DateTime)
+			}
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%v\t%s\t%s\n", a.ID, a.Status, a.NodeName, a.User, a.Dst, a.Duration, until, a.Reason)
+		}
+		return tw.Flush()
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: whalescale access %s ID", args[0])
+	}
+	id, err := strconv.ParseUint(fs.Arg(0), 10, 64)
+	if err != nil {
+		return fmt.Errorf("bad request ID %q", fs.Arg(0))
+	}
+	who := "cli:unknown"
+	if u, err := user.Current(); err == nil {
+		who = "cli:" + u.Username
+	}
+	var a *store.AccessRequest
+	switch args[0] {
+	case "approve", "deny":
+		if a, err = st.DecideAccessRequest(ctx, id, args[0] == "approve", who); err != nil {
+			return err
+		}
+		if a.Status == store.AccessApproved {
+			cliAudit(ctx, st, "access granted", "id", a.ID, "node", a.NodeName, "dst", a.Dst, "until", a.ExpiresAt.Format(time.RFC3339))
+			fmt.Printf("granted %s access to %s until %s (running servers apply it within 5s)\n", a.NodeName, a.Dst, a.ExpiresAt.Format(time.DateTime))
+		} else {
+			cliAudit(ctx, st, "access denied", "id", a.ID, "node", a.NodeName, "dst", a.Dst)
+			fmt.Printf("denied %s access to %s\n", a.NodeName, a.Dst)
+		}
+	case "revoke":
+		if a, err = st.RevokeAccessGrant(ctx, id, who); err != nil {
+			return err
+		}
+		cliAudit(ctx, st, "access revoked", "id", a.ID, "node", a.NodeName, "dst", a.Dst)
+		fmt.Printf("revoked %s access to %s (running servers apply it within 5s)\n", a.NodeName, a.Dst)
+	default:
+		return fmt.Errorf("unknown access subcommand %q", args[0])
+	}
+	return nil
+}
+
 func cmdAudit(args []string) error {
 	fs, db := adminFlags("audit")
 	since := fs.Duration("since", 0, "how far back to look (0 for everything)")

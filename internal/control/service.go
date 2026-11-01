@@ -55,8 +55,11 @@ type Service struct {
 	log   *slog.Logger
 	cfg   Config
 
-	policyMu     sync.RWMutex
+	policyMu sync.RWMutex
+	// policy is base plus an ACL per active access grant.
 	policy       *policy.Policy
+	base         *policy.Policy
+	grants       []store.AccessRequest
 	policyText   string
 	policySource string // "default", "database", "file" or "url"
 	policyStatus func() PolicyStatus
@@ -113,7 +116,8 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 	if cfg.DNSSuffix == "" {
 		cfg.DNSSuffix = "whale.internal"
 	}
-	svc := &Service{store: s, log: log, cfg: cfg, policy: policy.AllowAll(), policySource: "default",
+	allow := policy.AllowAll()
+	svc := &Service{store: s, log: log, cfg: cfg, policy: allow, base: allow, policySource: "default",
 		changed: make(chan struct{}), online: map[uint64]int{},
 		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{}}
 	svc.version.Store(1)
@@ -125,7 +129,8 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 // source is "default", "database" or "file"; text is shown in the console.
 func (s *Service) SetPolicy(p *policy.Policy, text, source string) {
 	s.policyMu.Lock()
-	s.policy, s.policyText, s.policySource = p, text, source
+	s.base, s.policyText, s.policySource = p, text, source
+	s.policy = withGrants(p, s.grants)
 	s.policyMu.Unlock()
 	s.notify(false)
 }
@@ -159,7 +164,14 @@ func (s *Service) deviceLimit(user string) (int, bool) {
 	return s.CurrentPolicy().DeviceLimit(user)
 }
 
-// CurrentPolicy returns the active policy.
+// basePolicy returns the policy as set, without access grants.
+func (s *Service) basePolicy() *policy.Policy {
+	s.policyMu.RLock()
+	defer s.policyMu.RUnlock()
+	return s.base
+}
+
+// CurrentPolicy returns the policy in force, including access grants.
 func (s *Service) CurrentPolicy() *policy.Policy {
 	s.policyMu.RLock()
 	defer s.policyMu.RUnlock()

@@ -95,6 +95,15 @@ const (
 	// AdminServiceListAuditEventsProcedure is the fully-qualified name of the AdminService's
 	// ListAuditEvents RPC.
 	AdminServiceListAuditEventsProcedure = "/whalescale.v1.AdminService/ListAuditEvents"
+	// AdminServiceListAccessRequestsProcedure is the fully-qualified name of the AdminService's
+	// ListAccessRequests RPC.
+	AdminServiceListAccessRequestsProcedure = "/whalescale.v1.AdminService/ListAccessRequests"
+	// AdminServiceDecideAccessProcedure is the fully-qualified name of the AdminService's DecideAccess
+	// RPC.
+	AdminServiceDecideAccessProcedure = "/whalescale.v1.AdminService/DecideAccess"
+	// AdminServiceRevokeAccessProcedure is the fully-qualified name of the AdminService's RevokeAccess
+	// RPC.
+	AdminServiceRevokeAccessProcedure = "/whalescale.v1.AdminService/RevokeAccess"
 	// AdminServiceListAPIKeysProcedure is the fully-qualified name of the AdminService's ListAPIKeys
 	// RPC.
 	AdminServiceListAPIKeysProcedure = "/whalescale.v1.AdminService/ListAPIKeys"
@@ -136,6 +145,10 @@ type AdminServiceClient interface {
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
+	// Temporary access requests: list, approve or deny, revoke.
+	ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error)
+	DecideAccess(context.Context, *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error)
+	RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -296,6 +309,24 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		listAccessRequests: connect.NewClient[v1.ListAccessRequestsRequest, v1.ListAccessRequestsResponse](
+			httpClient,
+			baseURL+AdminServiceListAccessRequestsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListAccessRequests")),
+			connect.WithClientOptions(opts...),
+		),
+		decideAccess: connect.NewClient[v1.DecideAccessRequest, v1.DecideAccessResponse](
+			httpClient,
+			baseURL+AdminServiceDecideAccessProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("DecideAccess")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeAccess: connect.NewClient[v1.RevokeAccessRequest, v1.RevokeAccessResponse](
+			httpClient,
+			baseURL+AdminServiceRevokeAccessProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("RevokeAccess")),
+			connect.WithClientOptions(opts...),
+		),
 		listAPIKeys: connect.NewClient[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse](
 			httpClient,
 			baseURL+AdminServiceListAPIKeysProcedure,
@@ -343,6 +374,9 @@ type adminServiceClient struct {
 	listRecordings       *connect.Client[v1.ListRecordingsRequest, v1.ListRecordingsResponse]
 	getRecording         *connect.Client[v1.GetRecordingRequest, v1.GetRecordingResponse]
 	listAuditEvents      *connect.Client[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse]
+	listAccessRequests   *connect.Client[v1.ListAccessRequestsRequest, v1.ListAccessRequestsResponse]
+	decideAccess         *connect.Client[v1.DecideAccessRequest, v1.DecideAccessResponse]
+	revokeAccess         *connect.Client[v1.RevokeAccessRequest, v1.RevokeAccessResponse]
 	listAPIKeys          *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
 	createAPIKey         *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
 	expireAPIKey         *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
@@ -468,6 +502,21 @@ func (c *adminServiceClient) ListAuditEvents(ctx context.Context, req *connect.R
 	return c.listAuditEvents.CallUnary(ctx, req)
 }
 
+// ListAccessRequests calls whalescale.v1.AdminService.ListAccessRequests.
+func (c *adminServiceClient) ListAccessRequests(ctx context.Context, req *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error) {
+	return c.listAccessRequests.CallUnary(ctx, req)
+}
+
+// DecideAccess calls whalescale.v1.AdminService.DecideAccess.
+func (c *adminServiceClient) DecideAccess(ctx context.Context, req *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error) {
+	return c.decideAccess.CallUnary(ctx, req)
+}
+
+// RevokeAccess calls whalescale.v1.AdminService.RevokeAccess.
+func (c *adminServiceClient) RevokeAccess(ctx context.Context, req *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error) {
+	return c.revokeAccess.CallUnary(ctx, req)
+}
+
 // ListAPIKeys calls whalescale.v1.AdminService.ListAPIKeys.
 func (c *adminServiceClient) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
 	return c.listAPIKeys.CallUnary(ctx, req)
@@ -513,6 +562,10 @@ type AdminServiceHandler interface {
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
+	// Temporary access requests: list, approve or deny, revoke.
+	ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error)
+	DecideAccess(context.Context, *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error)
+	RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -669,6 +722,24 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListAccessRequestsHandler := connect.NewUnaryHandler(
+		AdminServiceListAccessRequestsProcedure,
+		svc.ListAccessRequests,
+		connect.WithSchema(adminServiceMethods.ByName("ListAccessRequests")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceDecideAccessHandler := connect.NewUnaryHandler(
+		AdminServiceDecideAccessProcedure,
+		svc.DecideAccess,
+		connect.WithSchema(adminServiceMethods.ByName("DecideAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceRevokeAccessHandler := connect.NewUnaryHandler(
+		AdminServiceRevokeAccessProcedure,
+		svc.RevokeAccess,
+		connect.WithSchema(adminServiceMethods.ByName("RevokeAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListAPIKeysHandler := connect.NewUnaryHandler(
 		AdminServiceListAPIKeysProcedure,
 		svc.ListAPIKeys,
@@ -737,6 +808,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceGetRecordingHandler.ServeHTTP(w, r)
 		case AdminServiceListAuditEventsProcedure:
 			adminServiceListAuditEventsHandler.ServeHTTP(w, r)
+		case AdminServiceListAccessRequestsProcedure:
+			adminServiceListAccessRequestsHandler.ServeHTTP(w, r)
+		case AdminServiceDecideAccessProcedure:
+			adminServiceDecideAccessHandler.ServeHTTP(w, r)
+		case AdminServiceRevokeAccessProcedure:
+			adminServiceRevokeAccessHandler.ServeHTTP(w, r)
 		case AdminServiceListAPIKeysProcedure:
 			adminServiceListAPIKeysHandler.ServeHTTP(w, r)
 		case AdminServiceCreateAPIKeyProcedure:
@@ -846,6 +923,18 @@ func (UnimplementedAdminServiceHandler) GetRecording(context.Context, *connect.R
 
 func (UnimplementedAdminServiceHandler) ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListAuditEvents is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListAccessRequests(context.Context, *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListAccessRequests is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) DecideAccess(context.Context, *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.DecideAccess is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.RevokeAccess is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {

@@ -36,6 +36,8 @@ type Policy struct {
 	// DeviceLimits caps how many machines a user may register, keyed by
 	// user, "group:NAME" or "*". See DeviceLimit.
 	DeviceLimits map[string]int `json:"device_limits,omitempty"`
+	// AccessRequests says who may ask for temporary access to what.
+	AccessRequests []AccessRule `json:"access_requests,omitempty"`
 }
 
 // SSHRule lets sources log in to destination machines over SSH as the
@@ -69,6 +71,9 @@ type ACL struct {
 	Action string   `json:"action"`
 	Src    []string `json:"src"`
 	Dst    []string `json:"dst"`
+	// Origin describes an ACL that isn't from the policy text, such as a
+	// temporary access grant, in explanations.
+	Origin string `json:"-"`
 }
 
 // AllowAll is the default policy when none is configured.
@@ -160,6 +165,7 @@ func (p *Policy) validate() error {
 			}
 		}
 	}
+	errs = append(errs, p.validateAccessRules()...)
 	for sel, n := range p.DeviceLimits {
 		where := fmt.Sprintf("device_limits[%q]", sel)
 		switch {
