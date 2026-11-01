@@ -489,7 +489,7 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 	}
 	changed, err := s.store.UpdateNodeInfo(ctx, self.ID, store.NodeInfo{
 		NodeKey: m.NodeKey, DiscoKey: m.DiscoKey, Endpoints: m.Endpoints, OS: truncate(m.Os, 32),
-		SSHHostKey: m.SshHostKey,
+		SSHHostKey: m.SshHostKey, OSVersion: truncate(m.OsVersion, 64), ClientVersion: truncate(m.ClientVersion, 64),
 	})
 	if err == nil {
 		var rc bool
@@ -627,7 +627,8 @@ func PolicyNodes(all []store.Node) []policy.Node {
 	out := make([]policy.Node, len(all))
 	for i := range all {
 		n := &all[i]
-		out[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}, Routes: n.Routes}
+		out[i] = policy.Node{ID: n.ID, Name: n.Name, User: n.User, Addrs: []netip.Addr{n.IPv4, n.IPv6}, Routes: n.Routes,
+			Posture: map[string]string{"os": n.OS, "os_version": n.OSVersion, "client_version": n.ClientVersion}}
 	}
 	return out
 }
@@ -764,5 +765,7 @@ func (s *Service) nodeProto(n *store.Node, online bool) *v1.Node {
 		Online:           online,
 		Fqdn:             n.Name + "." + s.cfg.DNSSuffix,
 		LockSignature:    lockSignature(n.LockSignature),
+		OsVersion:        n.OSVersion,
+		ClientVersion:    n.ClientVersion,
 	}
 }

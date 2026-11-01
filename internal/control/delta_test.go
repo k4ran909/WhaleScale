@@ -202,12 +202,12 @@ func TestDeltasAreMinimal(t *testing.T) {
 	if first := next(); first.NetworkMap == nil || len(first.NetworkMap.Peers) != 49 {
 		t.Fatalf("first message: %v", first)
 	}
-	st.UpdateNodeInfo(ctx, b[3], store.NodeInfo{NodeKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", DiscoKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="})
+	st.UpdateNodeInfo(ctx, b[3], store.NodeInfo{NodeKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", DiscoKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", OS: "linux"})
 	if resp := next(); resp != nil {
 		t.Fatalf("a change to an invisible node sent %v", resp)
 	}
 	compiles := s.Stats().Compiles.Load()
-	st.UpdateNodeInfo(ctx, a[7], store.NodeInfo{NodeKey: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=", DiscoKey: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="})
+	st.UpdateNodeInfo(ctx, a[7], store.NodeInfo{NodeKey: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=", DiscoKey: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=", OS: "linux"})
 	resp := next()
 	if d := resp.GetDelta(); d == nil || len(d.PeersChanged) != 1 || d.PeersChanged[0].Id != a[7] ||
 		d.Self != nil || d.PacketFilter != nil || d.Settings != nil || len(d.PeersRemoved) != 0 {

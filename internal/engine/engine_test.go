@@ -879,3 +879,29 @@ func TestNetworkLock(t *testing.T) {
 		t.Fatal("the forged signature let c in")
 	}
 }
+
+// Machines report their posture, and src_posture rules act on it.
+func TestPosture(t *testing.T) {
+	n := newTestNet(t, `{
+		"postures": {"posture:here": ["os == `+runtime.GOOS+`"], "posture:plan9": ["os == plan9"]},
+		"acls": [
+			{"action": "accept", "src": ["*"], "dst": ["node:pos-b:7300"], "src_posture": ["posture:here"]},
+			{"action": "accept", "src": ["*"], "dst": ["node:pos-b:7301"], "src_posture": ["posture:plan9"]}
+		]}`)
+	a := n.node("pos-a", false)
+	b := n.node("pos-b", false)
+	echo(t, b, 7300)
+	echo(t, b, 7301)
+	if err := roundTrip(a, b, 7300, 10*time.Second); err != nil {
+		t.Fatalf("posture met: %v", err)
+	}
+	if err := roundTrip(a, b, 7301, 2*time.Second); err == nil {
+		t.Fatal("reached a port that needs a posture this machine doesn't have")
+	}
+	nodes, _ := n.store.ListNodes(context.Background(), "")
+	for _, nd := range nodes {
+		if nd.ClientVersion == "" || (runtime.GOOS == "windows" && nd.OSVersion == "") {
+			t.Fatalf("%s reported no posture: os_version=%q client_version=%q", nd.Name, nd.OSVersion, nd.ClientVersion)
+		}
+	}
+}

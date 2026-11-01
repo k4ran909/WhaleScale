@@ -79,7 +79,9 @@ type Node struct {
 	// LockSignature is a network lock signature over NodeKey (an encoded
 	// NodeSignature), filled by ListNodes.
 	LockSignature []byte
-	SSHHostKey    string
+	// OSVersion and ClientVersion are reported posture.
+	OSVersion, ClientVersion string
+	SSHHostKey               string
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -384,7 +386,7 @@ func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64
 		IPv4: v4, IPv6: v6, OS: p.OS, Ephemeral: ephemeral, CreatedAt: now, LastSeen: now}, token, nil
 }
 
-const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints, n.relay_offered, n.relay_approved, n.ssh_host_key`
+const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints, n.relay_offered, n.relay_approved, n.ssh_host_key, n.os_version, n.client_version`
 
 // NodeByToken authenticates a node token and bumps last_seen.
 func (s *Store) NodeByToken(ctx context.Context, token string) (*Node, error) {
@@ -446,6 +448,8 @@ type NodeInfo struct {
 	Endpoints  []string
 	OS         string
 	SSHHostKey string
+	// Posture.
+	OSVersion, ClientVersion string
 }
 
 // UpdateNodeInfo stores agent-reported keys and endpoints. It reports
@@ -467,10 +471,12 @@ func (s *Store) UpdateNodeInfo(ctx context.Context, id uint64, info NodeInfo) (b
 			return false, fmt.Errorf("node key: %w", ErrAlreadyExists)
 		}
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE nodes SET node_key = ?, disco_key = ?, endpoints = ?, os = ?, ssh_host_key = ?, last_seen = ?
-		WHERE id = ? AND (node_key != ? OR disco_key != ? OR endpoints != ? OR os != ? OR ssh_host_key != ?)`,
-		info.NodeKey, info.DiscoKey, string(eps), info.OS, info.SSHHostKey, time.Now().Unix(), id,
-		info.NodeKey, info.DiscoKey, string(eps), info.OS, info.SSHHostKey)
+	res, err := s.db.ExecContext(ctx, `UPDATE nodes SET node_key = ?, disco_key = ?, endpoints = ?, os = ?, ssh_host_key = ?,
+		os_version = ?, client_version = ?, last_seen = ?
+		WHERE id = ? AND (node_key != ? OR disco_key != ? OR endpoints != ? OR os != ? OR ssh_host_key != ?
+		OR os_version != ? OR client_version != ?)`,
+		info.NodeKey, info.DiscoKey, string(eps), info.OS, info.SSHHostKey, info.OSVersion, info.ClientVersion, time.Now().Unix(), id,
+		info.NodeKey, info.DiscoKey, string(eps), info.OS, info.SSHHostKey, info.OSVersion, info.ClientVersion)
 	if err != nil {
 		return false, err
 	}
@@ -504,7 +510,7 @@ func scanNode(r scanner) (*Node, error) {
 	var created, seen int64
 	var eps string
 	if err := r.Scan(&n.ID, &n.UserID, &n.User, &n.Name, &n.MachineKey, &v4, &v6, &n.OS, &n.Ephemeral, &created, &seen,
-		&n.NodeKey, &n.DiscoKey, &eps, &n.RelayOffered, &n.RelayApproved, &n.SSHHostKey); err != nil {
+		&n.NodeKey, &n.DiscoKey, &eps, &n.RelayOffered, &n.RelayApproved, &n.SSHHostKey, &n.OSVersion, &n.ClientVersion); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal([]byte(eps), &n.Endpoints); err != nil {

@@ -193,6 +193,7 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 func (s *Service) mapNode(n *store.Node, online bool) *v1.Node {
 	p := s.nodeProto(n, online)
 	p.MachineKey, p.CreatedAt, p.LastSeen, p.Ephemeral, p.AdvertisedRoutes = "", nil, nil, false, nil
+	p.OsVersion, p.ClientVersion = "", ""
 	return p
 }
 
@@ -209,6 +210,11 @@ func policyKey(nodes []store.Node) uint64 {
 		h.WriteByte(0)
 		h.WriteString(n.User)
 		h.WriteByte(0)
+		// Posture, which src_posture rules read.
+		for _, s := range []string{n.OS, n.OSVersion, n.ClientVersion} {
+			h.WriteString(s)
+			h.WriteByte(0)
+		}
 		for _, a := range []netip.Addr{n.IPv4, n.IPv6} {
 			ab, _ := a.MarshalBinary()
 			h.Write(ab)

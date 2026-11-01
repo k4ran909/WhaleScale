@@ -39,6 +39,8 @@ export interface Node {
   routes?: string[];
   advertisedRoutes?: string[];
   exitNode?: boolean;
+  osVersion?: string;
+  clientVersion?: string;
 }
 
 export interface User {

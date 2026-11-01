@@ -140,11 +140,21 @@ func (p *Policy) Explain(src, dst Identity, port uint16, nodes []Node) Explanati
 	ex := Explanation{Rule: -1}
 	// Near misses: a rule for this pair on other ports is the most likely
 	// fix, so those come before rules that only lack the source.
-	var portMiss, srcMiss []string
+	var postureMiss, portMiss, srcMiss []string
 	for i, a := range p.ACLs {
 		srcOK := false
 		for _, s := range a.Src {
 			srcOK = srcOK || p.matchesIdentity(s, src)
+		}
+		postureWhy := ""
+		if srcOK && len(a.SrcPosture) > 0 && src.Node != "" {
+			for _, n := range nodes {
+				if n.Name == src.Node {
+					if ok, why := p.Passes(n, a.SrcPosture); !ok {
+						srcOK, postureWhy = false, why
+					}
+				}
+			}
 		}
 		for _, d := range a.Dst {
 			sel, portStr, err := splitDst(d)
@@ -161,8 +171,14 @@ func (p *Policy) Explain(src, dst Identity, port uint16, nodes []Node) Explanati
 			case srcOK && dstOK && portOK:
 				if !ex.Allowed {
 					ex.Allowed, ex.Rule = true, i
-					ex.Reasons = []string{"allowed by " + p.RuleText(i) + " (destination " + d + ")"}
+					why := "allowed by " + p.RuleText(i) + " (destination " + d + ")"
+					if len(a.SrcPosture) > 0 && src.Node == "" {
+						why += ", only from machines that meet " + strings.Join(a.SrcPosture, ", ")
+					}
+					ex.Reasons = []string{why}
 				}
+			case postureWhy != "" && dstOK && portOK:
+				postureMiss = append(postureMiss, fmt.Sprintf("%s would allow it, but %s", p.RuleText(i), postureWhy))
 			case srcOK && dstOK:
 				portMiss = append(portMiss, fmt.Sprintf("%s covers %s → %s but only ports %s", p.RuleText(i), src, dst, portStr))
 			case !srcOK && dstOK && portOK:
@@ -177,7 +193,7 @@ func (p *Policy) Explain(src, dst Identity, port uint16, nodes []Node) Explanati
 		}
 		return ex
 	}
-	ex.Reasons = append(portMiss, srcMiss...)
+	ex.Reasons = append(append(postureMiss, portMiss...), srcMiss...)
 	if len(ex.Reasons) == 0 {
 		ex.Reasons = []string{fmt.Sprintf("no rule lets %s reach %s on port %d", src, dst, port)}
 	}

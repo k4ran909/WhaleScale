@@ -42,7 +42,7 @@ func (p *Policy) Compile(nodes []Node) *Compiled {
 	m := p.newMatcher(nodes)
 	var links []link
 	for _, a := range p.ACLs {
-		srcSet, srcPrefixes := m.resolveSrc(a.Src)
+		srcSet, srcPrefixes := m.resolveSrc(a.Src, a.SrcPosture)
 		if len(srcPrefixes) == 0 {
 			continue
 		}
@@ -66,7 +66,7 @@ func (p *Policy) Compile(nodes []Node) *Compiled {
 	}
 	// SSH rules: each grants logins and opens TCP 22 from its sources.
 	for _, r := range p.SSH {
-		srcSet, srcPrefixes := m.resolveSrc(r.Src)
+		srcSet, srcPrefixes := m.resolveSrc(r.Src, r.SrcPosture)
 		if len(srcPrefixes) == 0 {
 			continue
 		}
@@ -199,10 +199,12 @@ type matcher struct {
 	byName  map[string][]int
 	routers []int // nodes with approved routes
 	memo    map[string][]int
+	passing map[string]bitset // posture name -> nodes meeting it
 }
 
 func (p *Policy) newMatcher(nodes []Node) *matcher {
-	m := &matcher{p: p, all: nodes, byUser: map[string][]int{}, byName: map[string][]int{}, memo: map[string][]int{}}
+	m := &matcher{p: p, all: nodes, byUser: map[string][]int{}, byName: map[string][]int{}, memo: map[string][]int{},
+		passing: map[string]bitset{}}
 	for i, n := range nodes {
 		m.byUser[n.User] = append(m.byUser[n.User], i)
 		m.byName[n.Name] = append(m.byName[n.Name], i)
@@ -258,10 +260,31 @@ func (m *matcher) dstNodes(sel string) []int {
 	return r
 }
 
+// passes reports whether node i meets every named posture.
+func (m *matcher) passes(i int, postures []string) bool {
+	for _, name := range postures {
+		set, ok := m.passing[name]
+		if !ok {
+			set = newBitset(len(m.all))
+			for j, n := range m.all {
+				if ok, _ := m.p.Passes(n, []string{name}); ok {
+					set.set(j)
+				}
+			}
+			m.passing[name] = set
+		}
+		if !set.has(i) {
+			return false
+		}
+	}
+	return true
+}
+
 // resolveSrc turns source selectors into the nodes they cover (named, or
 // inside a source CIDR) and the prefixes packets from them may carry,
-// merged into as few CIDRs as possible.
-func (m *matcher) resolveSrc(sels []string) (bitset, []netip.Prefix) {
+// merged into as few CIDRs as possible. Named machines that fail a
+// posture are left out.
+func (m *matcher) resolveSrc(sels, postures []string) (bitset, []netip.Prefix) {
 	set := newBitset(len(m.all))
 	var cidrs, prefixes []netip.Prefix
 	for _, s := range sels {
@@ -270,7 +293,7 @@ func (m *matcher) resolveSrc(sels []string) (bitset, []netip.Prefix) {
 			continue
 		}
 		for _, i := range m.nodes(s) {
-			if !set.has(i) {
+			if !set.has(i) && m.passes(i, postures) {
 				set.set(i)
 				for _, ip := range m.all[i].Addrs {
 					prefixes = append(prefixes, netip.PrefixFrom(ip, ip.BitLen()))

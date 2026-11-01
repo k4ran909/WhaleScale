@@ -255,6 +255,26 @@ ws access request node:prod-db:5432 --for 2h --reason "migrating orders table" -
 
 An admin approves or denies it on the console's **Access requests** page, or with `whalescale access list | approve ID | deny ID`. Access starts at approval and ends by itself when the time is up (`revoke` ends it early). `auto_approve` rules are for break-glass access: granted at once, still audited. The grant covers only the machine that asked and only the requested ports (a subset of the rule's ports is fine). Requests left undecided expire after 24 hours. Every step is in the audit log, and `explain` names the grant when one is what allows a connection.
 
+### Device posture
+
+Require machines to meet conditions before a rule lets them in:
+
+```json
+"postures": {
+  "posture:current": ["client_version >= 0.4.0", "os in [linux, macos, windows]"],
+  "posture:win11":   ["os == windows", "os_version >= 10.0.22000"]
+},
+"acls": [
+  { "action": "accept", "src": ["group:eng"], "dst": ["node:prod-db:5432"], "src_posture": ["posture:current"] }
+]
+```
+
+- **Attributes:** machines report `os`, `os_version` (Windows build, macOS version, or the Linux distribution's `VERSION_ID`) and `client_version`. The console's Machines page shows them.
+- **Operators:** `==`, `!=`, `in [..]`, `not in [..]`, and `>=` `>` `<=` `<`. The last four compare versions numerically, part by part.
+- **Effect:** a machine that fails a posture is left out of that rule, including peer visibility. A machine that doesn't report an attribute fails every condition on it.
+- **Applies to** ACLs and SSH rules. Network (CIDR) sources aren't machines and aren't checked.
+- **Explain** names the failing condition, e.g. "old-laptop fails posture:current: its client_version is 0.3.9, not >= 0.4.0".
+
 ### Device limits
 
 Cap how many machines each person can add:

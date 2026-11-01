@@ -57,7 +57,10 @@ export function Machines() {
                     ))}
                   </td>
                   <td>{n.user}</td>
-                  <td>{n.os || "—"}</td>
+                  <td>
+                    {n.os || "—"} {n.osVersion && <span className="sub">{n.osVersion}</span>}
+                    {n.clientVersion && <div className="sub">client {n.clientVersion}</div>}
+                  </td>
                   <td>
                     <RouteBadges n={n} />
                   </td>

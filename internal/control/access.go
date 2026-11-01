@@ -80,7 +80,7 @@ func accessProto(a *store.AccessRequest) *v1.AccessRequest {
 }
 
 func policyNode(n *store.Node) policy.Node {
-	return policy.Node{ID: n.ID, Name: n.Name, User: n.User}
+	return PolicyNodes([]store.Node{*n})[0]
 }
 
 func (s *Service) RequestAccess(ctx context.Context, req *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error) {

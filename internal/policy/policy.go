@@ -38,6 +38,8 @@ type Policy struct {
 	DeviceLimits map[string]int `json:"device_limits,omitempty"`
 	// AccessRequests says who may ask for temporary access to what.
 	AccessRequests []AccessRule `json:"access_requests,omitempty"`
+	// Postures are named device requirements for src_posture.
+	Postures map[string][]string `json:"postures,omitempty"`
 }
 
 // SSHRule lets sources log in to destination machines over SSH as the
@@ -53,6 +55,8 @@ type SSHRule struct {
 	Users  []string `json:"users"`
 	// Record captures sessions and uploads them to the server.
 	Record bool `json:"record,omitempty"`
+	// SrcPosture: source machines must meet these postures.
+	SrcPosture []string `json:"src_posture,omitempty"`
 }
 
 // SelfUser in SSHRule.Users stands for the connecting mesh user's name.
@@ -71,6 +75,9 @@ type ACL struct {
 	Action string   `json:"action"`
 	Src    []string `json:"src"`
 	Dst    []string `json:"dst"`
+	// SrcPosture: source machines must meet these postures. CIDR sources
+	// are networks, not machines, and aren't checked.
+	SrcPosture []string `json:"src_posture,omitempty"`
 	// Origin describes an ACL that isn't from the policy text, such as a
 	// temporary access grant, in explanations.
 	Origin string `json:"-"`
@@ -166,6 +173,7 @@ func (p *Policy) validate() error {
 		}
 	}
 	errs = append(errs, p.validateAccessRules()...)
+	errs = append(errs, p.validatePostures()...)
 	for sel, n := range p.DeviceLimits {
 		where := fmt.Sprintf("device_limits[%q]", sel)
 		switch {
@@ -306,6 +314,8 @@ type Node struct {
 	Addrs []netip.Addr
 	// Routes are approved subnets (or 0.0.0.0/0, ::/0) the node forwards to.
 	Routes []netip.Prefix
+	// Posture holds reported attributes (os, os_version, client_version).
+	Posture map[string]string
 }
 
 // Rule allows packets from any Src prefix to the listed ports. Dst empty

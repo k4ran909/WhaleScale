@@ -436,6 +436,9 @@ type Node struct {
 	// A network lock key's signature over node_key. With the lock on, peers
 	// without a valid one are refused.
 	LockSignature *NodeSignature `protobuf:"bytes,19,opt,name=lock_signature,json=lockSignature,proto3" json:"lock_signature,omitempty"`
+	// Reported posture (admin views only; network maps leave them out).
+	OsVersion     string `protobuf:"bytes,20,opt,name=os_version,json=osVersion,proto3" json:"os_version,omitempty"`
+	ClientVersion string `protobuf:"bytes,21,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -601,6 +604,20 @@ func (x *Node) GetLockSignature() *NodeSignature {
 		return x.LockSignature
 	}
 	return nil
+}
+
+func (x *Node) GetOsVersion() string {
+	if x != nil {
+		return x.OsVersion
+	}
+	return ""
+}
+
+func (x *Node) GetClientVersion() string {
+	if x != nil {
+		return x.ClientVersion
+	}
+	return ""
 }
 
 // LockState is one version of the network lock's trusted key list. It is
@@ -988,7 +1005,10 @@ type UpdateNodeRequest struct {
 	// It takes effect once an admin approves it.
 	OfferRelay bool `protobuf:"varint,7,opt,name=offer_relay,json=offerRelay,proto3" json:"offer_relay,omitempty"`
 	// SSH host public key, when this node runs the mesh SSH server.
-	SshHostKey    string `protobuf:"bytes,8,opt,name=ssh_host_key,json=sshHostKey,proto3" json:"ssh_host_key,omitempty"`
+	SshHostKey string `protobuf:"bytes,8,opt,name=ssh_host_key,json=sshHostKey,proto3" json:"ssh_host_key,omitempty"`
+	// Posture: the OS version and this client's version.
+	OsVersion     string `protobuf:"bytes,9,opt,name=os_version,json=osVersion,proto3" json:"os_version,omitempty"`
+	ClientVersion string `protobuf:"bytes,10,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1075,6 +1095,20 @@ func (x *UpdateNodeRequest) GetOfferRelay() bool {
 func (x *UpdateNodeRequest) GetSshHostKey() string {
 	if x != nil {
 		return x.SshHostKey
+	}
+	return ""
+}
+
+func (x *UpdateNodeRequest) GetOsVersion() string {
+	if x != nil {
+		return x.OsVersion
+	}
+	return ""
+}
+
+func (x *UpdateNodeRequest) GetClientVersion() string {
+	if x != nil {
+		return x.ClientVersion
 	}
 	return ""
 }
@@ -2536,7 +2570,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"decided_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xea\x04\n" +
+	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xb0\x05\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -2560,7 +2594,10 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\texit_node\x18\x11 \x01(\bR\bexitNode\x12 \n" +
 	"\fssh_host_key\x18\x12 \x01(\tR\n" +
 	"sshHostKey\x12C\n" +
-	"\x0elock_signature\x18\x13 \x01(\v2\x1c.whalescale.v1.NodeSignatureR\rlockSignature\"\x8b\x01\n" +
+	"\x0elock_signature\x18\x13 \x01(\v2\x1c.whalescale.v1.NodeSignatureR\rlockSignature\x12\x1d\n" +
+	"\n" +
+	"os_version\x18\x14 \x01(\tR\tosVersion\x12%\n" +
+	"\x0eclient_version\x18\x15 \x01(\tR\rclientVersion\"\x8b\x01\n" +
 	"\tLockState\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x12\n" +
 	"\x04keys\x18\x02 \x03(\fR\x04keys\x12\x1a\n" +
@@ -2587,7 +2624,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\x18WaitRegistrationResponse\x12'\n" +
 	"\x04node\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04node\x12\x1d\n" +
 	"\n" +
-	"node_token\x18\x02 \x01(\tR\tnodeToken\"\xa0\x02\n" +
+	"node_token\x18\x02 \x01(\tR\tnodeToken\"\xe6\x02\n" +
 	"\x11UpdateNodeRequest\x12\x19\n" +
 	"\bnode_key\x18\x01 \x01(\tR\anodeKey\x12\x1b\n" +
 	"\tdisco_key\x18\x02 \x01(\tR\bdiscoKey\x12\x1c\n" +
@@ -2598,7 +2635,11 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\voffer_relay\x18\a \x01(\bR\n" +
 	"offerRelay\x12 \n" +
 	"\fssh_host_key\x18\b \x01(\tR\n" +
-	"sshHostKey\"z\n" +
+	"sshHostKey\x12\x1d\n" +
+	"\n" +
+	"os_version\x18\t \x01(\tR\tosVersion\x12%\n" +
+	"\x0eclient_version\x18\n" +
+	" \x01(\tR\rclientVersion\"z\n" +
 	"\bExposure\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +

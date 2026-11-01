@@ -39,11 +39,13 @@ import (
 	"github.com/k4ran909/whalescale/internal/key"
 	"github.com/k4ran909/whalescale/internal/meshconn"
 	"github.com/k4ran909/whalescale/internal/netmap"
+	"github.com/k4ran909/whalescale/internal/osinfo"
 	"github.com/k4ran909/whalescale/internal/osnet"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/portmap"
 	"github.com/k4ran909/whalescale/internal/relay"
 	"github.com/k4ran909/whalescale/internal/sshserver"
+	"github.com/k4ran909/whalescale/internal/version"
 )
 
 const (
@@ -209,6 +211,9 @@ func (e *Engine) authed(req connect.AnyRequest) {
 	req.Header().Set("Authorization", "Bearer "+e.opts.State.NodeToken)
 }
 
+// osVersion is read once: it doesn't change while we run.
+var osVersion = osinfo.Version()
+
 // Start opens the mesh socket and begins following the control server.
 func (e *Engine) Start(ctx context.Context) error {
 	e.ctx, e.cancel = context.WithCancel(ctx)
@@ -313,6 +318,7 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
 		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes, Exposures: exposures,
 		OfferRelay: e.opts.OfferRelay, SshHostKey: e.sshHostPublic(),
+		OsVersion: osVersion, ClientVersion: version.Version,
 	})
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)

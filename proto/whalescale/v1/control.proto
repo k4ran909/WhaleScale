@@ -108,6 +108,9 @@ message Node {
   // A network lock key's signature over node_key. With the lock on, peers
   // without a valid one are refused.
   NodeSignature lock_signature = 19;
+  // Reported posture (admin views only; network maps leave them out).
+  string os_version = 20;
+  string client_version = 21;
 }
 
 // LockState is one version of the network lock's trusted key list. It is
@@ -171,6 +174,9 @@ message UpdateNodeRequest {
   bool offer_relay = 7;
   // SSH host public key, when this node runs the mesh SSH server.
   string ssh_host_key = 8;
+  // Posture: the OS version and this client's version.
+  string os_version = 9;
+  string client_version = 10;
 }
 
 // Exposure is a local HTTP service published at https://<name>.<gateway domain>.
