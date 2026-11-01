@@ -61,9 +61,11 @@ func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
 type WhoAmIResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// "api-key" or "oidc".
-	Method        string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	Identity      string `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
-	OidcEnabled   bool   `protobuf:"varint,3,opt,name=oidc_enabled,json=oidcEnabled,proto3" json:"oidc_enabled,omitempty"`
+	Method      string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	Identity    string `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
+	OidcEnabled bool   `protobuf:"varint,3,opt,name=oidc_enabled,json=oidcEnabled,proto3" json:"oidc_enabled,omitempty"`
+	// "admin", or "read" for a read-only API key.
+	Scope         string `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -117,6 +119,13 @@ func (x *WhoAmIResponse) GetOidcEnabled() bool {
 		return x.OidcEnabled
 	}
 	return false
+}
+
+func (x *WhoAmIResponse) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
 }
 
 type User struct {
@@ -1659,13 +1668,15 @@ func (x *GetTopologyResponse) GetPaths() []*PathReport {
 }
 
 type APIKey struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Prefix        string                 `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	LastUsed      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_used,json=lastUsed,proto3" json:"last_used,omitempty"`
-	Valid         bool                   `protobuf:"varint,6,opt,name=valid,proto3" json:"valid,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Prefix    string                 `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	LastUsed  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_used,json=lastUsed,proto3" json:"last_used,omitempty"`
+	Valid     bool                   `protobuf:"varint,6,opt,name=valid,proto3" json:"valid,omitempty"`
+	// "admin" or "read".
+	Scope         string `protobuf:"bytes,7,opt,name=scope,proto3" json:"scope,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1740,6 +1751,13 @@ func (x *APIKey) GetValid() bool {
 		return x.Valid
 	}
 	return false
+}
+
+func (x *APIKey) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
 }
 
 type ListAPIKeysRequest struct {
@@ -1825,8 +1843,11 @@ func (x *ListAPIKeysResponse) GetKeys() []*APIKey {
 type CreateAPIKeyRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ExpirationSeconds uint64                 `protobuf:"varint,1,opt,name=expiration_seconds,json=expirationSeconds,proto3" json:"expiration_seconds,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// "admin" (the default) or "read": a key that can look but not change
+	// anything.
+	Scope         string `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateAPIKeyRequest) Reset() {
@@ -1864,6 +1885,13 @@ func (x *CreateAPIKeyRequest) GetExpirationSeconds() uint64 {
 		return x.ExpirationSeconds
 	}
 	return 0
+}
+
+func (x *CreateAPIKeyRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
 }
 
 type CreateAPIKeyResponse struct {
@@ -4028,11 +4056,12 @@ var File_whalescale_v1_admin_proto protoreflect.FileDescriptor
 const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"\x19whalescale/v1/admin.proto\x12\rwhalescale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bwhalescale/v1/control.proto\"\x0f\n" +
-	"\rWhoAmIRequest\"g\n" +
+	"\rWhoAmIRequest\"}\n" +
 	"\x0eWhoAmIResponse\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x1a\n" +
 	"\bidentity\x18\x02 \x01(\tR\bidentity\x12!\n" +
-	"\foidc_enabled\x18\x03 \x01(\bR\voidcEnabled\"\xd3\x01\n" +
+	"\foidc_enabled\x18\x03 \x01(\bR\voidcEnabled\x12\x14\n" +
+	"\x05scope\x18\x04 \x01(\tR\x05scope\"\xd3\x01\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -4122,7 +4151,7 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\x18SetRouteApprovedResponse\"\x14\n" +
 	"\x12GetTopologyRequest\"F\n" +
 	"\x13GetTopologyResponse\x12/\n" +
-	"\x05paths\x18\x01 \x03(\v2\x19.whalescale.v1.PathReportR\x05paths\"\xf5\x01\n" +
+	"\x05paths\x18\x01 \x03(\v2\x19.whalescale.v1.PathReportR\x05paths\"\x8b\x02\n" +
 	"\x06APIKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x16\n" +
 	"\x06prefix\x18\x02 \x01(\tR\x06prefix\x129\n" +
@@ -4131,12 +4160,14 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x127\n" +
 	"\tlast_used\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\blastUsed\x12\x14\n" +
-	"\x05valid\x18\x06 \x01(\bR\x05valid\"\x14\n" +
+	"\x05valid\x18\x06 \x01(\bR\x05valid\x12\x14\n" +
+	"\x05scope\x18\a \x01(\tR\x05scope\"\x14\n" +
 	"\x12ListAPIKeysRequest\"@\n" +
 	"\x13ListAPIKeysResponse\x12)\n" +
-	"\x04keys\x18\x01 \x03(\v2\x15.whalescale.v1.APIKeyR\x04keys\"D\n" +
+	"\x04keys\x18\x01 \x03(\v2\x15.whalescale.v1.APIKeyR\x04keys\"Z\n" +
 	"\x13CreateAPIKeyRequest\x12-\n" +
-	"\x12expiration_seconds\x18\x01 \x01(\x04R\x11expirationSeconds\"W\n" +
+	"\x12expiration_seconds\x18\x01 \x01(\x04R\x11expirationSeconds\x12\x14\n" +
+	"\x05scope\x18\x02 \x01(\tR\x05scope\"W\n" +
 	"\x14CreateAPIKeyResponse\x12'\n" +
 	"\x03key\x18\x01 \x01(\v2\x15.whalescale.v1.APIKeyR\x03key\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\"-\n" +

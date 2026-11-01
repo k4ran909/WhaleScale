@@ -167,7 +167,7 @@ func (s *Service) ListAccess(ctx context.Context, req *connect.Request[v1.ListAc
 // --- admin ---
 
 func (a *Admin) ListAccessRequests(ctx context.Context, req *connect.Request[v1.ListAccessRequestsRequest]) (*connect.Response[v1.ListAccessRequestsResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	list, err := a.svc.store.ListAccessRequests(ctx, store.AccessFilter{Open: !req.Msg.IncludeClosed})
@@ -182,7 +182,7 @@ func (a *Admin) ListAccessRequests(ctx context.Context, req *connect.Request[v1.
 }
 
 func (a *Admin) DecideAccess(ctx context.Context, req *connect.Request[v1.DecideAccessRequest]) (*connect.Response[v1.DecideAccessResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (a *Admin) DecideAccess(ctx context.Context, req *connect.Request[v1.Decide
 }
 
 func (a *Admin) RevokeAccess(ctx context.Context, req *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}

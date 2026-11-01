@@ -129,28 +129,10 @@ func lockAdmin(cmd string, args []string) error {
 	}
 	me := []byte(priv.Public().(ed25519.PublicKey))
 
-	if *server == "" {
-		if path, err := clientstate.DefaultPath(); err == nil {
-			if st, err := clientstate.Load(path); err == nil && st != nil {
-				*server = st.ServerURL
-			}
-		}
+	admin, apiKey, err := adminClient(*server, *apiKeyFile)
+	if err != nil {
+		return err
 	}
-	if *server == "" {
-		return errors.New("--server is required (this machine isn't logged in)")
-	}
-	apiKey := os.Getenv("WS_API_KEY")
-	if *apiKeyFile != "" {
-		b, err := os.ReadFile(*apiKeyFile)
-		if err != nil {
-			return err
-		}
-		apiKey = strings.TrimSpace(string(b))
-	}
-	if apiKey == "" {
-		return errors.New("an admin API key is needed: set $WS_API_KEY or pass --api-key-file ('whalescale apikeys create' makes one)")
-	}
-	admin := whalescalev1connect.NewAdminServiceClient(httpClient, strings.TrimRight(*server, "/"))
 	authed := func(r connect.AnyRequest) connect.AnyRequest {
 		r.Header().Set("Authorization", "Bearer "+apiKey)
 		return r
@@ -302,4 +284,31 @@ func lockSign(ctx context.Context, admin whalescalev1connect.AdminServiceClient,
 	}
 	fmt.Printf("signed %d machine(s): %s\n", len(signed), strings.Join(signed, ", "))
 	return nil
+}
+
+// adminClient connects to the admin API: server defaults to the one this
+// machine uses, the API key comes from apiKeyFile or $WS_API_KEY.
+func adminClient(server, apiKeyFile string) (whalescalev1connect.AdminServiceClient, string, error) {
+	if server == "" {
+		if path, err := clientstate.DefaultPath(); err == nil {
+			if st, err := clientstate.Load(path); err == nil && st != nil {
+				server = st.ServerURL
+			}
+		}
+	}
+	if server == "" {
+		return nil, "", errors.New("--server is required (this machine isn't logged in)")
+	}
+	apiKey := os.Getenv("WS_API_KEY")
+	if apiKeyFile != "" {
+		b, err := os.ReadFile(apiKeyFile)
+		if err != nil {
+			return nil, "", err
+		}
+		apiKey = strings.TrimSpace(string(b))
+	}
+	if apiKey == "" {
+		return nil, "", errors.New("an API key is needed: set $WS_API_KEY or pass --api-key-file ('whalescale apikeys create' makes one)")
+	}
+	return whalescalev1connect.NewAdminServiceClient(httpClient, strings.TrimRight(server, "/")), apiKey, nil
 }

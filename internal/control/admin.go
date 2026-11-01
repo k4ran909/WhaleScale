@@ -34,19 +34,53 @@ var _ whalescalev1connect.AdminServiceHandler = (*Admin)(nil)
 
 func NewAdmin(svc *Service) *Admin { return &Admin{svc: svc} }
 
-type identity struct{ method, name string }
+type identity struct{ method, name, scope string }
+
+// readOnly lists the calls a read-scope API key may make. Everything else
+// changes something (or, like viewing SSH recordings, exposes more than
+// monitoring needs) and takes an admin key.
+var readOnly = map[string]bool{
+	whalescalev1connect.AdminServiceWhoAmIProcedure:             true,
+	whalescalev1connect.AdminServiceListUsersProcedure:          true,
+	whalescalev1connect.AdminServiceListNodesProcedure:          true,
+	whalescalev1connect.AdminServiceListPreAuthKeysProcedure:    true,
+	whalescalev1connect.AdminServiceGetPolicyProcedure:          true,
+	whalescalev1connect.AdminServiceCheckPolicyProcedure:        true,
+	whalescalev1connect.AdminServiceExplainAccessProcedure:      true,
+	whalescalev1connect.AdminServiceListRoutesProcedure:         true,
+	whalescalev1connect.AdminServiceGetTopologyProcedure:        true,
+	whalescalev1connect.AdminServiceListPeerRelaysProcedure:     true,
+	whalescalev1connect.AdminServiceListExposuresProcedure:      true,
+	whalescalev1connect.AdminServiceQueryFlowsProcedure:         true,
+	whalescalev1connect.AdminServiceListAuditEventsProcedure:    true,
+	whalescalev1connect.AdminServiceListAccessRequestsProcedure: true,
+	whalescalev1connect.AdminServiceGetLockProcedure:            true,
+	whalescalev1connect.AdminServiceListAPIKeysProcedure:        true,
+}
 
 // auth accepts an API key bearer token, or a session cookie on requests
 // that carry the Connect protocol header. Browsers can't add that header to
-// cross-site form posts, so cookie auth isn't open to CSRF.
-func (a *Admin) auth(ctx context.Context, h http.Header) (identity, error) {
+// cross-site form posts, so cookie auth isn't open to CSRF. Read-scope keys
+// (and console sessions opened with one) may only make readOnly calls.
+func (a *Admin) auth(ctx context.Context, req connect.AnyRequest) (identity, error) {
+	id, err := a.identify(ctx, req.Header())
+	if err != nil {
+		return id, err
+	}
+	if id.scope != store.ScopeAdmin && !readOnly[req.Spec().Procedure] {
+		return id, connect.NewError(connect.CodePermissionDenied, errors.New("this API key is read-only"))
+	}
+	return id, nil
+}
+
+func (a *Admin) identify(ctx context.Context, h http.Header) (identity, error) {
 	st := a.svc.store
 	if tok, ok := strings.CutPrefix(h.Get("Authorization"), "Bearer "); ok {
 		prefix, err := st.CheckAPIKey(ctx, tok)
 		if err != nil {
 			return identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid or expired API key"))
 		}
-		return identity{"api-key", "api-key:" + prefix}, nil
+		return identity{"api-key", "api-key:" + prefix, st.APIKeyScope(ctx, prefix)}, nil
 	}
 	if h.Get("Connect-Protocol-Version") == "" {
 		return identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("missing credentials"))
@@ -60,11 +94,10 @@ func (a *Admin) auth(ctx context.Context, h http.Header) (identity, error) {
 	if err != nil {
 		return identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("session expired; sign in again"))
 	}
-	method := "oidc"
-	if strings.HasPrefix(who, "api-key:") {
-		method = "api-key"
+	if prefix, ok := strings.CutPrefix(who, "api-key:"); ok {
+		return identity{"api-key", who, st.APIKeyScope(ctx, prefix)}, nil
 	}
-	return identity{method, who}, nil
+	return identity{"oidc", who, store.ScopeAdmin}, nil
 }
 
 func internal(a *Admin, what string, err error) error {
@@ -92,17 +125,17 @@ func (a *Admin) audit(ctx context.Context, id identity, action string, args ...a
 }
 
 func (a *Admin) WhoAmI(ctx context.Context, req *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&v1.WhoAmIResponse{Method: id.method, Identity: id.name, OidcEnabled: a.svc.cfg.OIDC}), nil
+	return connect.NewResponse(&v1.WhoAmIResponse{Method: id.method, Identity: id.name, OidcEnabled: a.svc.cfg.OIDC, Scope: id.scope}), nil
 }
 
 // --- users ---
 
 func (a *Admin) ListUsers(ctx context.Context, req *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	users, err := a.svc.store.ListUserDetails(ctx)
@@ -124,7 +157,7 @@ func (a *Admin) ListUsers(ctx context.Context, req *connect.Request[v1.ListUsers
 }
 
 func (a *Admin) CreateUser(ctx context.Context, req *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.CreateUserResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +173,7 @@ func (a *Admin) CreateUser(ctx context.Context, req *connect.Request[v1.CreateUs
 }
 
 func (a *Admin) DeleteUser(ctx context.Context, req *connect.Request[v1.DeleteUserRequest]) (*connect.Response[v1.DeleteUserResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +191,7 @@ func (a *Admin) DeleteUser(ctx context.Context, req *connect.Request[v1.DeleteUs
 // --- nodes ---
 
 func (a *Admin) ListNodes(ctx context.Context, req *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.ListNodesResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	nodes, err := a.svc.store.ListNodes(ctx, req.Msg.User)
@@ -173,7 +206,7 @@ func (a *Admin) ListNodes(ctx context.Context, req *connect.Request[v1.ListNodes
 }
 
 func (a *Admin) DeleteNode(ctx context.Context, req *connect.Request[v1.DeleteNodeRequest]) (*connect.Response[v1.DeleteNodeResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +227,7 @@ func preAuthKeyProto(k *store.PreAuthKey) *v1.PreAuthKey {
 }
 
 func (a *Admin) ListPreAuthKeys(ctx context.Context, req *connect.Request[v1.ListPreAuthKeysRequest]) (*connect.Response[v1.ListPreAuthKeysResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	keys, err := a.svc.store.ListPreAuthKeys(ctx)
@@ -216,7 +249,7 @@ func ttl(seconds uint64, def time.Duration) time.Duration {
 }
 
 func (a *Admin) CreatePreAuthKey(ctx context.Context, req *connect.Request[v1.CreatePreAuthKeyRequest]) (*connect.Response[v1.CreatePreAuthKeyResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +263,7 @@ func (a *Admin) CreatePreAuthKey(ctx context.Context, req *connect.Request[v1.Cr
 }
 
 func (a *Admin) ExpirePreAuthKey(ctx context.Context, req *connect.Request[v1.ExpirePreAuthKeyRequest]) (*connect.Response[v1.ExpirePreAuthKeyResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +277,7 @@ func (a *Admin) ExpirePreAuthKey(ctx context.Context, req *connect.Request[v1.Ex
 // --- policy ---
 
 func (a *Admin) GetPolicy(ctx context.Context, req *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	text, source := a.svc.Policy()
@@ -297,7 +330,7 @@ func (a *Admin) check(ctx context.Context, text string) (*policy.Policy, []strin
 }
 
 func (a *Admin) CheckPolicy(ctx context.Context, req *connect.Request[v1.CheckPolicyRequest]) (*connect.Response[v1.CheckPolicyResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	_, errs, warns := a.check(ctx, req.Msg.Policy)
@@ -305,7 +338,7 @@ func (a *Admin) CheckPolicy(ctx context.Context, req *connect.Request[v1.CheckPo
 }
 
 func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicyRequest]) (*connect.Response[v1.SetPolicyResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +364,7 @@ func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicy
 }
 
 func (a *Admin) ExplainAccess(ctx context.Context, req *connect.Request[v1.ExplainAccessRequest]) (*connect.Response[v1.ExplainAccessResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	p := a.svc.CurrentPolicy()
@@ -362,7 +395,7 @@ func (a *Admin) ExplainAccess(ctx context.Context, req *connect.Request[v1.Expla
 // --- routes ---
 
 func (a *Admin) ListRoutes(ctx context.Context, req *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	routes, err := a.svc.store.ListRoutes(ctx)
@@ -381,7 +414,7 @@ func (a *Admin) ListRoutes(ctx context.Context, req *connect.Request[v1.ListRout
 }
 
 func (a *Admin) SetRouteApproved(ctx context.Context, req *connect.Request[v1.SetRouteApprovedRequest]) (*connect.Response[v1.SetRouteApprovedResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +433,7 @@ func (a *Admin) SetRouteApproved(ctx context.Context, req *connect.Request[v1.Se
 // --- topology ---
 
 func (a *Admin) GetTopology(ctx context.Context, req *connect.Request[v1.GetTopologyRequest]) (*connect.Response[v1.GetTopologyResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(&v1.GetTopologyResponse{Paths: a.svc.Topology()}), nil
@@ -409,7 +442,7 @@ func (a *Admin) GetTopology(ctx context.Context, req *connect.Request[v1.GetTopo
 // --- peer relays ---
 
 func (a *Admin) ListPeerRelays(ctx context.Context, req *connect.Request[v1.ListPeerRelaysRequest]) (*connect.Response[v1.ListPeerRelaysResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	nodes, err := a.svc.store.ListNodes(ctx, "")
@@ -429,7 +462,7 @@ func (a *Admin) ListPeerRelays(ctx context.Context, req *connect.Request[v1.List
 }
 
 func (a *Admin) SetPeerRelayApproved(ctx context.Context, req *connect.Request[v1.SetPeerRelayApprovedRequest]) (*connect.Response[v1.SetPeerRelayApprovedResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +477,7 @@ func (a *Admin) SetPeerRelayApproved(ctx context.Context, req *connect.Request[v
 // --- gateway ---
 
 func (a *Admin) ListExposures(ctx context.Context, req *connect.Request[v1.ListExposuresRequest]) (*connect.Response[v1.ListExposuresResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	list, err := a.svc.store.ListExposures(ctx)
@@ -467,7 +500,7 @@ func (a *Admin) ListExposures(ctx context.Context, req *connect.Request[v1.ListE
 }
 
 func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1.SetExposureApprovedRequest]) (*connect.Response[v1.SetExposureApprovedResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +515,7 @@ func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1
 // --- audit log ---
 
 func (a *Admin) ListAuditEvents(ctx context.Context, req *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	m := req.Msg
@@ -515,7 +548,7 @@ func (a *Admin) ListAuditEvents(ctx context.Context, req *connect.Request[v1.Lis
 // --- flow logs ---
 
 func (a *Admin) QueryFlows(ctx context.Context, req *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	m := req.Msg
@@ -556,7 +589,7 @@ func recordingProto(r *store.Recording) *v1.Recording {
 }
 
 func (a *Admin) ListRecordings(ctx context.Context, req *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	list, err := a.svc.store.ListRecordings(ctx, 500)
@@ -571,7 +604,7 @@ func (a *Admin) ListRecordings(ctx context.Context, req *connect.Request[v1.List
 }
 
 func (a *Admin) GetRecording(ctx context.Context, req *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +620,7 @@ func (a *Admin) GetRecording(ctx context.Context, req *connect.Request[v1.GetRec
 
 func apiKeyProto(k *store.APIKey) *v1.APIKey {
 	out := &v1.APIKey{Id: k.ID, Prefix: k.Prefix, CreatedAt: timestamppb.New(k.CreatedAt),
-		ExpiresAt: timestamppb.New(k.ExpiresAt), Valid: k.Valid()}
+		ExpiresAt: timestamppb.New(k.ExpiresAt), Valid: k.Valid(), Scope: k.Scope}
 	if !k.LastUsed.IsZero() {
 		out.LastUsed = timestamppb.New(k.LastUsed)
 	}
@@ -595,7 +628,7 @@ func apiKeyProto(k *store.APIKey) *v1.APIKey {
 }
 
 func (a *Admin) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	keys, err := a.svc.store.ListAPIKeys(ctx)
@@ -610,20 +643,27 @@ func (a *Admin) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPI
 }
 
 func (a *Admin) CreateAPIKey(ctx context.Context, req *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	k, secret, err := a.svc.store.CreateAPIKey(ctx, ttl(req.Msg.ExpirationSeconds, 90*24*time.Hour))
+	scope := req.Msg.Scope
+	if scope == "" {
+		scope = store.ScopeAdmin
+	}
+	if !store.ValidScope(scope) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %q (admin or read)", scope))
+	}
+	k, secret, err := a.svc.store.CreateScopedAPIKey(ctx, ttl(req.Msg.ExpirationSeconds, 90*24*time.Hour), scope)
 	if err != nil {
 		return nil, internal(a, "create api key", err)
 	}
-	a.audit(ctx, id, "api key created", "prefix", k.Prefix)
+	a.audit(ctx, id, "api key created", "prefix", k.Prefix, "scope", scope)
 	return connect.NewResponse(&v1.CreateAPIKeyResponse{Key: apiKeyProto(k), Secret: secret}), nil
 }
 
 func (a *Admin) ExpireAPIKey(ctx context.Context, req *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}

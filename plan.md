@@ -199,7 +199,7 @@ The research below (sources at the end) found these recurring problems in Tailsc
 - Multi-network client, multipath, post-quantum PSK
 - MCP server, Terraform provider, Helm chart
 - Security audit (internal first, then external before 1.0)
-- **Status (2026-11-01):** post-quantum PSK done (`post-quantum: true`; ML-KEM-768 exchange in sealed disco messages, HKDF-derived PSK bound to both node keys, four-step commit so peers never switch alone, fingerprints in pings to recover from drift, rotation every 2 minutes; unit-tested under 40% loss and restarts, end to end over direct and relayed paths). Next: MCP server, Helm chart, Terraform provider, internal security review; then multipath, multi-network and mobile apps.
+- **Status (2026-11-01):** post-quantum PSK done (`post-quantum: true`; ML-KEM-768 exchange in sealed disco messages, HKDF-derived PSK bound to both node keys, four-step commit so peers never switch alone, fingerprints in pings to recover from drift, rotation every 2 minutes; unit-tested under 40% loss and restarts, end to end over direct and relayed paths). MCP server done (`ws mcp` over stdio: 11 read tools and 6 change tools over the admin API) with scoped API keys (`admin`/`read`, enforced by the server for API calls and console sessions; read keys only see read tools). Next: Helm chart, Terraform provider, internal security review; then multipath, multi-network and mobile apps.
 
 ---
 

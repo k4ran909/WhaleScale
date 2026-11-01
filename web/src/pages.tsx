@@ -354,21 +354,32 @@ export function Keys() {
       )}
 
       <h2>API keys</h2>
+      <p className="sub">
+        Admin keys can do everything. Read-only keys can look but not change anything: use them for monitoring and AI
+        agents (<code>ws mcp</code>).
+      </p>
       <div className="row">
-        <button
-          className="btn"
-          onClick={async () => {
-            try {
-              const r = await api.createAPIKey(90 * 86400);
-              setSecret({ title: "New API key", value: r.secret, hint: "Shown only once. Valid for 90 days." });
-              apiKeys.reload();
-            } catch (err) {
-              setMsg(errText(err));
-            }
-          }}
-        >
-          Create API key
-        </button>
+        {(["admin", "read"] as const).map((scope) => (
+          <button
+            key={scope}
+            className="btn"
+            onClick={async () => {
+              try {
+                const r = await api.createAPIKey(90 * 86400, scope);
+                setSecret({
+                  title: scope === "read" ? "New read-only API key" : "New API key",
+                  value: r.secret,
+                  hint: "Shown only once. Valid for 90 days.",
+                });
+                apiKeys.reload();
+              } catch (err) {
+                setMsg(errText(err));
+              }
+            }}
+          >
+            {scope === "read" ? "Create read-only key" : "Create admin key"}
+          </button>
+        ))}
       </div>
       {apiKeys.data && apiKeys.data.length > 0 && (
         <div className="table-wrap">
@@ -376,6 +387,7 @@ export function Keys() {
             <thead>
               <tr>
                 <th>Key</th>
+                <th>Scope</th>
                 <th>Last used</th>
                 <th>Expires</th>
                 <th />
@@ -385,6 +397,7 @@ export function Keys() {
               {apiKeys.data.slice().reverse().map((k) => (
                 <tr key={k.id} className={k.valid ? "" : "dim"}>
                   <td className="mono">wsapi-{k.prefix}-…</td>
+                  <td>{k.scope === "read" ? "read-only" : "admin"}</td>
                   <td>{k.lastUsed ? timeAgo(k.lastUsed) : "never"}</td>
                   <td>{timeUntil(k.expiresAt)}</td>
                   <td className="right">

@@ -142,6 +142,42 @@ ws lock status                                     # on any machine
 - **Turning it off:** `ws lock disable` stops filtering (signed like any change); `enable` turns it back on.
 - **First contact:** a machine trusts the first key list it sees. To rule out a malicious server at that moment, log in with `ws login --lock-trust wslock:...`.
 
+## AI agents (MCP)
+
+`ws mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so AI assistants can look after the network. Agents can:
+- list machines, users and routes;
+- read and check the access policy, and explain why one machine can or can't reach another;
+- read connection and audit logs;
+- with an admin key, apply policies, approve routes and access requests, and remove machines.
+
+Give it a **read-only** key unless the agent should make changes:
+
+```bash
+whalescale apikeys create --scope read     # or "Create read-only key" in the console
+```
+
+Claude Desktop (or any client that reads an `mcpServers` config):
+
+```json
+{
+  "mcpServers": {
+    "whalescale": {
+      "command": "ws",
+      "args": ["mcp", "--server", "https://ws.example.com"],
+      "env": { "WS_API_KEY": "wsapi-..." }
+    }
+  }
+}
+```
+
+Claude Code:
+
+```bash
+claude mcp add whalescale --env WS_API_KEY=wsapi-... -- ws mcp --server https://ws.example.com
+```
+
+The key's scope is enforced by the server, not just by the tool list. A read-only key doesn't see the change tools, and calls to them are refused anyway. Everything an agent changes is recorded in the audit log under its key.
+
 ## Audit log
 
 Every change to users, machines, keys, route/relay/gateway approvals and the access policy is recorded with who made it. That covers the console, the admin API, `whalescale` commands on the server host, node registrations, console sign-ins, and policy updates from Git or the policy file. Actors look like `oidc:you@example.com`, `api-key:ab12cd`, `cli:root`, `user:alice` or `git`.
@@ -392,6 +428,8 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 | `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
 | `whalescale audit [--since 24h] [--actor X] [--action X] / --verify` | Audit log; check its hash chain |
 | `whalescale access list [--all] / approve ID / deny ID / revoke ID` | Temporary access requests |
+| `whalescale apikeys create --scope read` | An API key that can look but not change anything (monitoring, AI agents) |
+| `ws mcp` | MCP server for AI agents |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots and policy compiles |
 

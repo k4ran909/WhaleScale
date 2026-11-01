@@ -125,11 +125,33 @@ type APIKey struct {
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	LastUsed  time.Time
+	Scope     string
 }
+
+// API key scopes.
+const (
+	// ScopeAdmin keys can do everything.
+	ScopeAdmin = "admin"
+	// ScopeRead keys can look but not change anything: for monitoring and
+	// AI agents.
+	ScopeRead = "read"
+)
+
+// ValidScope reports whether s names a scope.
+func ValidScope(s string) bool { return s == ScopeAdmin || s == ScopeRead }
 
 func (k APIKey) Valid() bool { return time.Now().Before(k.ExpiresAt) }
 
+// CreateAPIKey makes an admin-scope key.
 func (s *Store) CreateAPIKey(ctx context.Context, ttl time.Duration) (*APIKey, string, error) {
+	return s.CreateScopedAPIKey(ctx, ttl, ScopeAdmin)
+}
+
+// CreateScopedAPIKey makes a key with the given scope.
+func (s *Store) CreateScopedAPIKey(ctx context.Context, ttl time.Duration, scope string) (*APIKey, string, error) {
+	if !ValidScope(scope) {
+		return nil, "", fmt.Errorf("unknown API key scope %q (admin or read)", scope)
+	}
 	prefix, err := randHex(6)
 	if err != nil {
 		return nil, "", err
@@ -140,10 +162,10 @@ func (s *Store) CreateAPIKey(ctx context.Context, ttl time.Duration) (*APIKey, s
 	}
 	plain := "wsapi-" + prefix + "-" + secret
 	now := time.Now()
-	k := &APIKey{Prefix: prefix, CreatedAt: now, ExpiresAt: now.Add(ttl)}
+	k := &APIKey{Prefix: prefix, CreatedAt: now, ExpiresAt: now.Add(ttl), Scope: scope}
 	var id int64
-	err = s.db.QueryRowContext(ctx, `INSERT INTO api_keys(prefix, hash, created_at, expires_at) VALUES (?, ?, ?, ?) RETURNING id`,
-		prefix, hashSecret(plain), now.Unix(), k.ExpiresAt.Unix()).Scan(&id)
+	err = s.db.QueryRowContext(ctx, `INSERT INTO api_keys(prefix, hash, created_at, expires_at, scope) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+		prefix, hashSecret(plain), now.Unix(), k.ExpiresAt.Unix(), scope).Scan(&id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -152,7 +174,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, ttl time.Duration) (*APIKey, s
 }
 
 func (s *Store) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, prefix, created_at, expires_at, last_used FROM api_keys ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, prefix, created_at, expires_at, last_used, scope FROM api_keys ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +183,7 @@ func (s *Store) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
 	for rows.Next() {
 		var k APIKey
 		var c, e, l int64
-		if err := rows.Scan(&k.ID, &k.Prefix, &c, &e, &l); err != nil {
+		if err := rows.Scan(&k.ID, &k.Prefix, &c, &e, &l, &k.Scope); err != nil {
 			return nil, err
 		}
 		k.CreatedAt, k.ExpiresAt = time.Unix(c, 0), time.Unix(e, 0)
@@ -197,6 +219,16 @@ func (s *Store) CheckAPIKey(ctx context.Context, plain string) (string, error) {
 	}
 	s.db.ExecContext(ctx, `UPDATE api_keys SET last_used = ? WHERE prefix = ?`, time.Now().Unix(), prefix)
 	return prefix, nil
+}
+
+// APIKeyScope returns a key's scope by prefix (for console sessions opened
+// with a key). An unknown key gets the read scope.
+func (s *Store) APIKeyScope(ctx context.Context, prefix string) string {
+	var scope string
+	if err := s.db.QueryRowContext(ctx, `SELECT scope FROM api_keys WHERE prefix = ?`, prefix).Scan(&scope); err != nil {
+		return ScopeRead
+	}
+	return scope
 }
 
 // --- console sessions ---

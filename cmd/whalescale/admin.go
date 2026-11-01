@@ -146,6 +146,7 @@ func cmdAPIKeys(args []string) error {
 	}
 	fs, db := adminFlags("apikeys " + args[0])
 	expiration := fs.Duration("expiration", 90*24*time.Hour, "how long the key stays valid")
+	scope := fs.String("scope", store.ScopeAdmin, `"admin", or "read" for a key that can look but not change anything`)
 	st, err := openStore(fs, db, args[1:])
 	if err != nil {
 		return err
@@ -154,26 +155,26 @@ func cmdAPIKeys(args []string) error {
 	ctx := context.Background()
 	switch args[0] {
 	case "create":
-		k, plain, err := st.CreateAPIKey(ctx, *expiration)
+		k, plain, err := st.CreateScopedAPIKey(ctx, *expiration, *scope)
 		if err != nil {
 			return err
 		}
-		cliAudit(ctx, st, "api key created", "prefix", k.Prefix)
-		fmt.Fprintf(os.Stderr, "API key %s (expires %s). Use it to sign in to the console or call the admin API. Shown only once:\n",
-			k.Prefix, k.ExpiresAt.Format(time.DateTime))
+		cliAudit(ctx, st, "api key created", "prefix", k.Prefix, "scope", k.Scope)
+		fmt.Fprintf(os.Stderr, "%s API key %s (expires %s). Use it to sign in to the console or call the admin API. Shown only once:\n",
+			k.Scope, k.Prefix, k.ExpiresAt.Format(time.DateTime))
 		fmt.Println(plain)
 	case "list":
 		keys, err := st.ListAPIKeys(ctx)
 		if err != nil {
 			return err
 		}
-		tw := table("ID\tPREFIX\tCREATED\tEXPIRES\tLAST USED\tVALID")
+		tw := table("ID\tPREFIX\tSCOPE\tCREATED\tEXPIRES\tLAST USED\tVALID")
 		for _, k := range keys {
 			last := "never"
 			if !k.LastUsed.IsZero() {
 				last = k.LastUsed.Format(time.DateTime)
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%v\n", k.ID, k.Prefix, k.CreatedAt.Format(time.DateTime),
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%v\n", k.ID, k.Prefix, k.Scope, k.CreatedAt.Format(time.DateTime),
 				k.ExpiresAt.Format(time.DateTime), last, k.Valid())
 		}
 		tw.Flush()

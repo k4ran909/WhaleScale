@@ -42,7 +42,7 @@ func lockSignature(b []byte) *v1.NodeSignature {
 }
 
 func (a *Admin) GetLock(ctx context.Context, req *connect.Request[v1.GetLockRequest]) (*connect.Response[v1.GetLockResponse], error) {
-	if _, err := a.auth(ctx, req.Header()); err != nil {
+	if _, err := a.auth(ctx, req); err != nil {
 		return nil, err
 	}
 	chain, err := lockChain(ctx, a.svc.store)
@@ -53,7 +53,7 @@ func (a *Admin) GetLock(ctx context.Context, req *connect.Request[v1.GetLockRequ
 }
 
 func (a *Admin) UpdateLock(ctx context.Context, req *connect.Request[v1.UpdateLockRequest]) (*connect.Response[v1.UpdateLockResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (a *Admin) UpdateLock(ctx context.Context, req *connect.Request[v1.UpdateLo
 }
 
 func (a *Admin) SignNodes(ctx context.Context, req *connect.Request[v1.SignNodesRequest]) (*connect.Response[v1.SignNodesResponse], error) {
-	id, err := a.auth(ctx, req.Header())
+	id, err := a.auth(ctx, req)
 	if err != nil {
 		return nil, err
 	}

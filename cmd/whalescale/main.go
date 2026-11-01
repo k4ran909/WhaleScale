@@ -28,7 +28,7 @@ Usage:
   whalescale users       create NAME | list | delete NAME
   whalescale preauthkeys create --user NAME [--reusable] [--ephemeral] [--expiration 24h]
   whalescale preauthkeys list | expire PREFIX
-  whalescale apikeys     create [--expiration 2160h] | list | expire PREFIX
+  whalescale apikeys     create [--expiration 2160h] [--scope admin|read] | list | expire PREFIX
   whalescale nodes       list [--user NAME] | delete ID
   whalescale routes      list | approve NODE PREFIX | unapprove NODE PREFIX
   whalescale exposures   list | approve NAME | unapprove NAME

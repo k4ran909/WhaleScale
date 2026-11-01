@@ -188,3 +188,53 @@ func TestPolicyTestsAndExplain(t *testing.T) {
 		t.Fatalf("group as source should be a bad request: %d", code)
 	}
 }
+
+// A read-only key can look at everything a monitor needs and change
+// nothing, over the API and through a console session opened with it.
+func TestReadOnlyAPIKey(t *testing.T) {
+	hs, st := newTestServer(t)
+	_, key, err := st.CreateScopedAPIKey(context.Background(), time.Hour, store.ScopeRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := hs.Client()
+	bearer := map[string]string{"Authorization": "Bearer " + key}
+	code, out := adminCall(t, c, hs.URL, "WhoAmI", "{}", bearer)
+	if code != 200 || out["scope"] != "read" {
+		t.Fatalf("WhoAmI = %d %v", code, out)
+	}
+	for _, m := range []string{"ListNodes", "ListUsers", "GetPolicy", "ListAuditEvents", "QueryFlows"} {
+		if code, out := adminCall(t, c, hs.URL, m, "{}", bearer); code != 200 {
+			t.Errorf("%s with a read key: %d %v", m, code, out)
+		}
+	}
+	for m, body := range map[string]string{
+		"CreateUser":   `{"name":"mallory"}`,
+		"SetPolicy":    `{"policy":"{\"acls\":[]}"}`,
+		"CreateAPIKey": `{}`,
+		"GetRecording": `{"id":"1"}`,
+		"DecideAccess": `{"id":"1","approve":true}`,
+	} {
+		if code, out := adminCall(t, c, hs.URL, m, body, bearer); code != 403 {
+			t.Errorf("%s with a read key: %d %v, want 403", m, code, out)
+		}
+	}
+	// The same through a console session.
+	resp, err := c.Post(hs.URL+"/auth/apikey", "application/json", strings.NewReader(`{"key":"`+key+`"}`))
+	if err != nil || resp.StatusCode != 204 {
+		t.Fatalf("console login: %v", err)
+	}
+	var cookie string
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "ws_session" {
+			cookie = ck.Value
+		}
+	}
+	session := map[string]string{"Cookie": "ws_session=" + cookie, "Connect-Protocol-Version": "1"}
+	if code, _ := adminCall(t, c, hs.URL, "CreateUser", `{"name":"mallory"}`, session); code != 403 {
+		t.Fatalf("CreateUser through a read-key session: %d", code)
+	}
+	if users, _ := st.ListUsers(context.Background()); len(users) != 0 {
+		t.Fatal("a read key created a user")
+	}
+}

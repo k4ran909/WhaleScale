@@ -72,6 +72,8 @@ message WhoAmIResponse {
   string method = 1;
   string identity = 2;
   bool oidc_enabled = 3;
+  // "admin", or "read" for a read-only API key.
+  string scope = 4;
 }
 
 message User {
@@ -173,10 +175,17 @@ message APIKey {
   google.protobuf.Timestamp expires_at = 4;
   google.protobuf.Timestamp last_used = 5;
   bool valid = 6;
+  // "admin" or "read".
+  string scope = 7;
 }
 message ListAPIKeysRequest {}
 message ListAPIKeysResponse { repeated APIKey keys = 1; }
-message CreateAPIKeyRequest { uint64 expiration_seconds = 1; }
+message CreateAPIKeyRequest {
+  uint64 expiration_seconds = 1;
+  // "admin" (the default) or "read": a key that can look but not change
+  // anything.
+  string scope = 2;
+}
 message CreateAPIKeyResponse {
   APIKey key = 1;
   string secret = 2;

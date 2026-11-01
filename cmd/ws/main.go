@@ -50,6 +50,7 @@ Usage:
                               ask for temporary access, e.g. node:prod-db:5432
   ws lock status|keygen|init|sign|add-key|remove-key|disable|enable
                               network lock: only machines signed by your keys are accepted
+  ws mcp [--server URL]       MCP server on stdio for AI agents ($WS_API_KEY; a read-only key makes a read-only agent)
   ws netcheck [--json]        public address, NAT type, relay reachability
   ws logout
   ws version
@@ -63,42 +64,54 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	var err error
-	switch cmd, args := os.Args[1], os.Args[2:]; cmd {
-	case "login":
-		err = cmdLogin(args)
-	case "up":
-		err = cmdUp(args)
-	case "down":
-		err = cmdDown(args)
-	case "expose":
-		err = cmdExpose(args)
-	case "ssh":
-		err = cmdSSH(args)
-	case "access":
-		err = cmdAccess(args[1:])
-	case "lock":
-		err = cmdLock(args[1:])
-	case "status":
-		err = cmdStatus(args)
-	case "ping":
-		err = cmdPing(args)
-	case "netcheck":
-		err = cmdNetcheck(args)
-	case "logout":
-		err = cmdLogout(args)
-	case "version", "--version":
-		fmt.Println("ws", version.String())
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
+	err := run(os.Args[1], os.Args[2:])
+	if errors.Is(err, errUsage) {
 		os.Exit(2)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+var errUsage = errors.New("usage")
+
+// run runs one command; args excludes the command name.
+func run(cmd string, args []string) error {
+	switch cmd {
+	case "login":
+		return cmdLogin(args)
+	case "up":
+		return cmdUp(args)
+	case "down":
+		return cmdDown(args)
+	case "expose":
+		return cmdExpose(args)
+	case "ssh":
+		return cmdSSH(args)
+	case "access":
+		return cmdAccess(args)
+	case "lock":
+		return cmdLock(args)
+	case "mcp":
+		return cmdMCP(args)
+	case "status":
+		return cmdStatus(args)
+	case "ping":
+		return cmdPing(args)
+	case "netcheck":
+		return cmdNetcheck(args)
+	case "logout":
+		return cmdLogout(args)
+	case "version", "--version":
+		fmt.Println("ws", version.String())
+	case "help", "-h", "--help":
+		fmt.Print(usage)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
+		return errUsage
+	}
+	return nil
 }
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}

@@ -68,6 +68,7 @@ export interface PreAuthKey {
 export interface APIKey {
   id: string;
   prefix: string;
+  scope?: "admin" | "read";
   createdAt?: string;
   expiresAt?: string;
   lastUsed?: string;
@@ -176,7 +177,8 @@ export const api = {
     call<{ key: PreAuthKey; secret: string }>("CreatePreAuthKey", { user, reusable, ephemeral, expirationSeconds }),
   expirePreAuthKey: (prefix: string) => call("ExpirePreAuthKey", { prefix }),
   listAPIKeys: () => call<{ keys?: APIKey[] }>("ListAPIKeys").then((r) => r.keys ?? []),
-  createAPIKey: (expirationSeconds: number) => call<{ key: APIKey; secret: string }>("CreateAPIKey", { expirationSeconds }),
+  createAPIKey: (expirationSeconds: number, scope: "admin" | "read" = "admin") =>
+    call<{ key: APIKey; secret: string }>("CreateAPIKey", { expirationSeconds, scope }),
   expireAPIKey: (prefix: string) => call("ExpireAPIKey", { prefix }),
   getPolicy: () =>
     call<{
