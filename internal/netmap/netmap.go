@@ -79,5 +79,6 @@ func shallowCopy(m *v1.NetworkMap) *v1.NetworkMap {
 		QuicRelay:           m.QuicRelay,
 		QuicRelayCertSha256: m.QuicRelayCertSha256,
 		LockChain:           m.LockChain,
+		ControlUrls:         m.ControlUrls,
 	}
 }

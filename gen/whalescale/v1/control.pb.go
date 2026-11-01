@@ -1597,7 +1597,9 @@ type NetworkMap struct {
 	QuicRelayCertSha256 string `protobuf:"bytes,17,opt,name=quic_relay_cert_sha256,json=quicRelayCertSha256,proto3" json:"quic_relay_cert_sha256,omitempty"`
 	// Every network lock state, oldest first; empty when the lock was never
 	// turned on.
-	LockChain     []*LockState `protobuf:"bytes,18,rep,name=lock_chain,json=lockChain,proto3" json:"lock_chain,omitempty"`
+	LockChain []*LockState `protobuf:"bytes,18,rep,name=lock_chain,json=lockChain,proto3" json:"lock_chain,omitempty"`
+	// Every running control server (this one included), to fail over to.
+	ControlUrls   []string `protobuf:"bytes,19,rep,name=control_urls,json=controlUrls,proto3" json:"control_urls,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1754,6 +1756,13 @@ func (x *NetworkMap) GetQuicRelayCertSha256() string {
 func (x *NetworkMap) GetLockChain() []*LockState {
 	if x != nil {
 		return x.LockChain
+	}
+	return nil
+}
+
+func (x *NetworkMap) GetControlUrls() []string {
+	if x != nil {
+		return x.ControlUrls
 	}
 	return nil
 }
@@ -2667,7 +2676,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\rpacket_filter\x18\x05 \x01(\v2\x1b.whalescale.v1.PacketFilterR\fpacketFilter\x125\n" +
 	"\bsettings\x18\x06 \x01(\v2\x19.whalescale.v1.NetworkMapR\bsettings\"?\n" +
 	"\fPacketFilter\x12/\n" +
-	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\x91\x06\n" +
+	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\xb4\x06\n" +
 	"\n" +
 	"NetworkMap\x12'\n" +
 	"\x04self\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04self\x12)\n" +
@@ -2692,7 +2701,8 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"quic_relay\x18\x10 \x01(\tR\tquicRelay\x123\n" +
 	"\x16quic_relay_cert_sha256\x18\x11 \x01(\tR\x13quicRelayCertSha256\x127\n" +
 	"\n" +
-	"lock_chain\x18\x12 \x03(\v2\x18.whalescale.v1.LockStateR\tlockChain\"Z\n" +
+	"lock_chain\x18\x12 \x03(\v2\x18.whalescale.v1.LockStateR\tlockChain\x12!\n" +
+	"\fcontrol_urls\x18\x13 \x03(\tR\vcontrolUrls\"Z\n" +
 	"\aSSHRule\x12!\n" +
 	"\fsrc_prefixes\x18\x01 \x03(\tR\vsrcPrefixes\x12\x14\n" +
 	"\x05users\x18\x02 \x03(\tR\x05users\x12\x16\n" +

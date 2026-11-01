@@ -41,8 +41,10 @@ type snapshot struct {
 	compiled  *policy.Compiled
 	filters   map[uint64]*nodeFilter
 
-	dns          *v1.DNSConfig
-	lockChain    []*v1.LockState
+	dns       *v1.DNSConfig
+	lockChain []*v1.LockState
+	// remoteOnline: nodes with a map stream on another server.
+	remoteOnline map[uint64]bool
 	exposures    map[uint64][]store.Exposure
 	taken        map[uint64][]string
 	peerRelays   []relayEntry[*v1.PeerRelay]
@@ -97,6 +99,7 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 	var nodes []store.Node
 	var exposures map[uint64][]store.Exposure
 	var chain []*v1.LockState
+	var remote map[uint64]bool
 	// Cleared before reading, so a write landing mid-read marks it again.
 	if s.storeDirty.Swap(false) || prev == nil {
 		var err error
@@ -117,8 +120,19 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 			s.storeDirty.Store(true)
 			return nil, err
 		}
+		if s.cfg.ServerID != "" {
+			s.mu.Lock()
+			window := s.clusterWindow
+			s.mu.Unlock()
+			if window > 0 {
+				if remote, err = s.store.Presence(ctx, s.cfg.ServerID, window); err != nil {
+					s.storeDirty.Store(true)
+					return nil, err
+				}
+			}
+		}
 	} else {
-		nodes, exposures, chain = prev.nodes, prev.exposures, prev.lockChain
+		nodes, exposures, chain, remote = prev.nodes, prev.exposures, prev.lockChain, prev.remoteOnline
 	}
 	s.mu.Lock()
 	online := maps.Clone(s.online)
@@ -130,14 +144,14 @@ func (s *Service) buildSnapshot(ctx context.Context, prev *snapshot) (*snapshot,
 
 	snap := &snapshot{version: version, nodes: nodes, index: make(map[uint64]int, len(nodes)),
 		protos: make([]*v1.Node, len(nodes)), hashes: make([]uint64, len(nodes)), wire: make([][]byte, len(nodes)),
-		dns: &v1.DNSConfig{Suffix: s.cfg.DNSSuffix}, exposures: exposures, taken: taken, lockChain: chain}
+		dns: &v1.DNSConfig{Suffix: s.cfg.DNSSuffix}, exposures: exposures, taken: taken, lockChain: chain, remoteOnline: remote}
 	if prev != nil {
 		snap.prevVersion = prev.version
 	}
 	for i := range nodes {
 		n := &nodes[i]
 		snap.index[n.ID] = i
-		p := s.mapNode(n, online[n.ID] > 0)
+		p := s.mapNode(n, online[n.ID] > 0 || remote[n.ID])
 		b, err := deterministic.Marshal(p)
 		if err != nil {
 			return nil, err
@@ -308,14 +322,16 @@ func buildFilters(c *policy.Compiled, nodes []store.Node) map[uint64]*nodeFilter
 // packet filter and the version.
 func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 	n := &snap.nodes[i]
+	relays, controls, quic := s.clusterInfo()
 	nm := &v1.NetworkMap{
 		Dns:           snap.dns,
-		Relays:        s.cfg.Relays,
+		Relays:        relays,
+		ControlUrls:   controls,
 		Stun:          s.cfg.STUN,
 		RelayOffered:  n.RelayOffered,
 		RelayApproved: n.RelayApproved,
 		FlowLogs:      s.cfg.FlowLogs,
-		QuicRelay:     s.cfg.QUICRelay,
+		QuicRelay:     quic,
 		SshRules:      snap.filters[n.ID].ssh,
 		LockChain:     snap.lockChain,
 	}

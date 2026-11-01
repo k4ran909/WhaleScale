@@ -325,6 +325,25 @@ guest → karan port 22: DENIED  (using the policy saved in the console)
 
 The console's Access policy page has the same "Explain access" panel, and it evaluates your unsaved edits. For subnet addresses, explain also warns when the policy allows something that no approved router serves.
 
+## Several servers (failover)
+
+Several `whalescale serve` processes can share one database. Start each with its own `listen`, `public-url`, `stun-listen` and `relay-quic-listen`, and the same `db`:
+
+```bash
+whalescale serve --db /var/lib/whalescale/whalescale.db --listen :8080 --public-url https://ws1.example.com
+# the second one needs its own ports:
+whalescale serve --db /var/lib/whalescale/whalescale.db --listen :8081 --public-url https://ws2.example.com --stun-listen :3488,:3489 --relay-quic-listen :3490
+whalescale cluster      # who's up, and who leads
+```
+
+- **Machines keep working through a server failure.** Every machine learns every running server's address. When its server stops or crashes, it moves to another within about a second.
+- **Direct connections don't notice.** WireGuard traffic between machines never goes through a server; the failover test sends traffic continuously while a server dies and loses none.
+- **Relayed connections pause briefly.** All machines use the oldest running server's relay, so they meet on the same one. If that server goes away they move to the next: at once on a clean shutdown, or within the heartbeat timeout (3× the watch interval, 15 s by default) after a crash.
+- **Changes reach every server.** A change made on one server (a policy save, an approval, a machine joining) reaches machines on the others within a quarter of a second. Who is online is shared too.
+- **One leader for periodic jobs.** One server at a time holds the leader lease and runs grant expiry, log pruning and Git policy sync. Another takes over when it stops (`whalescale_leader` in `/metrics`).
+
+Today the servers must share an SQLite file, so they run on one host. That covers crashes and zero-downtime upgrades (start the new version, stop the old). Separate hosts need a shared database server; Postgres support is the next step. Some things still belong to one server: a browser login must finish on the server that started it, a gateway tunnel serves public requests only on its own server, and the console's topology view shows the paths of that server's machines.
+
 ## Scale
 
 Each change to the network (a node coming online, an endpoint moving, a policy push) is turned into one shared snapshot. Every node then gets only the part that concerns it: changed peers, a new packet filter, or nothing at all. The policy compiler works on groups of nodes with identical access rather than on node pairs, and merges source addresses into CIDRs, so `"*"` over 10,000 machines costs a few prefixes rather than 20,000.

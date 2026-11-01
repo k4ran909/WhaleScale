@@ -432,6 +432,38 @@ func cmdAccess(args []string) error {
 	return nil
 }
 
+func cmdCluster(args []string) error {
+	fs, db := adminFlags("cluster")
+	st, err := openStore(fs, db, args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	members, err := st.LiveMembers(ctx, time.Minute)
+	if err != nil {
+		return err
+	}
+	leader, _, err := st.LeaseHolder(ctx, "leader")
+	if err != nil {
+		return err
+	}
+	if len(members) == 0 {
+		fmt.Println("no server has checked in during the last minute")
+		return nil
+	}
+	tw := table("SERVER\tURL\tRELAY\tSTARTED\tLAST SEEN\tROLE")
+	for _, m := range members {
+		role := ""
+		if m.ID == leader {
+			role = "leader"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s ago\t%s\n", m.ID, m.PublicURL, m.RelayURL, m.StartedAt.Format(time.DateTime),
+			time.Since(m.LastSeen).Round(time.Second), role)
+	}
+	return tw.Flush()
+}
+
 func cmdAudit(args []string) error {
 	fs, db := adminFlags("audit")
 	since := fs.Duration("since", 0, "how far back to look (0 for everything)")

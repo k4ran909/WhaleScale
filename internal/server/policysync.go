@@ -132,6 +132,7 @@ func (ps *policySync) fetch(ctx context.Context, startup bool) error {
 		ps.srv.control.Audit(ctx, "git", "policy synced", "url", ps.status.URL, "revision", rev, "acls", len(p.ACLs))
 		// Kept so a restart while the repository is unreachable still
 		// starts with the last good policy instead of a permissive one.
+		ps.srv.control.Changed()
 		if err := ps.srv.store.SetSetting(ctx, syncedPolicyKey, string(body)); err != nil {
 			ps.srv.log.Warn("could not cache synced policy", "err", err)
 		}
@@ -181,6 +182,11 @@ func (ps *policySync) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			// With several servers, only the leader polls the repository;
+			// the others pick up what it stores.
+			if !ps.srv.leader.Load() {
+				continue
+			}
 		case <-ps.poke:
 		}
 		fctx, cancel := context.WithTimeout(ctx, 30*time.Second)

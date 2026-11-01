@@ -48,6 +48,8 @@ type Config struct {
 	FlowLogs bool
 	// QUICRelay (host:port) and its certificate pin (hex), if offered.
 	QUICRelay, QUICRelayPin string
+	// ServerID identifies this server among servers sharing the database.
+	ServerID string
 }
 
 type Service struct {
@@ -83,6 +85,13 @@ type Service struct {
 	taken   map[uint64][]string // exposure names a node asked for but another holds
 
 	stats Stats
+
+	// Cluster state (see cluster.go). members and clusterWindow are under
+	// mu; presence is only touched by SyncPresence.
+	members       []Member
+	clusterWindow time.Duration
+	presence      map[uint64]bool
+	localChange   atomic.Bool
 }
 
 type pathSet struct {
@@ -186,8 +195,12 @@ func (s *Service) Policy() (text, source string) {
 }
 
 // NotifyAll tells every open stream that stored data changed, so each
-// node gets whatever part of the change concerns it.
-func (s *Service) NotifyAll() { s.notify(true) }
+// node gets whatever part of the change concerns it, and marks the change
+// for other servers.
+func (s *Service) NotifyAll() {
+	s.Changed()
+	s.notify(true)
+}
 
 // notify starts a new map version and wakes every stream. storeChanged
 // says whether the database must be read again.

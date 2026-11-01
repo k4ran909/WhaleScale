@@ -33,14 +33,17 @@ func withGrants(base *policy.Policy, grants []store.AccessRequest) *policy.Polic
 	return &p
 }
 
-// RefreshGrants expires finished grants and stale requests, then makes the
-// active grants part of the policy, pushing maps if they changed. The
-// server calls it periodically, which also picks up decisions made with
-// the CLI.
-func (s *Service) RefreshGrants(ctx context.Context) error {
-	expired, err := s.store.ExpireAccessRequests(ctx)
-	if err != nil {
-		return err
+// RefreshGrants makes the active grants part of the policy, pushing maps
+// if they changed. With expire (on one server at a time) it first ends
+// finished grants and stale requests. The server calls it periodically,
+// which also picks up decisions made with the CLI or on other servers.
+func (s *Service) RefreshGrants(ctx context.Context, expire bool) error {
+	var expired []store.AccessRequest
+	if expire {
+		var err error
+		if expired, err = s.store.ExpireAccessRequests(ctx); err != nil {
+			return err
+		}
 	}
 	for _, a := range expired {
 		what := "access grant expired"
@@ -131,7 +134,8 @@ func (s *Service) requestAccess(ctx context.Context, self *store.Node, m *v1.Req
 		"duration", a.Duration, "reason", a.Reason)
 	if rule.AutoApprove {
 		s.Audit(ctx, "policy", "access granted", "id", a.ID, "node", self.Name, "dst", a.Dst, "until", a.ExpiresAt.Format(time.RFC3339))
-		if err := s.RefreshGrants(ctx); err != nil {
+		s.Changed()
+		if err := s.RefreshGrants(ctx, false); err != nil {
 			s.log.Error("refresh grants", "err", err)
 		}
 	}
@@ -194,7 +198,8 @@ func (a *Admin) DecideAccess(ctx context.Context, req *connect.Request[v1.Decide
 	} else {
 		a.audit(ctx, id, "access denied", "id", r.ID, "node", r.NodeName, "dst", r.Dst)
 	}
-	if err := a.svc.RefreshGrants(ctx); err != nil {
+	a.svc.Changed()
+	if err := a.svc.RefreshGrants(ctx, false); err != nil {
 		return nil, internal(a, "refresh grants", err)
 	}
 	return connect.NewResponse(&v1.DecideAccessResponse{Request: accessProto(r)}), nil
@@ -213,7 +218,8 @@ func (a *Admin) RevokeAccess(ctx context.Context, req *connect.Request[v1.Revoke
 		return nil, notFoundOr(a, "revoke access grant", err)
 	}
 	a.audit(ctx, id, "access revoked", "id", r.ID, "node", r.NodeName, "dst", r.Dst)
-	if err := a.svc.RefreshGrants(ctx); err != nil {
+	a.svc.Changed()
+	if err := a.svc.RefreshGrants(ctx, false); err != nil {
 		return nil, internal(a, "refresh grants", err)
 	}
 	return connect.NewResponse(&v1.RevokeAccessResponse{}), nil

@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -72,6 +73,11 @@ type Server struct {
 	policyMod time.Time
 	psync     *policySync
 	quicCert  tls.Certificate
+
+	// Cluster membership (cluster.go).
+	id       string
+	relayURL string
+	leader   atomic.Bool
 }
 
 func New(st *store.Store, cfg Config) (*Server, error) {
@@ -82,8 +88,13 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now()}
+	id, err := randomServerID()
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now(), id: id, relayURL: relayURL}
 	ccfg := control.Config{
+		ServerID:  id,
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
 		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir, FlowLogs: cfg.FlowLogs,
 	}
@@ -126,7 +137,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	} else if err := s.loadInitialPolicy(); err != nil {
 		return nil, err
 	}
-	if err := s.control.RefreshGrants(context.Background()); err != nil {
+	if err := s.control.RefreshGrants(context.Background(), false); err != nil {
 		return nil, fmt.Errorf("load access grants: %w", err)
 	}
 	return s, nil
@@ -327,6 +338,11 @@ func (s *Server) MetricsHandler() http.Handler {
 		m("whalescale_netmaps_sent_total", "counter", "Network map updates (full or delta) pushed to nodes.", st.MapsSent.Load())
 		m("whalescale_snapshots_total", "counter", "Network snapshots built, one per batch of changes.", st.Snapshots.Load())
 		m("whalescale_policy_compiles_total", "counter", "Policy compilations.", st.Compiles.Load())
+		leader := uint64(0)
+		if s.Leader() {
+			leader = 1
+		}
+		m("whalescale_leader", "gauge", "1 if this server runs the cluster's periodic jobs.", leader)
 		m("whalescale_relay_clients", "gauge", "Nodes connected to the relay.", rs.Clients)
 		m("whalescale_relay_packets_total", "counter", "Packets forwarded by the relay.", rs.Packets)
 		m("whalescale_relay_bytes_total", "counter", "Bytes forwarded by the relay.", rs.Bytes)
@@ -341,6 +357,9 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 	defer t.Stop()
 	last, _ := s.store.Fingerprint(ctx)
 	var lastPrune time.Time
+	s.clusterTick(ctx, every)
+	defer s.leaveCluster()
+	go s.syncLoop(ctx, min(every, 250*time.Millisecond))
 	if s.psync != nil {
 		go s.psync.run(ctx)
 	}
@@ -350,18 +369,21 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 			return
 		case <-t.C:
 		}
-		if time.Since(lastPrune) > time.Hour {
+		s.clusterTick(ctx, every)
+		if s.leader.Load() && time.Since(lastPrune) > time.Hour {
 			lastPrune = time.Now()
 			if n, err := s.store.PruneFlows(ctx, time.Now().Add(-s.flowRetention())); err == nil && n > 0 {
 				s.log.Info("pruned old flow logs", "rows", n)
 			}
 		}
+		// Changes written straight to the database (admin commands, other
+		// servers). Every server checks for itself, so this isn't passed on.
 		if fp, err := s.store.Fingerprint(ctx); err == nil && fp != last {
 			last = fp
-			s.control.NotifyAll()
+			s.control.NotifyRemote()
 		}
-		// Expires grants on time, and picks up CLI decisions.
-		if err := s.control.RefreshGrants(ctx); err != nil {
+		// Expires grants on time (the leader), and picks up CLI decisions.
+		if err := s.control.RefreshGrants(ctx, s.leader.Load()); err != nil {
 			s.log.Error("refresh access grants", "err", err)
 		}
 		if s.cfg.PolicyFile != "" {

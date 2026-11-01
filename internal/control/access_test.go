@@ -63,7 +63,7 @@ func TestAccessRequestLifecycle(t *testing.T) {
 	if _, err := st.DecideAccessRequest(ctx, r.Id, true, "oidc:boss@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	s.RefreshGrants(ctx)
+	s.RefreshGrants(ctx, true)
 	if !canTalk() {
 		t.Fatal("no access after approval")
 	}
@@ -73,7 +73,7 @@ func TestAccessRequestLifecycle(t *testing.T) {
 	if _, err := st.RevokeAccessGrant(ctx, r.Id, "oidc:boss@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	s.RefreshGrants(ctx)
+	s.RefreshGrants(ctx, true)
 	if canTalk() {
 		t.Fatal("access after revocation")
 	}
@@ -87,7 +87,7 @@ func TestAccessRequestLifecycle(t *testing.T) {
 		t.Fatalf("active grants = %+v", g)
 	}
 	time.Sleep(2100 * time.Millisecond)
-	s.RefreshGrants(ctx)
+	s.RefreshGrants(ctx, true)
 	if g, _ := st.ActiveGrants(ctx); len(g) != 0 || len(s.CurrentPolicy().ACLs) != 0 {
 		t.Fatalf("grant outlived its time: %+v", g)
 	}

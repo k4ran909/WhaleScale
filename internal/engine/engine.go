@@ -106,29 +106,39 @@ type Engine struct {
 	lockHead *v1.LockState
 	nodeKey  key.Private
 	disco    key.Private
-	api      whalescalev1connect.ControlServiceClient
-	conn     *meshconn.Conn
-	filter   *filter.Filter
-	dns      *dnsserver.Server
+	// api talks to the control server in use (apiURL); after a failure the
+	// map loop moves to the next of controlURLs, the servers the last map
+	// listed. Guarded by apiMu.
+	apiMu       sync.Mutex
+	api         whalescalev1connect.ControlServiceClient
+	apiURL      string
+	controlURLs []string
+	// failoverStart is the server that last delivered a map; failing over
+	// all the way back to it means every server failed.
+	failoverStart string
+	conn          *meshconn.Conn
+	filter        *filter.Filter
+	dns           *dnsserver.Server
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	mu       sync.Mutex
-	netmap   *v1.NetworkMap
-	dev      *device.Device
-	tunDev   tun.Device
-	tnet     *netstack.Net // userspace mode only
-	wgPeers  map[key.Public]string
-	relay    *relay.Client
-	relayURL string
-	osCfg    *osnet.Config
-	osRoutes []netip.Prefix
-	hc       *http.Client
-	bypass   *osnet.Bypass
-	exitRts  *osnet.ExitRoutes
-	exitStat *ExitStatus
+	mu          sync.Mutex
+	netmap      *v1.NetworkMap
+	dev         *device.Device
+	tunDev      tun.Device
+	tnet        *netstack.Net // userspace mode only
+	wgPeers     map[key.Public]string
+	relay       *relay.Client
+	relayURL    string
+	relayCancel context.CancelFunc
+	osCfg       *osnet.Config
+	osRoutes    []netip.Prefix
+	hc          *http.Client
+	bypass      *osnet.Bypass
+	exitRts     *osnet.ExitRoutes
+	exitStat    *ExitStatus
 	// lockStatus is the latest network lock check, for Status.
 	lockStatus *LockStatus
 	gw         *gateway.Client
@@ -197,6 +207,7 @@ func New(opts Options) (*Engine, error) {
 	e := &Engine{
 		opts: opts, log: opts.Log, nodeKey: nk, disco: dk, hc: hc, bypass: bypass, sshKey: sshKey,
 		api:     whalescalev1connect.NewControlServiceClient(hc, st.ServerURL),
+		apiURL:  st.ServerURL,
 		filter:  filter.New(),
 		dns:     dnsserver.New(opts.Log),
 		wgPeers: map[key.Public]string{},
@@ -323,7 +334,7 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
 	defer cancel()
-	_, err := e.api.UpdateNode(ctx, req)
+	_, err := e.client().UpdateNode(ctx, req)
 	return err
 }
 
@@ -379,19 +390,63 @@ func (e *Engine) mapLoop() {
 		if time.Since(start) > time.Minute {
 			backoff = time.Second
 		}
+		wait := backoff
+		if connect.CodeOf(err) != connect.CodeUnauthenticated && e.failover() {
+			// Another server is worth trying at once; back off only once
+			// every server has failed in turn.
+			wait = 500 * time.Millisecond
+		} else {
+			backoff = min(backoff*2, 30*time.Second)
+		}
 		select {
 		case <-e.ctx.Done():
 			return
-		case <-time.After(backoff):
+		case <-time.After(wait):
 		}
-		backoff = min(backoff*2, 30*time.Second)
 	}
+}
+
+func (e *Engine) client() whalescalev1connect.ControlServiceClient {
+	e.apiMu.Lock()
+	defer e.apiMu.Unlock()
+	return e.api
+}
+
+// failover switches to the next control server the last map listed. It
+// reports false when there is no other server, or when the next one is
+// where the rotation started (every server was tried).
+func (e *Engine) failover() bool {
+	e.apiMu.Lock()
+	defer e.apiMu.Unlock()
+	urls := e.controlURLs
+	if !slices.Contains(urls, e.opts.State.ServerURL) {
+		urls = append(slices.Clone(urls), e.opts.State.ServerURL)
+	}
+	if len(urls) < 2 {
+		return false
+	}
+	i := slices.Index(urls, e.apiURL)
+	next := urls[(i+1)%len(urls)]
+	e.log.Warn("switching control server", "from", e.apiURL, "to", next)
+	e.api = whalescalev1connect.NewControlServiceClient(e.hc, strings.TrimRight(next, "/"))
+	e.apiURL = next
+	return next != e.failoverStart || e.failoverStart == ""
+}
+
+// noteControlURLs remembers the servers a map listed, for failover.
+func (e *Engine) noteControlURLs(urls []string) {
+	e.apiMu.Lock()
+	defer e.apiMu.Unlock()
+	if len(urls) > 0 {
+		e.controlURLs = slices.Clone(urls)
+	}
+	e.failoverStart = e.apiURL
 }
 
 func (e *Engine) streamOnce() error {
 	req := connect.NewRequest(&v1.StreamNetworkMapRequest{Deltas: true})
 	e.authed(req)
-	stream, err := e.api.StreamNetworkMap(e.ctx, req)
+	stream, err := e.client().StreamNetworkMap(e.ctx, req)
 	if err != nil {
 		return err
 	}
@@ -413,6 +468,7 @@ func (e *Engine) streamOnce() error {
 		default:
 			continue
 		}
+		e.noteControlURLs(nm.ControlUrls)
 		if err := e.apply(e.enforceLock(nm)); err != nil {
 			e.log.Error("apply network map", "err", err)
 			e.mu.Lock()
@@ -461,10 +517,14 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 				return lc.ListenPacket(context.Background(), "udp4", ":0")
 			})
 		}
-		e.relay = rc
+		if e.relayCancel != nil {
+			e.relayCancel() // the previous relay: the map moved everyone off it
+		}
+		rctx, cancel := context.WithCancel(e.ctx)
+		e.relay, e.relayCancel = rc, cancel
 		e.conn.SetRelay(rc)
 		e.wg.Add(1)
-		go func() { defer e.wg.Done(); rc.Run(e.ctx) }()
+		go func() { defer e.wg.Done(); rc.Run(rctx) }()
 	}
 
 	// Peer relays: the ones we may use, and whether we relay for others.
@@ -860,7 +920,7 @@ func (e *Engine) uploadRecording(m sshserver.RecordingMeta, data []byte) {
 	e.authed(req)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	_, err := e.api.UploadRecording(ctx, req)
+	_, err := e.client().UploadRecording(ctx, req)
 	if err == nil {
 		return
 	}
@@ -972,7 +1032,7 @@ func (e *Engine) reportLoop() {
 		req := connect.NewRequest(&v1.ReportStatusRequest{Paths: paths, Flows: flows})
 		e.authed(req)
 		ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
-		if _, err := e.api.ReportStatus(ctx, req); err != nil {
+		if _, err := e.client().ReportStatus(ctx, req); err != nil {
 			e.log.Debug("report status", "err", err)
 		}
 		cancel()

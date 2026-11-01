@@ -86,7 +86,9 @@ type Node struct {
 
 // Open opens (creating if needed) the database at path and applies migrations.
 func Open(ctx context.Context, path string) (*Store, error) {
-	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	// BEGIN IMMEDIATE: transactions take the write lock up front, so two
+	// servers sharing the file wait for each other instead of failing.
+	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

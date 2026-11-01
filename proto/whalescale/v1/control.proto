@@ -271,6 +271,8 @@ message NetworkMap {
   // Every network lock state, oldest first; empty when the lock was never
   // turned on.
   repeated LockState lock_chain = 18;
+  // Every running control server (this one included), to fail over to.
+  repeated string control_urls = 19;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local

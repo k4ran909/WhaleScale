@@ -325,6 +325,7 @@ func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicy
 		return nil, internal(a, "save policy", err)
 	}
 	a.svc.SetPolicy(p, req.Msg.Policy, "database")
+	a.svc.Changed()
 	a.audit(ctx, id, "policy updated", "acls", len(p.ACLs))
 	return connect.NewResponse(&v1.SetPolicyResponse{Warnings: warns}), nil
 }

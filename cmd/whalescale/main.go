@@ -36,6 +36,7 @@ Usage:
   whalescale flows       [--node NAME] [--since 1h] [--denied] [--limit 100]
   whalescale audit       [--since 24h] [--actor X] [--action X] [--limit 100] | --verify
   whalescale access      list [--all] | approve ID | deny ID | revoke ID
+  whalescale cluster     servers sharing this database, and which one leads
   whalescale policy      check FILE | explain SRC DST:PORT [--file FILE]
   whalescale migrate     apply pending database migrations and exit
   whalescale version
@@ -84,6 +85,8 @@ func main() {
 		err = cmdAudit(args)
 	case "access":
 		err = cmdAccess(args)
+	case "cluster":
+		err = cmdCluster(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "migrate":
