@@ -141,6 +141,7 @@ type peer struct {
 	bestLatency time.Duration
 	lastPong    time.Time
 	lastCMM     time.Time
+	lastSpray   time.Time // symmetric-NAT port prediction
 	pings       map[disco.TxID]pingState
 
 	// Peer relay path, proven by a pong that came back through it.
@@ -671,6 +672,7 @@ func (c *Conn) heartbeatLoop() {
 				continue
 			}
 			c.pingCandidates(p, nil)
+			c.sprayPredicted(p)
 			c.probeViaRelays(p, nil)
 			if sendCMM && len(myEps) > 0 {
 				c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.CallMeMaybe{Endpoints: myEps}), discoPath{})
