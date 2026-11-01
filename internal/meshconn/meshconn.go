@@ -66,6 +66,12 @@ type Options struct {
 	// Exclude lists prefixes never to advertise or use as direct paths,
 	// such as the mesh's own address ranges (a tunnel inside the tunnel).
 	Exclude []netip.Prefix
+	// Post-quantum key exchange hooks (see internal/pq). OnPQ gets PQ*
+	// disco messages from peers; PSKID says what to put in pings to a
+	// peer; OnPeerPSKID gets what a peer's ping says.
+	OnPQ        func(peer key.Public, m disco.Message)
+	PSKID       func(peer key.Public) [8]byte
+	OnPeerPSKID func(peer key.Public, id [8]byte)
 }
 
 // PeerConfig is what the network map says about a peer.
@@ -522,9 +528,13 @@ func (c *Conn) handleDisco(pkt []byte, path discoPath, relayFrom key.Public) {
 			c.byAddr[udpFrom] = p
 			p.candidates = mergeAddrs([]netip.AddrPort{udpFrom}, p.candidates)
 		}
+		nodeKey := p.nodeKey
 		c.mu.Unlock()
 		pong := disco.Seal(c.opts.DiscoKey, sender, &disco.Pong{TxID: m.TxID, Src: udpFrom})
 		c.sendDisco(p, pong, path) // back the way it came
+		if c.opts.OnPeerPSKID != nil {
+			c.opts.OnPeerPSKID(nodeKey, m.PSKID)
+		}
 
 	case *disco.Pong:
 		ps, ok := p.pings[m.TxID]
@@ -580,9 +590,38 @@ func (c *Conn) handleDisco(pkt []byte, path discoPath, relayFrom key.Public) {
 		c.mu.Unlock()
 		c.pingCandidates(p, nil)
 
+	case *disco.PQInit, *disco.PQReply, *disco.PQCommit, *disco.PQDone:
+		nodeKey := p.nodeKey
+		c.mu.Unlock()
+		if c.opts.OnPQ != nil {
+			c.opts.OnPQ(nodeKey, msg)
+		}
+
 	default:
 		c.mu.Unlock()
 	}
+}
+
+// SendDisco seals m to the peer with this node key and sends it along the
+// path WireGuard traffic to it takes. It reports false for unknown peers.
+func (c *Conn) SendDisco(nodeKey key.Public, m disco.Message) bool {
+	c.mu.Lock()
+	p := c.peers[nodeKey]
+	if p == nil {
+		c.mu.Unlock()
+		return false
+	}
+	var path discoPath
+	switch {
+	case p.bestAddr.IsValid() && time.Since(p.lastPong) < trustDuration:
+		path.udp = p.bestAddr
+	case p.relayVia != nil && time.Since(p.relayPong) < trustDuration:
+		path.peerRelay = p.relayVia
+	}
+	dk := p.discoKey
+	c.mu.Unlock()
+	c.sendDisco(p, disco.Seal(c.opts.DiscoKey, dk, m), path)
+	return true
 }
 
 // sendDisco sends a sealed disco packet along path.
@@ -613,8 +652,11 @@ func (c *Conn) sendPing(p *peer, path discoPath, reply chan PingResult) {
 	c.mu.Lock()
 	p.pings[tx] = pingState{to: path.udp, viaRelay: path.peerRelay, sent: time.Now(), reply: reply}
 	c.mu.Unlock()
-	pkt := disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.Ping{TxID: tx, NodeKey: c.opts.NodeKey})
-	c.sendDisco(p, pkt, path)
+	ping := &disco.Ping{TxID: tx, NodeKey: c.opts.NodeKey}
+	if c.opts.PSKID != nil {
+		ping.PSKID = c.opts.PSKID(p.nodeKey)
+	}
+	c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, ping), path)
 }
 
 // pingCandidates pings every known direct candidate of p.

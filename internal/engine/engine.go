@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -33,6 +34,7 @@ import (
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/disco"
 	"github.com/k4ran909/whalescale/internal/dnsserver"
 	"github.com/k4ran909/whalescale/internal/filter"
 	"github.com/k4ran909/whalescale/internal/gateway"
@@ -43,6 +45,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/osnet"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/portmap"
+	"github.com/k4ran909/whalescale/internal/pq"
 	"github.com/k4ran909/whalescale/internal/relay"
 	"github.com/k4ran909/whalescale/internal/sshserver"
 	"github.com/k4ran909/whalescale/internal/version"
@@ -141,12 +144,16 @@ type Engine struct {
 	exitStat    *ExitStatus
 	// lockStatus is the latest network lock check, for Status.
 	lockStatus *LockStatus
-	gw         *gateway.Client
-	portmap    *portmap.Client
-	sshKey     ssh.Signer
-	router     *osnet.Router
-	ready      chan struct{}
-	lastErr    string
+	// pq agrees post-quantum PSKs with peers; wgDev lets it set them
+	// without e.mu (it runs while apply holds it).
+	pq      *pq.Manager
+	wgDev   atomic.Pointer[device.Device]
+	gw      *gateway.Client
+	portmap *portmap.Client
+	sshKey  ssh.Signer
+	router  *osnet.Router
+	ready   chan struct{}
+	lastErr string
 
 	epCh chan []netip.AddrPort
 }
@@ -222,6 +229,19 @@ func (e *Engine) authed(req connect.AnyRequest) {
 	req.Header().Set("Authorization", "Bearer "+e.opts.State.NodeToken)
 }
 
+// setPSK makes WireGuard use psk (zero: none) with peer from its next
+// handshake on.
+func (e *Engine) setPSK(peer key.Public, psk pq.PSK) {
+	dev := e.wgDev.Load()
+	if dev == nil {
+		return
+	}
+	cfg := fmt.Sprintf("public_key=%s\nupdate_only=true\npreshared_key=%s\n", peer.Hex(), hex.EncodeToString(psk[:]))
+	if err := dev.IpcSet(cfg); err != nil {
+		e.log.Warn("set post-quantum PSK", "peer", peer.ShortString(), "err", err)
+	}
+}
+
 // osVersion is read once: it doesn't change while we run.
 var osVersion = osinfo.Version()
 
@@ -232,8 +252,12 @@ func (e *Engine) Start(ctx context.Context) error {
 	if e.opts.ForceRelay {
 		exclude = []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
 	}
+	e.pq = pq.New(e.nodeKey.Public(), func(peer key.Public, m disco.Message) bool {
+		return e.conn.SendDisco(peer, m)
+	}, e.setPSK, e.log)
 	mopts := meshconn.Options{
 		Port: e.opts.Port, DiscoKey: e.disco, NodeKey: e.nodeKey.Public(), Log: e.log,
+		OnPQ: e.pq.Handle, PSKID: e.pq.PSKID, OnPeerPSKID: e.pq.Observe,
 		IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay,
 		DisableDirect:   e.opts.NoDirect,
 		Exclude:         exclude,
@@ -258,6 +282,8 @@ func (e *Engine) Start(ctx context.Context) error {
 		return err
 	}
 	e.conn = conn
+	e.wg.Add(1)
+	go func() { defer e.wg.Done(); e.pq.Run(e.ctx.Done()) }()
 	e.log.Info("mesh socket open", "udp_port", conn.Port(), "node_key", e.nodeKey.Public().ShortString())
 
 	if e.opts.PortMap {
@@ -650,6 +676,11 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		}
 	}
 	e.wgPeers = want
+	pqPeers := make([]key.Public, 0, len(want))
+	for k := range want {
+		pqPeers = append(pqPeers, k)
+	}
+	e.pq.SetPeers(nm.PostQuantum, pqPeers)
 	if err := e.syncOSRoutesLocked(subnets); err != nil {
 		e.log.Warn("install subnet routes", "err", err)
 	}
@@ -764,6 +795,7 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		return err
 	}
 	e.dev = dev
+	e.wgDev.Store(dev)
 
 	if !e.opts.Userspace {
 		ifname, err := tdev.Name()
@@ -1101,6 +1133,8 @@ type PeerStatus struct {
 	Routes     []string `json:"routes,omitempty"`
 	ExitNode   bool     `json:"exit_node,omitempty"`
 	SSHHostKey string   `json:"ssh_host_key,omitempty"`
+	// PostQuantum: a post-quantum PSK protects this peer's handshakes.
+	PostQuantum bool `json:"post_quantum,omitempty"`
 	meshconn.PeerStatus
 }
 
@@ -1160,6 +1194,9 @@ func (e *Engine) Status() Status {
 	for _, p := range nm.Peers {
 		ps := PeerStatus{Name: p.Name, FQDN: p.Fqdn, User: p.User, Addresses: p.Addresses, OS: p.Os, Online: p.Online,
 			Routes: p.Routes, ExitNode: p.ExitNode, SSHHostKey: p.SshHostKey}
+		if nk, err := key.ParsePublic(p.NodeKey); err == nil {
+			ps.PostQuantum, _ = e.pq.Active(nk)
+		}
 		if path, ok := paths[p.NodeKey]; ok {
 			ps.PeerStatus = path
 		} else {

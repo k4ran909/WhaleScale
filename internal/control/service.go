@@ -50,6 +50,8 @@ type Config struct {
 	QUICRelay, QUICRelayPin string
 	// ServerID identifies this server among servers sharing the database.
 	ServerID string
+	// PostQuantum turns on post-quantum pre-shared keys between nodes.
+	PostQuantum bool
 }
 
 type Service struct {

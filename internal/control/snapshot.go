@@ -334,6 +334,7 @@ func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 		QuicRelay:     quic,
 		SshRules:      snap.filters[n.ID].ssh,
 		LockChain:     snap.lockChain,
+		PostQuantum:   s.cfg.PostQuantum,
 	}
 	nm.QuicRelayCertSha256 = s.cfg.QUICRelayPin
 	for _, r := range snap.peerRelays {

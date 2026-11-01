@@ -11,6 +11,10 @@ tls-key: /etc/whalescale/tls/privkey.pem
 # Or let the server get certificates itself (port 443 must be reachable):
 # tls-acme: true
 # acme-email: you@example.com
+# Add post-quantum (ML-KEM-768) pre-shared keys to WireGuard, rotated
+# every two minutes; older clients just keep plain WireGuard.
+# post-quantum: true
+
 # Several servers on different hosts share a PostgreSQL database instead
 # of an SQLite file (see "Several servers" in the README):
 # db: postgres://whalescale:PASSWORD@db.internal:5432/whalescale?sslmode=require

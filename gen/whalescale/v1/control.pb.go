@@ -1599,7 +1599,10 @@ type NetworkMap struct {
 	// turned on.
 	LockChain []*LockState `protobuf:"bytes,18,rep,name=lock_chain,json=lockChain,proto3" json:"lock_chain,omitempty"`
 	// Every running control server (this one included), to fail over to.
-	ControlUrls   []string `protobuf:"bytes,19,rep,name=control_urls,json=controlUrls,proto3" json:"control_urls,omitempty"`
+	ControlUrls []string `protobuf:"bytes,19,rep,name=control_urls,json=controlUrls,proto3" json:"control_urls,omitempty"`
+	// Agree on post-quantum pre-shared keys with peers (ML-KEM-768, rotated
+	// every two minutes) and mix them into WireGuard handshakes.
+	PostQuantum   bool `protobuf:"varint,20,opt,name=post_quantum,json=postQuantum,proto3" json:"post_quantum,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1765,6 +1768,13 @@ func (x *NetworkMap) GetControlUrls() []string {
 		return x.ControlUrls
 	}
 	return nil
+}
+
+func (x *NetworkMap) GetPostQuantum() bool {
+	if x != nil {
+		return x.PostQuantum
+	}
+	return false
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local
@@ -2676,7 +2686,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\rpacket_filter\x18\x05 \x01(\v2\x1b.whalescale.v1.PacketFilterR\fpacketFilter\x125\n" +
 	"\bsettings\x18\x06 \x01(\v2\x19.whalescale.v1.NetworkMapR\bsettings\"?\n" +
 	"\fPacketFilter\x12/\n" +
-	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\xb4\x06\n" +
+	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\xd7\x06\n" +
 	"\n" +
 	"NetworkMap\x12'\n" +
 	"\x04self\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04self\x12)\n" +
@@ -2702,7 +2712,8 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\x16quic_relay_cert_sha256\x18\x11 \x01(\tR\x13quicRelayCertSha256\x127\n" +
 	"\n" +
 	"lock_chain\x18\x12 \x03(\v2\x18.whalescale.v1.LockStateR\tlockChain\x12!\n" +
-	"\fcontrol_urls\x18\x13 \x03(\tR\vcontrolUrls\"Z\n" +
+	"\fcontrol_urls\x18\x13 \x03(\tR\vcontrolUrls\x12!\n" +
+	"\fpost_quantum\x18\x14 \x01(\bR\vpostQuantum\"Z\n" +
 	"\aSSHRule\x12!\n" +
 	"\fsrc_prefixes\x18\x01 \x03(\tR\vsrcPrefixes\x12\x14\n" +
 	"\x05users\x18\x02 \x03(\tR\x05users\x12\x16\n" +

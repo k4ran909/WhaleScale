@@ -15,7 +15,7 @@ generate:
 
 # Policy pushes to 10,010 simulated nodes (WHALESCALE_LOADTEST_NODES to change).
 loadtest:
-	go test ./internal/control/ -run TestLoad10k -v -count=1
+	WHALESCALE_LOADTEST_STRICT=1 go test ./internal/control/ -run TestLoad10k -v -count=1
 
 lint:
 	go vet ./...

@@ -273,6 +273,9 @@ message NetworkMap {
   repeated LockState lock_chain = 18;
   // Every running control server (this one included), to fail over to.
   repeated string control_urls = 19;
+  // Agree on post-quantum pre-shared keys with peers (ML-KEM-768, rotated
+  // every two minutes) and mix them into WireGuard handshakes.
+  bool post_quantum = 20;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local

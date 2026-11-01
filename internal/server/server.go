@@ -49,7 +49,9 @@ type Config struct {
 	RecordingsDir string
 	// FlowLogs turns on connection logging; records older than
 	// FlowRetention are pruned.
-	FlowLogs      bool
+	FlowLogs bool
+	// PostQuantum has nodes agree post-quantum PSKs with their peers.
+	PostQuantum   bool
 	FlowRetention time.Duration
 	// RelayQUICAddr (host:port) advertises a QUIC relay; the caller then
 	// runs ServeRelayQUIC on the matching UDP socket.
@@ -97,6 +99,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		ServerID:  id,
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
 		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir, FlowLogs: cfg.FlowLogs,
+		PostQuantum: cfg.PostQuantum,
 	}
 	if cfg.GatewayDomain != "" {
 		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, tok string) (*store.Node, error) {

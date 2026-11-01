@@ -111,6 +111,19 @@ TIME      REPORTED BY  CLIENT  SERVER    PROTO  VERDICT  SENT  RECEIVED
 
 The console's Flows page shows the same, filterable by machine, time range and verdict. Logging never changes enforcement: it uses its own table, so policy changes still apply immediately, even to open connections.
 
+## Post-quantum protection
+
+```yaml
+post-quantum: true
+```
+
+WireGuard's handshake uses X25519, which a future quantum computer could break. Someone recording your traffic today could then decrypt it later ("harvest now, decrypt later"). With `post-quantum` on, every pair of machines also agrees on a WireGuard pre-shared key through an ML-KEM-768 key exchange (the NIST post-quantum standard) and replaces it every two minutes. WireGuard mixes that key into each handshake, so recorded traffic stays secret unless both X25519 and ML-KEM are broken. This is the approach Rosenpass pioneered, built in.
+
+- **Hidden and authenticated:** the exchange runs inside the encrypted discovery messages, so it's authenticated and its contents are hidden.
+- **Never out of step:** keys change only after both sides confirm they have the new one. Peers compare key fingerprints in their regular pings and start over if they ever disagree (after a restart, say), so the feature can't strand a connection.
+- **Older clients are unaffected:** they don't answer the exchange and simply keep using plain WireGuard.
+- **Visible in status:** `ws status` marks protected peers with `(pq)`.
+
 ## Network lock
 
 By default, every machine trusts the control server to say who its peers are. With the network lock on, a machine accepts a peer only if one of *your* lock keys signed that peer's WireGuard key. The keys live on admins' own machines, never on the server, so even a compromised server can't add a machine to your network or change which keys are trusted.
@@ -361,8 +374,8 @@ Each change to the network (a node coming online, an endpoint moving, a policy p
 
 | | Time to reach all 10,010 nodes | Sent |
 |---|---|---|
-| Policy push changing ports | ~100 ms | 4 MB |
-| Policy push giving every node 100 more peers | ~370 ms | 390 MB |
+| Policy push changing ports | 0.1–0.25 s | 4 MB |
+| Policy push giving every node 100 more peers | 0.4–1.3 s, depending on machine load | 390 MB |
 | All nodes connecting at once | ~0.5 s | 240 MB |
 
 Older clients that don't ask for deltas still get complete maps, now only when something relevant to them changed.

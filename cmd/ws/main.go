@@ -543,6 +543,9 @@ func cmdStatus(args []string) error {
 			path = "peer-relay via " + p.Addr
 			lat = p.Latency.Round(10 * time.Microsecond).String()
 		}
+		if p.PostQuantum {
+			path += " (pq)"
+		}
 		fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t%s\n", p.Name, first(p.Addresses), p.User, p.OS, path, lat)
 	}
 	tw.Flush()

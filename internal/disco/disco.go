@@ -27,6 +27,10 @@ const (
 	typePing        byte = 1
 	typePong        byte = 2
 	typeCallMeMaybe byte = 3
+	typePQInit      byte = 4
+	typePQReply     byte = 5
+	typePQCommit    byte = 6
+	typePQDone      byte = 7
 
 	addrLen = 18 // 16-byte IP + 2-byte port
 )
@@ -43,6 +47,10 @@ func NewTxID() TxID {
 type Ping struct {
 	TxID    TxID
 	NodeKey key.Public // sender's WireGuard key
+	// PSKID fingerprints the post-quantum pre-shared key the sender uses
+	// with the receiver (zero: none), so the two notice if they disagree.
+	// Older nodes send none and ignore it.
+	PSKID [8]byte
 }
 
 // Pong answers a Ping and tells the pinger which address it came from.
@@ -50,6 +58,44 @@ type Pong struct {
 	TxID TxID
 	Src  netip.AddrPort
 }
+
+// Post-quantum pre-shared key exchange (see internal/pq). The node with the
+// lower WireGuard key sends PQInit with a fresh ML-KEM-768 encapsulation
+// key; the other encapsulates a secret to it in PQReply. Neither uses the
+// derived key until PQCommit / PQDone confirm both have it.
+
+// ML-KEM-768 sizes.
+const (
+	PQEncapKeySize  = 1184
+	PQCiphertextLen = 1088
+)
+
+type PQInit struct {
+	TxID     TxID
+	EncapKey []byte
+}
+
+type PQReply struct {
+	TxID       TxID
+	Ciphertext []byte
+}
+
+// PQCommit: the initiator derived the key; the responder may switch to it.
+type PQCommit struct{ TxID TxID }
+
+// PQDone: the responder switched; the initiator switches too.
+type PQDone struct{ TxID TxID }
+
+func (m *PQInit) marshal() []byte {
+	return append(append([]byte{typePQInit, 0}, m.TxID[:]...), m.EncapKey...)
+}
+
+func (m *PQReply) marshal() []byte {
+	return append(append([]byte{typePQReply, 0}, m.TxID[:]...), m.Ciphertext...)
+}
+
+func (m *PQCommit) marshal() []byte { return append([]byte{typePQCommit, 0}, m.TxID[:]...) }
+func (m *PQDone) marshal() []byte   { return append([]byte{typePQDone, 0}, m.TxID[:]...) }
 
 // CallMeMaybe, sent over a relay, asks the receiver to ping these endpoints.
 // Both sides pinging at once is what opens holes in NATs.
@@ -62,7 +108,8 @@ type Message interface{ marshal() []byte }
 func (m *Ping) marshal() []byte {
 	b := []byte{typePing, 0}
 	b = append(b, m.TxID[:]...)
-	return append(b, m.NodeKey[:]...)
+	b = append(b, m.NodeKey[:]...)
+	return append(b, m.PSKID[:]...)
 }
 
 func (m *Pong) marshal() []byte {
@@ -139,6 +186,9 @@ func parse(b []byte) (Message, error) {
 		m := &Ping{}
 		copy(m.TxID[:], body[:12])
 		copy(m.NodeKey[:], body[12:44])
+		if len(body) >= 44+8 {
+			copy(m.PSKID[:], body[44:52])
+		}
 		return m, nil
 	case typePong:
 		if len(body) < 12+addrLen {
@@ -147,6 +197,29 @@ func parse(b []byte) (Message, error) {
 		m := &Pong{Src: readAddr(body[12:])}
 		copy(m.TxID[:], body[:12])
 		return m, nil
+	case typePQInit, typePQReply, typePQCommit, typePQDone:
+		if len(body) < 12 {
+			return nil, errBad
+		}
+		var tx TxID
+		copy(tx[:], body[:12])
+		rest := body[12:]
+		switch b[0] {
+		case typePQInit:
+			if len(rest) != PQEncapKeySize {
+				return nil, errBad
+			}
+			return &PQInit{TxID: tx, EncapKey: append([]byte(nil), rest...)}, nil
+		case typePQReply:
+			if len(rest) != PQCiphertextLen {
+				return nil, errBad
+			}
+			return &PQReply{TxID: tx, Ciphertext: append([]byte(nil), rest...)}, nil
+		case typePQCommit:
+			return &PQCommit{TxID: tx}, nil
+		default:
+			return &PQDone{TxID: tx}, nil
+		}
 	case typeCallMeMaybe:
 		if len(body)%addrLen != 0 {
 			return nil, errBad
