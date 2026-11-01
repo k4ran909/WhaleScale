@@ -107,6 +107,10 @@ func Save(path string, s *State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	// The node token and keys are in here: only the service may read them.
+	if err := Protect(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("protect state directory: %w", err)
+	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

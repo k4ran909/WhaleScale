@@ -45,3 +45,25 @@ func TestDeviceLimitEnforced(t *testing.T) {
 		t.Fatalf("after raising the limit: %v", err)
 	}
 }
+
+func TestMapStreamLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s, st := newTestService(t, Config{})
+	st.CreateUser(ctx, "ann")
+	ids, _ := st.SeedNodes(ctx, []string{"ann"}, 1, "")
+	started := make(chan struct{}, maxStreamsPerNode)
+	for i := 0; i < maxStreamsPerNode; i++ {
+		go s.runMapStream(ctx, ids[0], true, func(*v1.StreamNetworkMapResponse) error {
+			started <- struct{}{}
+			return nil
+		})
+	}
+	for i := 0; i < maxStreamsPerNode; i++ {
+		<-started
+	}
+	err := s.runMapStream(ctx, ids[0], true, func(*v1.StreamNetworkMapResponse) error { return nil })
+	if connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("stream %d: %v", maxStreamsPerNode+1, err)
+	}
+}

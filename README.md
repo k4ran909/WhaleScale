@@ -157,6 +157,7 @@ ws lock status                                     # on any machine
 - **No rollback.** A machine remembers the newest key list it has verified and never goes back to an older one or a different history. If the server sends lock data that doesn't verify, the machine keeps enforcing what it knows and reports the problem in `ws lock status`.
 - **Turning it off:** `ws lock disable` stops filtering (signed like any change); `enable` turns it back on.
 - **First contact:** a machine trusts the first key list it sees. To rule out a malicious server at that moment, log in with `ws login --lock-trust wslock:...`.
+- **What it doesn't cover:** the lock controls *membership*. The access policy, SSH rules, DNS and routes still come from the server, so a compromised server can't add machines but can change what existing members may do. Watch the audit log, and keep the policy in Git (`policy-url`) so changes are reviewed.
 
 ## AI agents (MCP)
 
@@ -494,7 +495,7 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 - **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
 - **Exit nodes**: the exit side (forwarding + NAT) is Linux-only; DNS queries still go to the device's own DNS servers rather than through the exit node.
 - Subnet routing is Linux-only for now.
-- Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key.
+- Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
 - Discovery pings every peer every 3 s, which is fine for small networks; limiting it to active peers is Phase 4 work.
 
 ## Development

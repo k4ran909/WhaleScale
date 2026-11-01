@@ -47,6 +47,11 @@ func Listen(path string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
+	// On Windows the socket's directory needs an explicit ACL; file modes
+	// don't apply there.
+	if err := clientstate.Protect(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 		c.Close()
 		return nil, fmt.Errorf("another wsd is already running (socket %s)", path)

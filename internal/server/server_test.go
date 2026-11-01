@@ -238,3 +238,32 @@ func TestReadOnlyAPIKey(t *testing.T) {
 		t.Fatal("a read key created a user")
 	}
 }
+
+// Oversized requests are refused before anything reads them, with or
+// without credentials.
+func TestRequestSizeLimits(t *testing.T) {
+	hs, _ := newTestServer(t)
+	c := hs.Client()
+	post := func(path string, size int) int {
+		t.Helper()
+		body := `{"machineKey":"` + strings.Repeat("A", size) + `"}`
+		resp, err := c.Post(hs.URL+path, "application/json", strings.NewReader(body))
+		if err != nil {
+			return 0 // the server may simply drop the connection
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	// 429 is Connect's resource_exhausted; without the limits these would
+	// be read in full and fail later with 400 (bad key) and 401.
+	if code := post("/whalescale.v1.ControlService/Register", 5<<20); code != 429 {
+		t.Errorf("5 MB control request: %d, want 429", code)
+	}
+	if code := post("/whalescale.v1.AdminService/WhoAmI", 17<<20); code != 429 {
+		t.Errorf("17 MB admin request: %d, want 429", code)
+	}
+	// Ordinary requests still work (and fail for their own reasons).
+	if code := post("/whalescale.v1.ControlService/Register", 100); code != 400 {
+		t.Errorf("small request: %d, want 400 (bad machine key)", code)
+	}
+}

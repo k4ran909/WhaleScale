@@ -27,6 +27,15 @@ import (
 
 const keepAliveInterval = 30 * time.Second
 
+// maxStreamsPerNode bounds what one node token can hold open. A machine
+// needs one; a few more cover reconnects that overlap.
+const maxStreamsPerNode = 8
+
+// maxPending bounds browser logins waiting for a decision. Starting one
+// needs no credentials, so the bound is generous; a reverse proxy's rate
+// limit is the real defence against someone filling it.
+const maxPending = 20000
+
 // Config is what the server tells every node about the network.
 type Config struct {
 	DNSSuffix string
@@ -279,7 +288,7 @@ func (s *Service) startBrowserRegistration(m *v1.RegisterRequest) (*connect.Resp
 			delete(s.pending, k)
 		}
 	}
-	if len(s.pending) > 1000 {
+	if len(s.pending) >= maxPending {
 		s.mu.Unlock()
 		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many pending logins"))
 	}
@@ -580,6 +589,10 @@ func (s *Service) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.
 // relevant to it changes, until ctx ends or send fails.
 func (s *Service) runMapStream(ctx context.Context, id uint64, deltas bool, send func(*v1.StreamNetworkMapResponse) error) error {
 	s.mu.Lock()
+	if s.online[id] >= maxStreamsPerNode {
+		s.mu.Unlock()
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("too many open map streams for this machine"))
+	}
 	s.online[id]++
 	firstStream := s.online[id] == 1
 	s.mu.Unlock()

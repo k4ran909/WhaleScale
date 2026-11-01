@@ -2,12 +2,14 @@ module github.com/k4ran909/whalescale
 
 go 1.27.0
 
+toolchain go1.27.2
+
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/creack/pty v1.1.24
-	github.com/go-jose/go-jose/v4 v4.1.0
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/hashicorp/yamux v0.1.2
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/quic-go/quic-go v0.63.0

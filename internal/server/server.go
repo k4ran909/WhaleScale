@@ -163,15 +163,32 @@ func relayURL(public string) (string, error) {
 	return u.String(), nil
 }
 
+const (
+	maxControlRequest = 4 << 20
+	maxAdminRequest   = 16 << 20
+)
+
+// limitBody caps request bodies (compressed or not) before a handler reads
+// them.
+func limitBody(h http.Handler, n int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, n)
+		h.ServeHTTP(w, r)
+	})
+}
+
 // Handler serves the APIs, relay, browser login, console and health check.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	// Generous for recording uploads; everything else is tiny.
+	// Request size limits, checked before any authentication: recording
+	// uploads may be large, every other control call is small, and admin
+	// calls carry at most a policy.
 	path, h := whalescalev1connect.NewControlServiceHandler(s.control, connect.WithReadMaxBytes(control.MaxRecording+(1<<20)))
-	mux.Handle(path, h)
-	mux.Handle(whalescalev1connect.ControlServiceStreamNetworkMapProcedure, longLived(h))
-	mux.Handle(whalescalev1connect.ControlServiceWaitRegistrationProcedure, longLived(h))
-	apath, ah := whalescalev1connect.NewAdminServiceHandler(s.admin)
+	mux.Handle(path, limitBody(h, maxControlRequest))
+	mux.Handle(whalescalev1connect.ControlServiceUploadRecordingProcedure, h)
+	mux.Handle(whalescalev1connect.ControlServiceStreamNetworkMapProcedure, longLived(limitBody(h, maxControlRequest)))
+	mux.Handle(whalescalev1connect.ControlServiceWaitRegistrationProcedure, longLived(limitBody(h, maxControlRequest)))
+	apath, ah := whalescalev1connect.NewAdminServiceHandler(s.admin, connect.WithReadMaxBytes(maxAdminRequest))
 	mux.Handle(apath, ah)
 	mux.Handle("/relay", longLived(s.relay))
 	if s.gateway != nil {
