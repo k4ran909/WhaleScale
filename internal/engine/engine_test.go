@@ -87,6 +87,11 @@ func newTestNetWith(t *testing.T, policyJSON string, configure func(*server.Conf
 		PublicURL: hs.URL, STUN: []string{stunPC.LocalAddr().String()}, PolicyFile: policyFile, Log: log,
 		RecordingsDir: filepath.Join(dir, "recordings"),
 	}
+	quicPC, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.RelayQUICAddr = quicPC.LocalAddr().String()
 	configure(&cfg)
 	srv, err := server.New(st, cfg)
 	if err != nil {
@@ -94,6 +99,7 @@ func newTestNetWith(t *testing.T, policyJSON string, configure func(*server.Conf
 	}
 	hs.Config.Handler = srv.Handler()
 	go srv.ServeSTUN(ctx, stunPC)
+	go srv.ServeRelayQUIC(ctx, quicPC)
 	// Stop the watcher (and wait for it) before the store closes: cleanups
 	// run last-in-first-out, and Windows can't delete an open database.
 	wctx, wcancel := context.WithCancel(ctx)
@@ -242,6 +248,9 @@ func TestRelayFallback(t *testing.T) {
 	b := n.node("relay-b", true)
 
 	waitPath(t, a, "relay-b", "relay")
+	if tr := a.Status().RelayTransport; tr != "quic" {
+		t.Fatalf("relay transport = %q, want quic", tr)
+	}
 	echo(t, b, 9000)
 	if err := roundTrip(a, b, 9000, 15*time.Second); err != nil {
 		t.Fatalf("TCP over relay: %v", err)

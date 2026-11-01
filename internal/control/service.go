@@ -46,6 +46,8 @@ type Config struct {
 	RecordingsDir string
 	// FlowLogs makes nodes report connection activity.
 	FlowLogs bool
+	// QUICRelay (host:port) and its certificate pin (hex), if offered.
+	QUICRelay, QUICRelayPin string
 }
 
 type Service struct {
@@ -593,6 +595,7 @@ func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, 
 	}
 	nm.RelayOffered, nm.RelayApproved = self.RelayOffered, self.RelayApproved
 	nm.FlowLogs = s.cfg.FlowLogs
+	nm.QuicRelay, nm.QuicRelayCertSha256 = s.cfg.QUICRelay, s.cfg.QUICRelayPin
 	for _, r := range compiled.SSH[selfID] {
 		sr := &v1.SSHRule{Users: r.Users, Record: r.Record}
 		for _, p := range r.Src {

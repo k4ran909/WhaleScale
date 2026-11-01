@@ -9,6 +9,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/go-jose/go-jose/v4 v4.1.0
 	github.com/hashicorp/yamux v0.1.2
+	github.com/quic-go/quic-go v0.63.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.30.0

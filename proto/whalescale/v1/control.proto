@@ -163,6 +163,10 @@ message NetworkMap {
   repeated SSHRule ssh_rules = 14;
   // Report connection activity (flow logs) to the server.
   bool flow_logs = 15;
+  // QUIC relay (host:port, UDP) and the SHA-256 of its self-signed
+  // certificate, hex. Empty when the server offers WebSocket only.
+  string quic_relay = 16;
+  string quic_relay_cert_sha256 = 17;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local

@@ -1,8 +1,10 @@
 // Package relay forwards packets between nodes that can't reach each other
 // directly. It only ever sees WireGuard ciphertext and sealed disco messages.
 //
-// Transport is WebSocket (binary messages), so it works through proxies and
-// on networks that only allow HTTPS. Frames:
+// Two transports carry the same frames: QUIC datagrams over UDP (fast, no
+// TCP-over-TCP slowdown for tunneled TCP), and WebSocket binary messages,
+// which work through proxies and on networks that only allow HTTPS. Clients
+// use QUIC when the server offers it and fall back to WebSocket. Frames:
 //
 //	client -> server: dst node key(32) | payload
 //	server -> client: src node key(32) | payload
@@ -12,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -54,10 +57,55 @@ func (s *Server) Stats() Stats {
 	return Stats{Clients: n, Packets: s.packets.Load(), Bytes: s.bytes.Load(), Dropped: s.dropped.Load()}
 }
 
+// client is one connected node, whichever transport it uses.
 type client struct {
 	key  key.Public
-	conn *websocket.Conn
 	out  chan []byte
+	kick func() // closes the connection, e.g. when a newer one replaces it
+}
+
+// register makes c the node's current connection, replacing an older one.
+func (s *Server) register(c *client) {
+	s.mu.Lock()
+	old := s.clients[c.key]
+	s.clients[c.key] = c
+	s.mu.Unlock()
+	if old != nil {
+		old.kick()
+	}
+	s.log.Debug("relay client connected", "node", c.key.ShortString())
+}
+
+func (s *Server) unregister(c *client) {
+	s.mu.Lock()
+	if s.clients[c.key] == c {
+		delete(s.clients, c.key)
+	}
+	s.mu.Unlock()
+	s.log.Debug("relay client gone", "node", c.key.ShortString())
+}
+
+// route forwards a frame (dst key | payload) from src, reusing its buffer.
+func (s *Server) route(src key.Public, msg []byte) {
+	if len(msg) < 32 {
+		return
+	}
+	dst := key.Public(msg[:32])
+	s.mu.Lock()
+	peer := s.clients[dst]
+	s.mu.Unlock()
+	if peer == nil {
+		s.dropped.Add(1)
+		return
+	}
+	copy(msg[:32], src[:]) // the authenticated source, never a claimed one
+	select {
+	case peer.out <- msg:
+		s.packets.Add(1)
+		s.bytes.Add(uint64(len(msg) - 32))
+	default: // peer is slow; drop rather than block everyone
+		s.dropped.Add(1)
+	}
 }
 
 func NewServer(auth Authenticator, log *slog.Logger) *Server {
@@ -80,70 +128,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.SetReadLimit(MaxPacket + 32)
-	c := &client{key: k, conn: conn, out: make(chan []byte, sendQueue)}
-
-	s.mu.Lock()
-	if old := s.clients[k]; old != nil {
-		old.conn.Close(websocket.StatusPolicyViolation, "replaced by newer connection")
-	}
-	s.clients[k] = c
-	s.mu.Unlock()
-	s.log.Debug("relay client connected", "node", k.ShortString())
-
+	c := &client{key: k, out: make(chan []byte, sendQueue),
+		kick: func() { conn.Close(websocket.StatusPolicyViolation, "replaced by newer connection") }}
+	s.register(c)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
 		cancel()
-		s.mu.Lock()
-		if s.clients[k] == c {
-			delete(s.clients, k)
-		}
-		s.mu.Unlock()
+		s.unregister(c)
 		conn.CloseNow()
-		s.log.Debug("relay client gone", "node", k.ShortString())
 	}()
-	go c.writeLoop(ctx)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m := <-c.out:
+				wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
+				err := conn.Write(wctx, websocket.MessageBinary, m)
+				wcancel()
+				if err != nil {
+					conn.CloseNow()
+					return
+				}
+			}
+		}
+	}()
 
 	for {
 		typ, msg, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
-		if typ != websocket.MessageBinary || len(msg) < 32 {
-			continue
-		}
-		dst := key.Public(msg[:32])
-		s.mu.Lock()
-		peer := s.clients[dst]
-		s.mu.Unlock()
-		if peer == nil {
-			s.dropped.Add(1)
-			continue
-		}
-		// Reuse the buffer: overwrite the dst key with the src key.
-		copy(msg[:32], k[:])
-		select {
-		case peer.out <- msg:
-			s.packets.Add(1)
-			s.bytes.Add(uint64(len(msg) - 32))
-		default: // peer is slow; drop rather than block everyone
-			s.dropped.Add(1)
-		}
-	}
-}
-
-func (c *client) writeLoop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case m := <-c.out:
-			wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err := c.conn.Write(wctx, websocket.MessageBinary, m)
-			cancel()
-			if err != nil {
-				c.conn.CloseNow()
-				return
-			}
+		if typ == websocket.MessageBinary {
+			s.route(k, msg)
 		}
 	}
 }
@@ -179,8 +196,16 @@ type Client struct {
 	recv chan Packet
 	send chan []byte
 
+	// QUIC transport, when the server offers one.
+	quicAddr   string
+	quicPin    []byte
+	listenUDP  func() (net.PacketConn, error)
+	quicFails  int
+	quicFailed time.Time
+
 	mu        sync.Mutex
 	connected bool
+	transport string
 }
 
 // NewClient makes a relay client. hc may be nil for the default client.
@@ -218,21 +243,68 @@ func (c *Client) Connected() bool {
 	return c.connected
 }
 
-func (c *Client) setConnected(v bool) {
+func (c *Client) setConnected(v bool, transport string) {
 	c.mu.Lock()
-	c.connected = v
+	c.connected, c.transport = v, transport
 	c.mu.Unlock()
 }
 
-// Run connects and reconnects until ctx is done.
+// Transport reports "quic", "websocket" or "" when disconnected.
+func (c *Client) Transport() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
+		return ""
+	}
+	return c.transport
+}
+
+// SetQUIC offers the server's QUIC transport at addr (host:port), whose
+// certificate must hash (SHA-256) to pin. listen opens the client's UDP
+// socket (nil: an ordinary one). Call before Run.
+func (c *Client) SetQUIC(addr string, pin []byte, listen func() (net.PacketConn, error)) {
+	c.quicAddr, c.quicPin, c.listenUDP = addr, pin, listen
+}
+
+const (
+	quicRetryAfter = 5 * time.Minute  // after QUIC failed twice in a row
+	wsUpgradeAfter = 10 * time.Minute // a WebSocket fallback session then retries QUIC
+)
+
+// Run connects and reconnects until ctx is done, preferring QUIC.
 func (c *Client) Run(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		start := time.Now()
-		err := c.session(ctx)
-		c.setConnected(false)
-		if ctx.Err() != nil {
-			return
+		var err error
+		if c.quicAddr != "" && (c.quicFails < 2 || time.Since(c.quicFailed) > quicRetryAfter) {
+			err = c.sessionQUIC(ctx)
+			c.setConnected(false, "")
+			if ctx.Err() != nil {
+				return
+			}
+			if time.Since(start) < 30*time.Second {
+				c.quicFails++
+				c.quicFailed = time.Now()
+				c.log.Info("QUIC relay unavailable; trying WebSocket", "addr", c.quicAddr, "err", err)
+				continue // straight to the next transport, no backoff
+			}
+			c.quicFails = 0
+		} else {
+			sctx, cancel := ctx, context.CancelFunc(func() {})
+			if c.quicAddr != "" {
+				sctx, cancel = context.WithTimeout(ctx, wsUpgradeAfter)
+			}
+			err = c.session(sctx)
+			cancel()
+			c.setConnected(false, "")
+			if ctx.Err() != nil {
+				return
+			}
+			if errors.Is(sctx.Err(), context.DeadlineExceeded) {
+				c.quicFails = 0 // planned: go back and try QUIC
+				continue
+			}
 		}
 		if time.Since(start) > time.Minute {
 			backoff = time.Second
@@ -259,8 +331,8 @@ func (c *Client) session(ctx context.Context) error {
 	}
 	defer conn.CloseNow()
 	conn.SetReadLimit(MaxPacket + 32)
-	c.setConnected(true)
-	c.log.Info("relay connected", "url", c.url)
+	c.setConnected(true, "websocket")
+	c.log.Info("relay connected", "url", c.url, "transport", "websocket")
 
 	sctx, stop := context.WithCancel(ctx)
 	defer stop()

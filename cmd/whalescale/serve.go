@@ -37,6 +37,7 @@ type serveOpts struct {
 	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
 	policyURL, policyTokenFile, webhookSecretFile            string
 	policySyncInterval                                       time.Duration
+	relayQUICListen                                          string
 	console, tlsACME, flowLogs                               bool
 	flowRetention                                            time.Duration
 }
@@ -49,6 +50,7 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.StringVar(&o.db, "db", "whalescale.db", "SQLite database path")
 	fs.StringVar(&o.listen, "listen", ":8080", "HTTP(S) listen address")
 	fs.StringVar(&o.publicURL, "public-url", "", "URL nodes and browsers use to reach this server (default: derived from --listen)")
+	fs.StringVar(&o.relayQUICListen, "relay-quic-listen", ":3480", "UDP address for the QUIC relay (faster than the WebSocket relay); empty disables")
 	fs.StringVar(&o.stunListen, "stun-listen", ":3478", "comma-separated UDP addresses for STUN; two ports let nodes detect symmetric NAT; empty disables")
 	fs.StringVar(&o.dnsSuffix, "dns-suffix", "whale.internal", "MagicDNS domain suffix")
 	fs.StringVar(&o.policyFile, "policy", "", "policy file (JSON); without it, the policy is edited in the console")
@@ -224,6 +226,7 @@ func cmdConfigtest(args []string) error {
 		"flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
 		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
 		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
+		"relay-quic-listen": o.relayQUICListen,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -297,6 +300,14 @@ func cmdServe(args []string) error {
 		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
 		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log,
 	}
+	var quicPC net.PacketConn
+	if o.relayQUICListen != "" {
+		if quicPC, err = net.ListenPacket("udp", o.relayQUICListen); err != nil {
+			return fmt.Errorf("relay-quic-listen %s: %w", o.relayQUICListen, err)
+		}
+		_, port, _ := net.SplitHostPort(quicPC.LocalAddr().String())
+		cfg.RelayQUICAddr = net.JoinHostPort(pu.Hostname(), port)
+	}
 	if o.policyURL != "" {
 		ps := &server.PolicySyncConfig{URL: o.policyURL, Interval: o.policySyncInterval}
 		if o.policyTokenFile != "" {
@@ -323,6 +334,13 @@ func cmdServe(args []string) error {
 		return err
 	}
 	go srv.Watch(ctx, 5*time.Second)
+	if quicPC != nil {
+		go func() {
+			if err := srv.ServeRelayQUIC(ctx, quicPC); err != nil {
+				log.Error("QUIC relay", "err", err)
+			}
+		}()
+	}
 
 	if o.metricsListen != "" {
 		mux := http.NewServeMux()
@@ -357,7 +375,7 @@ func cmdServe(args []string) error {
 	}
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("whalescale listening", "addr", o.listen, "public_url", o.publicURL, "stun", stunAdvertise,
+		log.Info("whalescale listening", "addr", o.listen, "public_url", o.publicURL, "stun", stunAdvertise, "quic_relay", cfg.RelayQUICAddr,
 			"tls", tlsOn, "acme", o.tlsACME, "gateway_domain", o.gatewayDomain, "oidc", o.oidcIssuer != "",
 			"db", o.db, "version", version.Version)
 		if tlsOn {

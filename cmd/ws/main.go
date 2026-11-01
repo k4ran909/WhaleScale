@@ -553,7 +553,7 @@ func cmdStatus(args []string) error {
 	}
 	relay := "disconnected"
 	if s.RelayConnected {
-		relay = "connected"
+		relay = "connected over " + s.RelayTransport
 	}
 	fmt.Printf("\nrelay %s (%s)  ·  %d peer(s)  ·  * = this node\n", relay, s.RelayURL, len(s.Peers))
 	if s.LastError != "" {

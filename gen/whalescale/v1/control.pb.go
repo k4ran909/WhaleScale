@@ -873,9 +873,13 @@ type NetworkMap struct {
 	// SSH logins this node accepts.
 	SshRules []*SSHRule `protobuf:"bytes,14,rep,name=ssh_rules,json=sshRules,proto3" json:"ssh_rules,omitempty"`
 	// Report connection activity (flow logs) to the server.
-	FlowLogs      bool `protobuf:"varint,15,opt,name=flow_logs,json=flowLogs,proto3" json:"flow_logs,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	FlowLogs bool `protobuf:"varint,15,opt,name=flow_logs,json=flowLogs,proto3" json:"flow_logs,omitempty"`
+	// QUIC relay (host:port, UDP) and the SHA-256 of its self-signed
+	// certificate, hex. Empty when the server offers WebSocket only.
+	QuicRelay           string `protobuf:"bytes,16,opt,name=quic_relay,json=quicRelay,proto3" json:"quic_relay,omitempty"`
+	QuicRelayCertSha256 string `protobuf:"bytes,17,opt,name=quic_relay_cert_sha256,json=quicRelayCertSha256,proto3" json:"quic_relay_cert_sha256,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *NetworkMap) Reset() {
@@ -1011,6 +1015,20 @@ func (x *NetworkMap) GetFlowLogs() bool {
 		return x.FlowLogs
 	}
 	return false
+}
+
+func (x *NetworkMap) GetQuicRelay() string {
+	if x != nil {
+		return x.QuicRelay
+	}
+	return ""
+}
+
+func (x *NetworkMap) GetQuicRelayCertSha256() string {
+	if x != nil {
+		return x.QuicRelayCertSha256
+	}
+	return ""
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local
@@ -1864,7 +1882,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\vnetwork_map\x18\x01 \x01(\v2\x19.whalescale.v1.NetworkMapR\n" +
 	"networkMap\x12\x1d\n" +
 	"\n" +
-	"keep_alive\x18\x02 \x01(\bR\tkeepAlive\"\x84\x05\n" +
+	"keep_alive\x18\x02 \x01(\bR\tkeepAlive\"\xd8\x05\n" +
 	"\n" +
 	"NetworkMap\x12'\n" +
 	"\x04self\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04self\x12)\n" +
@@ -1884,7 +1902,10 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\rrelay_offered\x18\f \x01(\bR\frelayOffered\x12%\n" +
 	"\x0erelay_approved\x18\r \x01(\bR\rrelayApproved\x123\n" +
 	"\tssh_rules\x18\x0e \x03(\v2\x16.whalescale.v1.SSHRuleR\bsshRules\x12\x1b\n" +
-	"\tflow_logs\x18\x0f \x01(\bR\bflowLogs\"Z\n" +
+	"\tflow_logs\x18\x0f \x01(\bR\bflowLogs\x12\x1d\n" +
+	"\n" +
+	"quic_relay\x18\x10 \x01(\tR\tquicRelay\x123\n" +
+	"\x16quic_relay_cert_sha256\x18\x11 \x01(\tR\x13quicRelayCertSha256\"Z\n" +
 	"\aSSHRule\x12!\n" +
 	"\fsrc_prefixes\x18\x01 \x03(\tR\vsrcPrefixes\x12\x14\n" +
 	"\x05users\x18\x02 \x03(\tR\x05users\x12\x16\n" +

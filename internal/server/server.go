@@ -5,6 +5,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -48,6 +50,9 @@ type Config struct {
 	// FlowRetention are pruned.
 	FlowLogs      bool
 	FlowRetention time.Duration
+	// RelayQUICAddr (host:port) advertises a QUIC relay; the caller then
+	// runs ServeRelayQUIC on the matching UDP socket.
+	RelayQUICAddr string
 	// Console is the built web console (web/dist). Nil disables it.
 	Console fs.FS
 	Log     *slog.Logger
@@ -66,6 +71,7 @@ type Server struct {
 
 	policyMod time.Time
 	psync     *policySync
+	quicCert  tls.Certificate
 }
 
 func New(st *store.Store, cfg Config) (*Server, error) {
@@ -88,6 +94,14 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		ccfg.GatewayDomain = s.gateway.Domain()
 		ccfg.GatewayURL = strings.TrimSuffix(relayURL, "/relay") + "/gateway"
 		ccfg.GatewayConnected = s.gateway.Connected
+	}
+	if cfg.RelayQUICAddr != "" {
+		cert, pin, err := loadQUICCert(st)
+		if err != nil {
+			return nil, fmt.Errorf("QUIC relay certificate: %w", err)
+		}
+		s.quicCert = cert
+		ccfg.QUICRelay, ccfg.QUICRelayPin = cfg.RelayQUICAddr, hex.EncodeToString(pin)
 	}
 	s.control = control.New(st, cfg.Log, ccfg)
 	s.admin = control.NewAdmin(s.control)
@@ -229,6 +243,41 @@ func longLived(h http.Handler) http.Handler {
 		rc.SetWriteDeadline(time.Time{})
 		h.ServeHTTP(w, r)
 	})
+}
+
+// quicCertKey stores the QUIC relay's self-signed certificate, so its pin
+// stays the same across restarts.
+const quicCertKey = "relay_quic_cert"
+
+func loadQUICCert(st *store.Store) (tls.Certificate, []byte, error) {
+	ctx := context.Background()
+	text, ok, err := st.Setting(ctx, quicCertKey)
+	if err != nil {
+		return tls.Certificate{}, nil, err
+	}
+	if !ok {
+		b, err := relay.NewQUICCert()
+		if err != nil {
+			return tls.Certificate{}, nil, err
+		}
+		if err := st.SetSetting(ctx, quicCertKey, string(b)); err != nil {
+			return tls.Certificate{}, nil, err
+		}
+		text = string(b)
+	}
+	return relay.ParseQUICCert([]byte(text))
+}
+
+// QUICRelayPin returns the QUIC relay certificate's pin from the database,
+// creating the certificate if needed (for 'whalescale doctor').
+func QUICRelayPin(st *store.Store) ([]byte, error) {
+	_, pin, err := loadQUICCert(st)
+	return pin, err
+}
+
+// ServeRelayQUIC runs the QUIC relay on pc until ctx is done.
+func (s *Server) ServeRelayQUIC(ctx context.Context, pc net.PacketConn) error {
+	return s.relay.ServeQUIC(ctx, pc, s.quicCert)
 }
 
 // ServeSTUN answers STUN on pc until ctx is done.

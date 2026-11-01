@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -426,6 +427,15 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	if len(nm.Relays) > 0 && nm.Relays[0] != e.relayURL {
 		e.relayURL = nm.Relays[0]
 		rc := relay.NewClient(e.relayURL, e.opts.State.NodeToken, e.hc, e.log)
+		if pin, err := hex.DecodeString(nm.QuicRelayCertSha256); err == nil && nm.QuicRelay != "" && len(pin) == 32 {
+			lc := net.ListenConfig{}
+			if e.bypass != nil {
+				lc.Control = e.bypass.ControlListen
+			}
+			rc.SetQUIC(nm.QuicRelay, pin, func() (net.PacketConn, error) {
+				return lc.ListenPacket(context.Background(), "udp4", ":0")
+			})
+		}
 		e.relay = rc
 		e.conn.SetRelay(rc)
 		e.wg.Add(1)
@@ -1016,6 +1026,7 @@ type Status struct {
 	Peers          []PeerStatus   `json:"peers"`
 	RelayURL       string         `json:"relay_url"`
 	RelayConnected bool           `json:"relay_connected"`
+	RelayTransport string         `json:"relay_transport,omitempty"`
 	Endpoints      []string       `json:"endpoints"`
 	Userspace      bool           `json:"userspace"`
 	LastError      string         `json:"last_error,omitempty"`
@@ -1032,7 +1043,7 @@ func (e *Engine) Status() Status {
 	e.mu.Unlock()
 	st := Status{State: "running", RelayURL: relayURL, Userspace: e.opts.Userspace, LastError: lastErr}
 	if rc != nil {
-		st.RelayConnected = rc.Connected()
+		st.RelayConnected, st.RelayTransport = rc.Connected(), rc.Transport()
 	}
 	for _, ep := range e.conn.Endpoints() {
 		st.Endpoints = append(st.Endpoints, ep.String())

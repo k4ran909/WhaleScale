@@ -19,9 +19,10 @@ COPY --from=build --chown=65532:65532 /out/data /var/lib/whalescale
 ENV WHALESCALE_DB=/var/lib/whalescale/whalescale.db \
     WHALESCALE_LISTEN=:8080 \
     WHALESCALE_STUN_LISTEN=:3478,:3479 \
+    WHALESCALE_RELAY_QUIC_LISTEN=:3480 \
     WHALESCALE_METRICS_LISTEN=:9090
 VOLUME /var/lib/whalescale
-EXPOSE 8080/tcp 3478/udp 3479/udp 9090/tcp
+EXPOSE 8080/tcp 3478/udp 3479/udp 3480/udp 9090/tcp
 USER nonroot
 ENTRYPOINT ["whalescale"]
 CMD ["serve"]

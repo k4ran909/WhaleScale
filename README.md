@@ -2,7 +2,7 @@
 
 A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite. See [plan.md](plan.md) for the vision and roadmap.
 
-> **Status: Phase 3 in progress.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`. See [Known gaps](#known-gaps).
+> **Status: Phase 3 complete.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`. See [Known gaps](#known-gaps).
 
 ## How it fits together
 
@@ -24,7 +24,7 @@ A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all
 
 ```bash
 cd deploy
-echo "WS_DOMAIN=ws.example.com" > .env       # DNS must point here; open TCP 80/443, UDP 3478-3479
+echo "WS_DOMAIN=ws.example.com" > .env       # DNS must point here; open TCP 80/443, UDP 3478-3480
 docker compose up -d
 docker compose exec whalescale whalescale users create karan
 docker compose exec whalescale whalescale apikeys create     # sign in to https://ws.example.com with this
@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/ins
 sudoedit /etc/whalescale/config.yaml          # public-url, TLS; see deploy/config.example.yaml
 sudo whalescale configtest                    # shows every value and where it came from
 sudo systemctl enable --now whalescale
-sudo whalescale doctor                        # checks health, TLS expiry, relay, both STUN ports, OIDC
+sudo whalescale doctor                        # checks health, TLS expiry, relays (WebSocket and QUIC), both STUN ports, OIDC
 ```
 
 Settings layer as: config file, then `conf.d/*.yaml` (upgrades never touch these), then `WHALESCALE_*` environment variables, then flags. Unknown keys are errors.
@@ -119,6 +119,15 @@ The console's Flows page shows the same, filterable by machine, time range and v
 
 For UPnP, the agent only uses the router's answer, and only follows a description URL that points back at the router, so another device on the LAN can't redirect it.
 
+## Relays and hard NATs
+
+When two machines can't connect directly, Whalescale tries, in order:
+
+1. **Hole punching:** STUN, simultaneous pings, and router port mapping.
+2. **Symmetric-NAT port prediction:** when a peer's NAT gives every destination its own port (it reports two STUN ports on one IP), nodes probe the ports that NAT will likely hand out next. That breaks the hardest common case, symmetric NAT against a restrictive NAT, whenever the NAT allocates ports in sequence.
+3. **A peer relay:** see below.
+4. **The server relay, preferably over QUIC:** UDP datagrams on `relay-quic-listen` (default `:3480`). This avoids the slowdown of tunneling TCP inside the TCP-based WebSocket relay. The relay's self-signed certificate is pinned through the network map, so it needs no public CA and works behind Caddy. Where UDP is blocked, nodes fall back to the WebSocket relay over HTTPS and retry QUIC every 10 minutes. `ws status` shows which one is in use.
+
 ## Peer relays
 
 When two machines can't connect directly (both behind strict or carrier-grade NAT, as on Jio and Airtel mobile data), their traffic goes through the server's WebSocket relay. A peer relay is a faster UDP path. Any well-connected machine, such as a VPS or a home server with a port forward, can offer to forward for the others:
@@ -197,6 +206,21 @@ Without one, every node can reach every other node. Edit it in the console, or p
 
 Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
 
+
+### Policy from a Git repository
+
+Keep the policy in Git and review changes like code. Point the server at the file's raw URL on a branch:
+
+```yaml
+policy-url: https://raw.githubusercontent.com/you/infra/main/whalescale/policy.json
+policy-url-token-file: /etc/whalescale/repo-token       # private repositories
+policy-webhook-secret-file: /etc/whalescale/hook-secret # optional push webhook
+```
+
+- **How updates arrive:** the server polls with ETags every `policy-sync-interval` (default 1 minute). A push webhook to `POST /policy/sync` applies changes at once; it verifies GitHub and Gitea HMAC signatures and the GitLab token.
+- **Bad versions are refused:** a version that doesn't parse, or fails its own `tests`, is refused, and the previous policy stays in force.
+- **Outages:** the last good copy is cached, so a restart while the repository is unreachable still enforces it. With no copy at all, the server refuses to start rather than run without your policy.
+- **Read-only elsewhere:** the console shows the policy as read-only, with the revision, last sync time and any sync error.
 
 ### Policy tests
 

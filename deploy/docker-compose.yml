@@ -1,6 +1,6 @@
 # Whalescale server with automatic HTTPS (Caddy + Let's Encrypt).
 #
-#   1. Point a DNS name at this host, open TCP 80/443 and UDP 3478-3479.
+#   1. Point a DNS name at this host, open TCP 80/443 and UDP 3478-3480.
 #   2. echo "WS_DOMAIN=ws.example.com" > .env
 #      Optional gateway (publish machines' services on the internet):
 #      add a wildcard record *.apps.example.com -> this host, then
@@ -27,6 +27,7 @@ services:
     ports:
       - "3478:3478/udp"
       - "3479:3479/udp"
+      - "3480:3480/udp"       # QUIC relay
       - "127.0.0.1:9090:9090" # Prometheus metrics, local only
 
   caddy:

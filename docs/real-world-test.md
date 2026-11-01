@@ -47,7 +47,7 @@ whalescale configtest
 cp deploy/whalescale.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now whalescale
 ```
 
-Open the firewall: **TCP 443** (and 80 for Docker/Caddy), **UDP 3478 and 3479**.
+Open the firewall: **TCP 443** (and 80 for Docker/Caddy), **UDP 3478, 3479 and 3480**.
 
 - [ ] `whalescale doctor` (Docker: `docker compose exec whalescale whalescale doctor`) shows no ✘
 - [ ] `https://ws.example.com` shows the console sign-in; the API key signs you in
@@ -108,6 +108,7 @@ Tether a laptop to mobile data (or put any machine behind CGNAT), install as in 
 - [ ] `ws netcheck` reports the NAT type (symmetric is expected on Jio/Airtel)
 - [ ] `ping <home-pc>.whale.internal` works (direct or relay; both count)
 - [ ] Path is: direct / relay (circle one). If relay: latency ____ ms, `iperf3` throughput ____ Mbps
+- [ ] `ws status` says "relay connected over quic"; with UDP 3480 blocked on the VPS firewall it says "over websocket" and still works
 - [ ] If relayed: on the VPS (or any machine with a public IP), run `sudo ws up --relay` and `whalescale relays approve <it>`; the path becomes `peer-relay via <it>`. Latency ____ ms, throughput ____ Mbps (compare with the server relay above)
 
 ## 6. Access policy

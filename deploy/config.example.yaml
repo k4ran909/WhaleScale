@@ -13,6 +13,8 @@ tls-key: /etc/whalescale/tls/privkey.pem
 # acme-email: you@example.com
 # Two ports let nodes detect symmetric NAT.
 stun-listen: ":3478,:3479"
+# QUIC relay (UDP); nodes fall back to the WebSocket relay if it's blocked.
+relay-quic-listen: ":3480"
 dns-suffix: whale.internal
 metrics-listen: "127.0.0.1:9090"
 
@@ -25,8 +27,12 @@ metrics-listen: "127.0.0.1:9090"
 # gateway-domain: apps.example.com
 log-level: info
 
-# Without 'policy', the access policy is edited in the web console.
+# Without 'policy' or 'policy-url', the access policy is edited in the console.
 # policy: /etc/whalescale/policy.json
+# Or follow it in a Git repository (raw file URL on a branch):
+# policy-url: https://raw.githubusercontent.com/you/infra/main/whalescale/policy.json
+# policy-url-token-file: /etc/whalescale/repo-token
+# policy-webhook-secret-file: /etc/whalescale/hook-secret
 
 # Browser login (console and 'ws login' without a key):
 # oidc-issuer: https://auth.example.com/application/o/whalescale/

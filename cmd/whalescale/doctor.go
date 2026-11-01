@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k4ran909/whalescale/internal/relay"
+	"github.com/k4ran909/whalescale/internal/server"
 	"github.com/k4ran909/whalescale/internal/store"
 	"github.com/k4ran909/whalescale/internal/stun"
 )
@@ -121,6 +123,25 @@ func cmdDoctor(args []string) error {
 	}
 	if len(splitList(o.stunListen)) == 1 {
 		c.warn("only one STUN port: nodes can't detect symmetric NAT; use stun-listen: \":3478,:3479\"")
+	}
+
+	if o.relayQUICListen != "" {
+		_, port, _ := net.SplitHostPort(o.relayQUICListen)
+		target := net.JoinHostPort(pu.Hostname(), port)
+		if st, err := store.Open(ctx, o.db); err != nil {
+			c.warn("QUIC relay: cannot read its certificate: %v", err)
+		} else {
+			pin, err := server.QUICRelayPin(st)
+			st.Close()
+			if err == nil {
+				err = relay.ProbeQUIC(ctx, target, pin)
+			}
+			if err != nil {
+				c.warn("QUIC relay %s: %v (open UDP %s; nodes fall back to the slower WebSocket relay)", target, err, port)
+			} else {
+				c.ok("QUIC relay %s answers with the pinned certificate", target)
+			}
+		}
 	}
 
 	if o.gatewayDomain != "" {
