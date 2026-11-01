@@ -129,7 +129,7 @@ func (ps *policySync) fetch(ctx context.Context, startup bool) error {
 	ps.mu.Unlock()
 	if changed {
 		ps.srv.control.SetPolicy(p, string(body), "url")
-		ps.srv.log.Info("policy synced", "url", ps.status.URL, "revision", rev, "acls", len(p.ACLs))
+		ps.srv.control.Audit(ctx, "git", "policy synced", "url", ps.status.URL, "revision", rev, "acls", len(p.ACLs))
 		// Kept so a restart while the repository is unreachable still
 		// starts with the last good policy instead of a permissive one.
 		if err := ps.srv.store.SetSetting(ctx, syncedPolicyKey, string(body)); err != nil {

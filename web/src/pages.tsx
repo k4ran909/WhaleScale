@@ -955,3 +955,91 @@ export function Flows() {
     </Page>
   );
 }
+
+export function Audit() {
+  const [since, setSince] = useState(7 * 86400);
+  const [filter, setFilter] = useState("");
+  const [data, setData] = useState<{ events: import("./api").AuditEvent[] }>();
+  const [check, setCheck] = useState<import("./api").AuditVerification>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let live = true;
+    api.listAuditEvents({ sinceSeconds: since, limit: 1000 }).then(
+      (d) => live && (setData(d), setError(undefined)),
+      (e) => live && setError(errText(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [since]);
+
+  const verify = () =>
+    api.listAuditEvents({ limit: 1, verify: true }).then(
+      (d) => setCheck(d.verification),
+      (e) => setError(errText(e)),
+    );
+  const q = filter.trim().toLowerCase();
+  const events = (data?.events ?? []).filter(
+    (e) => !q || `${e.actor} ${e.action} ${e.detail ?? ""}`.toLowerCase().includes(q),
+  );
+
+  return (
+    <Page
+      title="Audit log"
+      lead="Every change to users, machines, keys, approvals and the access policy, and every console sign-in, with who did it. Entries are hash-chained, so editing or deleting one in the database is detectable."
+      actions={
+        <div className="row">
+          <input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter" />
+          <select value={since} onChange={(e) => setSince(Number(e.target.value))} aria-label="Time range">
+            <option value={86400}>Last day</option>
+            <option value={7 * 86400}>Last 7 days</option>
+            <option value={30 * 86400}>Last 30 days</option>
+            <option value={0}>Everything</option>
+          </select>
+          <button onClick={verify}>Verify chain</button>
+        </div>
+      }
+    >
+      {error && <Banner kind="error">{error}</Banner>}
+      {check &&
+        (check.ok ? (
+          <Banner kind="ok">
+            Intact: {check.checked ?? 0} entries. Head <code>{(check.headHash ?? "").slice(0, 16)}</code>. Note it
+            somewhere else now and then; the chain alone can't show that the newest entries were removed.
+          </Banner>
+        ) : (
+          <Banner kind="error">
+            The log has been tampered with: entry {check.brokenAt} doesn't match the chain ({check.checked ?? 0}{" "}
+            entries before it are intact).
+          </Banner>
+        ))}
+      {data && events.length === 0 ? (
+        <Empty>No events in this range.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Who</th>
+                <th>What</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td title={e.at}>{timeAgo(e.at)}</td>
+                  <td className="mono">{e.actor}</td>
+                  <td>{e.action}</td>
+                  <td className="mono sub">{e.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Page>
+  );
+}

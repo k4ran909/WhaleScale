@@ -111,6 +111,18 @@ TIME      REPORTED BY  CLIENT  SERVER    PROTO  VERDICT  SENT  RECEIVED
 
 The console's Flows page shows the same, filterable by machine, time range and verdict. Logging never changes enforcement: it uses its own table, so policy changes still apply immediately, even to open connections.
 
+## Audit log
+
+Every change to users, machines, keys, route/relay/gateway approvals and the access policy is recorded with who made it. That covers the console, the admin API, `whalescale` commands on the server host, node registrations, console sign-ins, and policy updates from Git or the policy file. Actors look like `oidc:you@example.com`, `api-key:ab12cd`, `cli:root`, `user:alice` or `git`.
+
+```bash
+whalescale audit --since 24h            # or the console's "Audit log" page
+whalescale audit --actor cli: --action policy
+whalescale audit --verify               # check the hash chain
+```
+
+Each entry's hash covers the previous one, so editing or deleting an entry in the database breaks the chain at that point. The chain can't show that the *newest* entries were cut off, so `--verify` prints the head hash: note it somewhere else now and then.
+
 ## Router port mapping
 
 `wsd` asks your home router to forward its WireGuard UDP port, trying PCP, then NAT-PMP, then UPnP. When that works, peers connect directly with no manual port forward. The mapping is renewed at half its lifetime and removed when `wsd` stops. Turn it off with `wsd --portmap=false`.
@@ -271,6 +283,7 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 | `whalescale policy check FILE` | Validate, lint and run a policy file's tests |
 | `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
 | `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
+| `whalescale audit [--since 24h] [--actor X] [--action X] / --verify` | Audit log; check its hash chain |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
 | `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots and policy compiles |
 

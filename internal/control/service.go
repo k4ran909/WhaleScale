@@ -145,6 +145,15 @@ func (s *Service) SetPolicyStatus(f func() PolicyStatus) {
 	s.policyMu.Unlock()
 }
 
+// Audit records an action in the audit log (and the server log). A failure
+// to record is logged; the action itself has already happened.
+func (s *Service) Audit(ctx context.Context, actor, action string, kv ...any) {
+	s.log.Info("audit: "+action, append([]any{"by", actor}, kv...)...)
+	if err := s.store.Audit(context.WithoutCancel(ctx), actor, action, kv...); err != nil {
+		s.log.Error("write audit log", "err", err, "action", action)
+	}
+}
+
 // CurrentPolicy returns the active policy.
 func (s *Service) CurrentPolicy() *policy.Policy {
 	s.policyMu.RLock()
@@ -209,7 +218,7 @@ func (s *Service) Register(ctx context.Context, req *connect.Request[v1.Register
 		s.log.Error("register node", "err", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
-	s.log.Info("node registered", "id", node.ID, "name", node.Name, "user", node.User, "ipv4", node.IPv4)
+	s.Audit(ctx, "user:"+node.User, "node registered", "node", node.Name, "ipv4", node.IPv4, "os", node.OS, "method", "pre-auth key")
 	s.stats.Registrations.Add(1)
 	s.NotifyAll()
 	return connect.NewResponse(&v1.RegisterResponse{Node: s.toProto(node), NodeToken: token}), nil
@@ -263,7 +272,7 @@ func (s *Service) CompleteRegistration(ctx context.Context, id string, userID ui
 	p.node, p.token, p.err = s.store.RegisterNodeForUser(ctx, userID, p.params)
 	close(p.done)
 	if p.err == nil {
-		s.log.Info("node registered via browser", "name", p.node.Name, "user", p.node.User)
+		s.Audit(ctx, "user:"+p.node.User, "node registered", "node", p.node.Name, "ipv4", p.node.IPv4, "os", p.node.OS, "method", "browser login")
 		s.stats.Registrations.Add(1)
 		s.NotifyAll()
 	}

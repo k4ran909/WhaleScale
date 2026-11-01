@@ -34,6 +34,7 @@ Usage:
   whalescale exposures   list | approve NAME | unapprove NAME
   whalescale relays      list | approve NODE | unapprove NODE
   whalescale flows       [--node NAME] [--since 1h] [--denied] [--limit 100]
+  whalescale audit       [--since 24h] [--actor X] [--action X] [--limit 100] | --verify
   whalescale policy      check FILE | explain SRC DST:PORT [--file FILE]
   whalescale migrate     apply pending database migrations and exit
   whalescale version
@@ -78,6 +79,8 @@ func main() {
 		err = cmdRelays(args)
 	case "flows":
 		err = cmdFlows(args)
+	case "audit":
+		err = cmdAudit(args)
 	case "policy":
 		err = cmdPolicy(args)
 	case "migrate":

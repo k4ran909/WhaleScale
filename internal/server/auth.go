@@ -175,7 +175,7 @@ func (a *auth) callback(w http.ResponseWriter, r *http.Request) {
 			a.page(w, http.StatusInternalServerError, "Login failed", "Could not create a session.")
 			return
 		}
-		a.srv.log.Info("console login", "email", email)
+		a.srv.control.Audit(r.Context(), "oidc:"+email, "console sign-in")
 		http.Redirect(w, r, "/", http.StatusFound)
 	case "node":
 		if !a.mayRegister(email) {
@@ -249,7 +249,7 @@ func (a *auth) apiKeyLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	a.srv.log.Info("console login", "api_key", prefix)
+	a.srv.control.Audit(r.Context(), "api-key:"+prefix, "console sign-in")
 	w.WriteHeader(http.StatusNoContent)
 }
 

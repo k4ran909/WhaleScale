@@ -437,6 +437,10 @@ func (s *Server) loadPolicyFile(startup bool) error {
 		return fmt.Errorf("policy file fails %d of its tests; not applied", len(fails))
 	}
 	s.control.SetPolicy(p, string(b), "file")
-	s.log.Info("policy loaded", "file", s.cfg.PolicyFile, "acls", len(p.ACLs))
+	if startup {
+		s.log.Info("policy loaded", "file", s.cfg.PolicyFile, "acls", len(p.ACLs))
+	} else {
+		s.control.Audit(context.Background(), "file:"+s.cfg.PolicyFile, "policy reloaded", "acls", len(p.ACLs))
+	}
 	return nil
 }

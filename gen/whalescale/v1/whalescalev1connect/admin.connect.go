@@ -92,6 +92,9 @@ const (
 	// AdminServiceGetRecordingProcedure is the fully-qualified name of the AdminService's GetRecording
 	// RPC.
 	AdminServiceGetRecordingProcedure = "/whalescale.v1.AdminService/GetRecording"
+	// AdminServiceListAuditEventsProcedure is the fully-qualified name of the AdminService's
+	// ListAuditEvents RPC.
+	AdminServiceListAuditEventsProcedure = "/whalescale.v1.AdminService/ListAuditEvents"
 	// AdminServiceListAPIKeysProcedure is the fully-qualified name of the AdminService's ListAPIKeys
 	// RPC.
 	AdminServiceListAPIKeysProcedure = "/whalescale.v1.AdminService/ListAPIKeys"
@@ -131,6 +134,8 @@ type AdminServiceClient interface {
 	QueryFlows(context.Context, *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error)
 	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
+	// The audit log of admin and security-relevant actions, newest first.
+	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -285,6 +290,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
 			connect.WithClientOptions(opts...),
 		),
+		listAuditEvents: connect.NewClient[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse](
+			httpClient,
+			baseURL+AdminServiceListAuditEventsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
+			connect.WithClientOptions(opts...),
+		),
 		listAPIKeys: connect.NewClient[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse](
 			httpClient,
 			baseURL+AdminServiceListAPIKeysProcedure,
@@ -331,6 +342,7 @@ type adminServiceClient struct {
 	queryFlows           *connect.Client[v1.QueryFlowsRequest, v1.QueryFlowsResponse]
 	listRecordings       *connect.Client[v1.ListRecordingsRequest, v1.ListRecordingsResponse]
 	getRecording         *connect.Client[v1.GetRecordingRequest, v1.GetRecordingResponse]
+	listAuditEvents      *connect.Client[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse]
 	listAPIKeys          *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
 	createAPIKey         *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
 	expireAPIKey         *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
@@ -451,6 +463,11 @@ func (c *adminServiceClient) GetRecording(ctx context.Context, req *connect.Requ
 	return c.getRecording.CallUnary(ctx, req)
 }
 
+// ListAuditEvents calls whalescale.v1.AdminService.ListAuditEvents.
+func (c *adminServiceClient) ListAuditEvents(ctx context.Context, req *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
+	return c.listAuditEvents.CallUnary(ctx, req)
+}
+
 // ListAPIKeys calls whalescale.v1.AdminService.ListAPIKeys.
 func (c *adminServiceClient) ListAPIKeys(ctx context.Context, req *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {
 	return c.listAPIKeys.CallUnary(ctx, req)
@@ -494,6 +511,8 @@ type AdminServiceHandler interface {
 	QueryFlows(context.Context, *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error)
 	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
+	// The audit log of admin and security-relevant actions, newest first.
+	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
@@ -644,6 +663,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListAuditEventsHandler := connect.NewUnaryHandler(
+		AdminServiceListAuditEventsProcedure,
+		svc.ListAuditEvents,
+		connect.WithSchema(adminServiceMethods.ByName("ListAuditEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListAPIKeysHandler := connect.NewUnaryHandler(
 		AdminServiceListAPIKeysProcedure,
 		svc.ListAPIKeys,
@@ -710,6 +735,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListRecordingsHandler.ServeHTTP(w, r)
 		case AdminServiceGetRecordingProcedure:
 			adminServiceGetRecordingHandler.ServeHTTP(w, r)
+		case AdminServiceListAuditEventsProcedure:
+			adminServiceListAuditEventsHandler.ServeHTTP(w, r)
 		case AdminServiceListAPIKeysProcedure:
 			adminServiceListAPIKeysHandler.ServeHTTP(w, r)
 		case AdminServiceCreateAPIKeyProcedure:
@@ -815,6 +842,10 @@ func (UnimplementedAdminServiceHandler) ListRecordings(context.Context, *connect
 
 func (UnimplementedAdminServiceHandler) GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetRecording is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListAuditEvents is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error) {

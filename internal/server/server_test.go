@@ -131,6 +131,26 @@ func TestAdminAuth(t *testing.T) {
 	if code != 200 || out["source"] != "database" {
 		t.Fatalf("GetPolicy = %v", out)
 	}
+
+	// Everything above is in the audit log, attributed, and the chain holds.
+	code, out = adminCall(t, c, hs.URL, "ListAuditEvents", `{"verify":true}`, ck)
+	if code != 200 {
+		t.Fatalf("ListAuditEvents: %d %v", code, out)
+	}
+	var got []string
+	for _, e := range out["events"].([]any) {
+		ev := e.(map[string]any)
+		if !strings.HasPrefix(ev["actor"].(string), "api-key:") {
+			t.Fatalf("event without the API key as actor: %v", ev)
+		}
+		got = append(got, ev["action"].(string))
+	}
+	if want := "policy updated,console sign-in,user created"; strings.Join(got, ",") != want {
+		t.Fatalf("audit actions = %v, want %s", got, want)
+	}
+	if v := out["verification"].(map[string]any); v["ok"] != true || v["checked"].(float64) != 3 {
+		t.Fatalf("verification = %v", v)
+	}
 }
 
 func TestPolicyTestsAndExplain(t *testing.T) {

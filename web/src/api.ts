@@ -122,6 +122,21 @@ export interface Flow {
   bytesRecv?: string;
 }
 
+export interface AuditEvent {
+  id: string;
+  at?: string;
+  actor: string;
+  action: string;
+  detail?: string;
+}
+
+export interface AuditVerification {
+  ok?: boolean;
+  checked?: number;
+  headHash?: string;
+  brokenAt?: string;
+}
+
 export interface PathReport {
   fromNode: string;
   toNode: string;
@@ -167,6 +182,11 @@ export const api = {
   setPeerRelayApproved: (nodeId: string, approved: boolean) => call("SetPeerRelayApproved", { nodeId, approved }),
   queryFlows: (q: { node?: string; sinceSeconds?: number; deniedOnly?: boolean; limit?: number }) =>
     call<{ flows?: Flow[]; enabled?: boolean }>("QueryFlows", q).then((r) => ({ flows: r.flows ?? [], enabled: !!r.enabled })),
+  listAuditEvents: (q: { sinceSeconds?: number; actor?: string; action?: string; limit?: number; verify?: boolean }) =>
+    call<{ events?: AuditEvent[]; verification?: AuditVerification }>("ListAuditEvents", q).then((r) => ({
+      events: r.events ?? [],
+      verification: r.verification,
+    })),
   listRecordings: () => call<{ recordings?: Recording[] }>("ListRecordings").then((r) => r.recordings ?? []),
   // data is base64 (protobuf JSON for bytes).
   getRecording: (id: string) => call<{ recording: Recording; data?: string }>("GetRecording", { id }),

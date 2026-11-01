@@ -47,6 +47,9 @@ service AdminService {
   rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse);
 
+  // The audit log of admin and security-relevant actions, newest first.
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
@@ -234,6 +237,41 @@ message GetRecordingRequest { uint64 id = 1; }
 message GetRecordingResponse {
   Recording recording = 1;
   bytes data = 2;
+}
+
+message ListAuditEventsRequest {
+  // Only events in the last N seconds; 0 means all.
+  uint64 since_seconds = 1;
+  // Substring filters on the actor and the action.
+  string actor = 2;
+  string action = 3;
+  // 0 means 200; at most 5000.
+  uint32 limit = 4;
+  // Also check the whole log's hash chain.
+  bool verify = 5;
+}
+message AuditEvent {
+  uint64 id = 1;
+  google.protobuf.Timestamp at = 2;
+  // "oidc:EMAIL", "api-key:PREFIX", "cli:OSUSER", "user:NAME", "git", ...
+  string actor = 3;
+  string action = 4;
+  // key=value pairs.
+  string detail = 5;
+}
+message ListAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  // Set when verify was asked for.
+  AuditVerification verification = 2;
+}
+message AuditVerification {
+  bool ok = 1;
+  uint32 checked = 2;
+  // Hex SHA-256 of the newest entry. Record it elsewhere now and then:
+  // the chain alone can't show that the newest entries were removed.
+  string head_hash = 3;
+  // First entry that doesn't match, when not ok.
+  uint64 broken_at = 4;
 }
 
 message QueryFlowsRequest {

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -78,8 +79,16 @@ func notFoundOr(a *Admin, what string, err error) error {
 	return internal(a, what, err)
 }
 
-func (a *Admin) audit(id identity, action string, args ...any) {
-	a.svc.log.Info("admin: "+action, append([]any{"by", id.name}, args...)...)
+// actor names an admin in the audit log: "oidc:EMAIL" or "api-key:PREFIX".
+func (id identity) actor() string {
+	if id.method == "api-key" {
+		return id.name
+	}
+	return id.method + ":" + id.name
+}
+
+func (a *Admin) audit(ctx context.Context, id identity, action string, args ...any) {
+	a.svc.Audit(ctx, id.actor(), action, args...)
 }
 
 func (a *Admin) WhoAmI(ctx context.Context, req *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error) {
@@ -120,7 +129,7 @@ func (a *Admin) CreateUser(ctx context.Context, req *connect.Request[v1.CreateUs
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	a.audit(id, "user created", "user", u.Name)
+	a.audit(ctx, id, "user created", "user", u.Name)
 	return connect.NewResponse(&v1.CreateUserResponse{User: &v1.User{Id: u.ID, Name: u.Name, CreatedAt: timestamppb.New(u.CreatedAt)}}), nil
 }
 
@@ -136,7 +145,7 @@ func (a *Admin) DeleteUser(ctx context.Context, req *connect.Request[v1.DeleteUs
 	if err != nil {
 		return nil, notFoundOr(a, "delete user", err)
 	}
-	a.audit(id, "user deleted", "user", req.Msg.Name)
+	a.audit(ctx, id, "user deleted", "user", req.Msg.Name)
 	return connect.NewResponse(&v1.DeleteUserResponse{}), nil
 }
 
@@ -165,7 +174,7 @@ func (a *Admin) DeleteNode(ctx context.Context, req *connect.Request[v1.DeleteNo
 	if err := a.svc.store.DeleteNode(ctx, req.Msg.Id); err != nil {
 		return nil, notFoundOr(a, "delete node", err)
 	}
-	a.audit(id, "node deleted", "node_id", req.Msg.Id)
+	a.audit(ctx, id, "node deleted", "node_id", req.Msg.Id)
 	a.svc.NotifyAll()
 	return connect.NewResponse(&v1.DeleteNodeResponse{}), nil
 }
@@ -210,7 +219,7 @@ func (a *Admin) CreatePreAuthKey(ctx context.Context, req *connect.Request[v1.Cr
 	if err != nil {
 		return nil, notFoundOr(a, "create key", err)
 	}
-	a.audit(id, "pre-auth key created", "prefix", k.Prefix, "user", k.User, "reusable", k.Reusable)
+	a.audit(ctx, id, "pre-auth key created", "prefix", k.Prefix, "user", k.User, "reusable", k.Reusable)
 	return connect.NewResponse(&v1.CreatePreAuthKeyResponse{Key: preAuthKeyProto(k), Secret: secret}), nil
 }
 
@@ -222,7 +231,7 @@ func (a *Admin) ExpirePreAuthKey(ctx context.Context, req *connect.Request[v1.Ex
 	if err := a.svc.store.ExpirePreAuthKey(ctx, req.Msg.Prefix); err != nil {
 		return nil, notFoundOr(a, "expire key", err)
 	}
-	a.audit(id, "pre-auth key expired", "prefix", req.Msg.Prefix)
+	a.audit(ctx, id, "pre-auth key expired", "prefix", req.Msg.Prefix)
 	return connect.NewResponse(&v1.ExpirePreAuthKeyResponse{}), nil
 }
 
@@ -310,7 +319,7 @@ func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicy
 		return nil, internal(a, "save policy", err)
 	}
 	a.svc.SetPolicy(p, req.Msg.Policy, "database")
-	a.audit(id, "policy updated", "acls", len(p.ACLs))
+	a.audit(ctx, id, "policy updated", "acls", len(p.ACLs))
 	return connect.NewResponse(&v1.SetPolicyResponse{Warnings: warns}), nil
 }
 
@@ -376,7 +385,7 @@ func (a *Admin) SetRouteApproved(ctx context.Context, req *connect.Request[v1.Se
 	if err := a.svc.store.SetRouteApproved(ctx, req.Msg.NodeId, p, req.Msg.Approved); err != nil {
 		return nil, notFoundOr(a, "approve route", err)
 	}
-	a.audit(id, "route approval changed", "node_id", req.Msg.NodeId, "prefix", p, "approved", req.Msg.Approved)
+	a.audit(ctx, id, "route approval changed", "node_id", req.Msg.NodeId, "prefix", p, "approved", req.Msg.Approved)
 	a.svc.NotifyAll()
 	return connect.NewResponse(&v1.SetRouteApprovedResponse{}), nil
 }
@@ -420,7 +429,7 @@ func (a *Admin) SetPeerRelayApproved(ctx context.Context, req *connect.Request[v
 	if err := a.svc.store.SetRelayApproved(ctx, req.Msg.NodeId, req.Msg.Approved); err != nil {
 		return nil, notFoundOr(a, "approve relay", err)
 	}
-	a.audit(id, "peer relay approval changed", "node_id", req.Msg.NodeId, "approved", req.Msg.Approved)
+	a.audit(ctx, id, "peer relay approval changed", "node_id", req.Msg.NodeId, "approved", req.Msg.Approved)
 	a.svc.NotifyAll()
 	return connect.NewResponse(&v1.SetPeerRelayApprovedResponse{}), nil
 }
@@ -458,9 +467,42 @@ func (a *Admin) SetExposureApproved(ctx context.Context, req *connect.Request[v1
 	if err := a.svc.store.SetExposureApproved(ctx, req.Msg.NodeId, req.Msg.Name, req.Msg.Approved); err != nil {
 		return nil, notFoundOr(a, "approve exposure", err)
 	}
-	a.audit(id, "exposure approval changed", "node_id", req.Msg.NodeId, "name", req.Msg.Name, "approved", req.Msg.Approved)
+	a.audit(ctx, id, "exposure approval changed", "node_id", req.Msg.NodeId, "name", req.Msg.Name, "approved", req.Msg.Approved)
 	a.svc.NotifyAll()
 	return connect.NewResponse(&v1.SetExposureApprovedResponse{}), nil
+}
+
+// --- audit log ---
+
+func (a *Admin) ListAuditEvents(ctx context.Context, req *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
+	if _, err := a.auth(ctx, req.Header()); err != nil {
+		return nil, err
+	}
+	m := req.Msg
+	q := store.AuditQuery{Actor: m.Actor, Action: m.Action, Limit: 200}
+	if m.SinceSeconds > 0 {
+		q.Since = time.Now().Add(-time.Duration(min(m.SinceSeconds, 100*366*24*3600)) * time.Second)
+	}
+	if m.Limit > 0 {
+		q.Limit = int(min(m.Limit, 5000))
+	}
+	events, err := a.svc.store.QueryAudit(ctx, q)
+	if err != nil {
+		return nil, internal(a, "query audit log", err)
+	}
+	resp := &v1.ListAuditEventsResponse{}
+	for _, e := range events {
+		resp.Events = append(resp.Events, &v1.AuditEvent{Id: e.ID, At: timestamppb.New(e.At), Actor: e.Actor,
+			Action: e.Action, Detail: e.Detail})
+	}
+	if m.Verify {
+		n, head, bad, err := a.svc.store.VerifyAudit(ctx)
+		if err != nil && !errors.Is(err, store.ErrAuditTampered) {
+			return nil, internal(a, "verify audit log", err)
+		}
+		resp.Verification = &v1.AuditVerification{Ok: err == nil, Checked: uint32(n), HeadHash: hex.EncodeToString(head), BrokenAt: bad}
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // --- flow logs ---
@@ -530,7 +572,7 @@ func (a *Admin) GetRecording(ctx context.Context, req *connect.Request[v1.GetRec
 	if err != nil {
 		return nil, notFoundOr(a, "get recording", err)
 	}
-	a.audit(id, "recording viewed", "recording_id", r.ID, "node", r.NodeName)
+	a.audit(ctx, id, "recording viewed", "recording_id", r.ID, "node", r.NodeName)
 	return connect.NewResponse(&v1.GetRecordingResponse{Recording: recordingProto(r), Data: data}), nil
 }
 
@@ -569,7 +611,7 @@ func (a *Admin) CreateAPIKey(ctx context.Context, req *connect.Request[v1.Create
 	if err != nil {
 		return nil, internal(a, "create api key", err)
 	}
-	a.audit(id, "api key created", "prefix", k.Prefix)
+	a.audit(ctx, id, "api key created", "prefix", k.Prefix)
 	return connect.NewResponse(&v1.CreateAPIKeyResponse{Key: apiKeyProto(k), Secret: secret}), nil
 }
 
@@ -581,6 +623,6 @@ func (a *Admin) ExpireAPIKey(ctx context.Context, req *connect.Request[v1.Expire
 	if err := a.svc.store.ExpireAPIKey(ctx, req.Msg.Prefix); err != nil {
 		return nil, notFoundOr(a, "expire api key", err)
 	}
-	a.audit(id, "api key expired", "prefix", req.Msg.Prefix)
+	a.audit(ctx, id, "api key expired", "prefix", req.Msg.Prefix)
 	return connect.NewResponse(&v1.ExpireAPIKeyResponse{}), nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -15,6 +16,17 @@ import (
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
 )
+
+// cliAudit records an admin command in the audit log as "cli:<OS user>".
+func cliAudit(ctx context.Context, st *store.Store, action string, kv ...any) {
+	who := "unknown"
+	if u, err := user.Current(); err == nil {
+		who = u.Username
+	}
+	if err := st.Audit(ctx, "cli:"+who, action, kv...); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not write the audit log:", err)
+	}
+}
 
 func table(header string) *tabwriter.Writer {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -42,6 +54,7 @@ func cmdUsers(args []string) error {
 		if err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "user created", "user", u.Name)
 		fmt.Printf("created user %s (id %d)\n", u.Name, u.ID)
 	case "list":
 		users, err := st.ListUserDetails(ctx)
@@ -60,6 +73,7 @@ func cmdUsers(args []string) error {
 		if err := st.DeleteUser(ctx, fs.Arg(0)); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "user deleted", "user", fs.Arg(0))
 		fmt.Println("deleted user", fs.Arg(0))
 	default:
 		return fmt.Errorf("unknown users subcommand %q", args[0])
@@ -94,6 +108,7 @@ func cmdPreAuthKeys(args []string) error {
 		if err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "pre-auth key created", "prefix", k.Prefix, "user", k.User, "reusable", k.Reusable)
 		fmt.Fprintf(os.Stderr, "pre-auth key for %s (expires %s, reusable=%v). It is shown only once:\n",
 			k.User, k.ExpiresAt.Format(time.DateTime), k.Reusable)
 		fmt.Println(plain)
@@ -117,6 +132,7 @@ func cmdPreAuthKeys(args []string) error {
 		if err := st.ExpirePreAuthKey(ctx, fs.Arg(0)); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "pre-auth key expired", "prefix", fs.Arg(0))
 		fmt.Println("expired key", fs.Arg(0))
 	default:
 		return fmt.Errorf("unknown preauthkeys subcommand %q", args[0])
@@ -142,6 +158,7 @@ func cmdAPIKeys(args []string) error {
 		if err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "api key created", "prefix", k.Prefix)
 		fmt.Fprintf(os.Stderr, "API key %s (expires %s). Use it to sign in to the console or call the admin API. Shown only once:\n",
 			k.Prefix, k.ExpiresAt.Format(time.DateTime))
 		fmt.Println(plain)
@@ -167,6 +184,7 @@ func cmdAPIKeys(args []string) error {
 		if err := st.ExpireAPIKey(ctx, fs.Arg(0)); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "api key expired", "prefix", fs.Arg(0))
 		fmt.Println("expired API key", fs.Arg(0))
 	default:
 		return fmt.Errorf("unknown apikeys subcommand %q", args[0])
@@ -210,6 +228,7 @@ func cmdNodes(args []string) error {
 		if err := st.DeleteNode(ctx, id); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "node deleted", "node_id", id)
 		fmt.Println("deleted node", id)
 	default:
 		return fmt.Errorf("unknown nodes subcommand %q", args[0])
@@ -258,6 +277,7 @@ func cmdRoutes(args []string) error {
 		if err := st.SetRouteApproved(ctx, id, p, args[0] == "approve"); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "route approval changed", "node", fs.Arg(0), "prefix", p, "approved", args[0] == "approve")
 		fmt.Printf("%sd %s on %s (running servers pick this up within 5s)\n", args[0], p, fs.Arg(0))
 	default:
 		return fmt.Errorf("unknown routes subcommand %q", args[0])
@@ -298,6 +318,7 @@ func cmdExposures(args []string) error {
 		if err := st.SetExposureApproved(ctx, e.NodeID, e.Name, args[0] == "approve"); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "exposure approval changed", "node", e.NodeName, "name", e.Name, "approved", args[0] == "approve")
 		fmt.Printf("%sd %s (port %d on %s); running servers pick this up within 5s\n", args[0], e.Name, e.Port, e.NodeName)
 	default:
 		return fmt.Errorf("unknown exposures subcommand %q", args[0])
@@ -340,11 +361,52 @@ func cmdRelays(args []string) error {
 		if err := st.SetRelayApproved(ctx, id, args[0] == "approve"); err != nil {
 			return err
 		}
+		cliAudit(ctx, st, "peer relay approval changed", "node", fs.Arg(0), "approved", args[0] == "approve")
 		fmt.Printf("%sd %s as a peer relay; running servers pick this up within 5s\n", args[0], fs.Arg(0))
 	default:
 		return fmt.Errorf("unknown relays subcommand %q", args[0])
 	}
 	return nil
+}
+
+func cmdAudit(args []string) error {
+	fs, db := adminFlags("audit")
+	since := fs.Duration("since", 0, "how far back to look (0 for everything)")
+	actor := fs.String("actor", "", "only events by actors containing this")
+	action := fs.String("action", "", "only actions containing this")
+	limit := fs.Int("limit", 100, "maximum rows")
+	verify := fs.Bool("verify", false, "check the whole log's hash chain instead of listing it")
+	st, err := openStore(fs, db, args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if *verify {
+		n, head, bad, err := st.VerifyAudit(ctx)
+		if errors.Is(err, store.ErrAuditTampered) {
+			return fmt.Errorf("audit log tampered with: entry %d does not match the chain (%d entries before it are intact)", bad, n)
+		}
+		if err != nil {
+			return err
+		}
+		fmt.Printf("audit log intact: %d entries, head %x\n", n, head)
+		fmt.Println("Record the head hash somewhere else: the chain can't show that the newest entries were removed.")
+		return nil
+	}
+	q := store.AuditQuery{Actor: *actor, Action: *action, Limit: *limit}
+	if *since > 0 {
+		q.Since = time.Now().Add(-*since)
+	}
+	events, err := st.QueryAudit(ctx, q)
+	if err != nil {
+		return err
+	}
+	tw := table("TIME\tACTOR\tACTION\tDETAIL")
+	for _, e := range events {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", e.At.Format(time.DateTime), e.Actor, e.Action, e.Detail)
+	}
+	return tw.Flush()
 }
 
 func cmdFlows(args []string) error {
