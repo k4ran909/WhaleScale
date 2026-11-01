@@ -69,6 +69,8 @@ message User {
   string email = 3;
   google.protobuf.Timestamp created_at = 4;
   uint32 node_count = 5;
+  // From the policy's device_limits; unset means no limit.
+  optional uint32 device_limit = 6;
 }
 
 message ListUsersRequest {}

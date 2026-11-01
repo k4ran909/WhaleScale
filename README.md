@@ -219,6 +219,16 @@ Without one, every node can reach every other node. Edit it in the console, or p
 Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
 
 
+### Device limits
+
+Cap how many machines each person can add:
+
+```json
+"device_limits": { "*": 5, "group:eng": 10, "ann": 20 }
+```
+
+A user's own entry wins (even if it's lower than a group's); otherwise the most generous of their groups applies, then `"*"`. Without a matching entry there is no limit. Registrations over the limit are refused with a message saying why, and recorded in the audit log. Machines already registered are never removed. The console's Users page shows each person's count against their limit.
+
 ### Policy from a Git repository
 
 Keep the policy in Git and review changes like code. Point the server at the file's raw URL on a branch:

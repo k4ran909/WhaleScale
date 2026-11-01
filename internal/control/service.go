@@ -154,6 +154,11 @@ func (s *Service) Audit(ctx context.Context, actor, action string, kv ...any) {
 	}
 }
 
+// deviceLimit applies the current policy's device limits.
+func (s *Service) deviceLimit(user string) (int, bool) {
+	return s.CurrentPolicy().DeviceLimit(user)
+}
+
 // CurrentPolicy returns the active policy.
 func (s *Service) CurrentPolicy() *policy.Policy {
 	s.policyMu.RLock()
@@ -201,12 +206,18 @@ func (s *Service) Register(ctx context.Context, req *connect.Request[v1.Register
 		return s.startBrowserRegistration(m)
 	}
 	node, token, err := s.store.RegisterNode(ctx, store.RegisterParams{
-		AuthKey:    m.AuthKey,
-		MachineKey: m.MachineKey,
-		Hostname:   m.Hostname,
-		OS:         truncate(m.Os, 32),
+		AuthKey:     m.AuthKey,
+		MachineKey:  m.MachineKey,
+		Hostname:    m.Hostname,
+		OS:          truncate(m.Os, 32),
+		DeviceLimit: s.deviceLimit,
 	})
+	var limitErr *store.DeviceLimitError
 	switch {
+	case errors.As(err, &limitErr):
+		s.Audit(ctx, "user:"+limitErr.User, "registration refused", "reason", "device limit", "limit", limitErr.Limit,
+			"hostname", m.Hostname)
+		return nil, connect.NewError(connect.CodeResourceExhausted, err)
 	case errors.Is(err, store.ErrInvalidKey):
 		s.log.Warn("registration rejected", "reason", "invalid auth key", "peer", req.Peer().Addr)
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
@@ -269,7 +280,14 @@ func (s *Service) CompleteRegistration(ctx context.Context, id string, userID ui
 		return p.node, p.err
 	default:
 	}
-	p.node, p.token, p.err = s.store.RegisterNodeForUser(ctx, userID, p.params)
+	params := p.params
+	params.DeviceLimit = s.deviceLimit
+	p.node, p.token, p.err = s.store.RegisterNodeForUser(ctx, userID, params)
+	var limitErr *store.DeviceLimitError
+	if errors.As(p.err, &limitErr) {
+		s.Audit(ctx, "user:"+limitErr.User, "registration refused", "reason", "device limit", "limit", limitErr.Limit,
+			"hostname", params.Hostname)
+	}
 	close(p.done)
 	if p.err == nil {
 		s.Audit(ctx, "user:"+p.node.User, "node registered", "node", p.node.Name, "ipv4", p.node.IPv4, "os", p.node.OS, "method", "browser login")
@@ -309,6 +327,10 @@ func (s *Service) WaitRegistration(ctx context.Context, req *connect.Request[v1.
 	if p.err != nil {
 		if errors.Is(p.err, store.ErrAlreadyExists) {
 			return nil, connect.NewError(connect.CodeAlreadyExists, p.err)
+		}
+		var limitErr *store.DeviceLimitError
+		if errors.As(p.err, &limitErr) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, p.err)
 		}
 		return nil, connect.NewError(connect.CodeInternal, errors.New("registration failed"))
 	}

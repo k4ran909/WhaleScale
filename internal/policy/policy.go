@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +33,9 @@ type Policy struct {
 	ACLs   []ACL               `json:"acls"`
 	Tests  []Test              `json:"tests,omitempty"`
 	SSH    []SSHRule           `json:"ssh,omitempty"`
+	// DeviceLimits caps how many machines a user may register, keyed by
+	// user, "group:NAME" or "*". See DeviceLimit.
+	DeviceLimits map[string]int `json:"device_limits,omitempty"`
 }
 
 // SSHRule lets sources log in to destination machines over SSH as the
@@ -156,7 +160,40 @@ func (p *Policy) validate() error {
 			}
 		}
 	}
+	for sel, n := range p.DeviceLimits {
+		where := fmt.Sprintf("device_limits[%q]", sel)
+		switch {
+		case n < 0:
+			errs = append(errs, fmt.Errorf("%s: must not be negative", where))
+		case strings.HasPrefix(sel, "node:") || strings.Contains(sel, "/"):
+			errs = append(errs, fmt.Errorf("%s: limits apply to users, groups or \"*\"", where))
+		default:
+			if err := p.checkSelector(sel); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", where, err))
+			}
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// DeviceLimit returns how many machines user may register: their own
+// entry if there is one, else the most generous of their groups', else
+// "*". ok is false when no limit applies.
+func (p *Policy) DeviceLimit(user string) (limit int, ok bool) {
+	if n, found := p.DeviceLimits[user]; found {
+		return n, true
+	}
+	limit = -1
+	for sel, n := range p.DeviceLimits {
+		if strings.HasPrefix(sel, "group:") && n > limit && slices.Contains(p.Groups[sel], user) {
+			limit = n
+		}
+	}
+	if limit >= 0 {
+		return limit, true
+	}
+	n, found := p.DeviceLimits["*"]
+	return n, found
 }
 
 func (p *Policy) checkSelector(s string) error {
@@ -202,6 +239,9 @@ func (p *Policy) Lint(users []string) []string {
 		for _, m := range members {
 			check("groups."+g, m)
 		}
+	}
+	for sel := range p.DeviceLimits {
+		check("device_limits", sel)
 	}
 	for i, a := range p.ACLs {
 		for _, s := range a.Src {

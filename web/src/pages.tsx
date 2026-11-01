@@ -221,7 +221,12 @@ export function Users() {
               <tr key={u.id}>
                 <td><strong>{u.name}</strong></td>
                 <td>{u.email || <span className="muted">—</span>}</td>
-                <td>{u.nodeCount ?? 0}</td>
+                <td>
+                  {u.nodeCount ?? 0}
+                  {u.deviceLimit !== undefined && (
+                    <span className={(u.nodeCount ?? 0) >= u.deviceLimit ? "warn-text" : "sub"}> / {u.deviceLimit}</span>
+                  )}
+                </td>
                 <td>{timeAgo(u.createdAt)}</td>
                 <td className="right">
                   <ConfirmButton

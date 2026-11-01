@@ -47,6 +47,8 @@ export interface User {
   email?: string;
   createdAt?: string;
   nodeCount?: number;
+  // From the policy's device_limits; absent means no limit.
+  deviceLimit?: number;
 }
 
 export interface PreAuthKey {

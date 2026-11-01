@@ -247,6 +247,21 @@ type RegisterParams struct {
 	MachineKey string
 	Hostname   string
 	OS         string
+	// DeviceLimit, if set, says how many nodes a user may have (ok false:
+	// no limit). It is checked inside the registration transaction.
+	DeviceLimit func(user string) (limit int, ok bool)
+}
+
+// DeviceLimitError refuses a registration that would exceed a user's
+// device limit.
+type DeviceLimitError struct {
+	User         string
+	Limit, Count int
+}
+
+func (e *DeviceLimitError) Error() string {
+	return fmt.Sprintf("%s already has %d of %d allowed devices; remove one or ask an admin to raise the limit",
+		e.User, e.Count, e.Limit)
 }
 
 // RegisterNode consumes a pre-auth key and creates a node, returning it and
@@ -328,6 +343,17 @@ func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64
 	}
 	if exists > 0 {
 		return nil, "", fmt.Errorf("machine key: %w", ErrAlreadyExists)
+	}
+	if p.DeviceLimit != nil {
+		if limit, ok := p.DeviceLimit(userName); ok {
+			var count int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE user_id = ?`, uid).Scan(&count); err != nil {
+				return nil, "", err
+			}
+			if count >= limit {
+				return nil, "", &DeviceLimitError{User: userName, Limit: limit, Count: count}
+			}
+		}
 	}
 	name, err := uniqueNodeName(ctx, tx, sanitizeHostname(p.Hostname))
 	if err != nil {

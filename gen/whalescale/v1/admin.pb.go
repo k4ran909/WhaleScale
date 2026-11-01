@@ -120,12 +120,14 @@ func (x *WhoAmIResponse) GetOidcEnabled() bool {
 }
 
 type User struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	NodeCount     uint32                 `protobuf:"varint,5,opt,name=node_count,json=nodeCount,proto3" json:"node_count,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Email     string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	NodeCount uint32                 `protobuf:"varint,5,opt,name=node_count,json=nodeCount,proto3" json:"node_count,omitempty"`
+	// From the policy's device_limits; unset means no limit.
+	DeviceLimit   *uint32 `protobuf:"varint,6,opt,name=device_limit,json=deviceLimit,proto3,oneof" json:"device_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,6 +193,13 @@ func (x *User) GetCreatedAt() *timestamppb.Timestamp {
 func (x *User) GetNodeCount() uint32 {
 	if x != nil {
 		return x.NodeCount
+	}
+	return 0
+}
+
+func (x *User) GetDeviceLimit() uint32 {
+	if x != nil && x.DeviceLimit != nil {
+		return *x.DeviceLimit
 	}
 	return 0
 }
@@ -3465,7 +3474,7 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\x0eWhoAmIResponse\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x1a\n" +
 	"\bidentity\x18\x02 \x01(\tR\bidentity\x12!\n" +
-	"\foidc_enabled\x18\x03 \x01(\bR\voidcEnabled\"\x9a\x01\n" +
+	"\foidc_enabled\x18\x03 \x01(\bR\voidcEnabled\"\xd3\x01\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -3473,7 +3482,9 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"node_count\x18\x05 \x01(\rR\tnodeCount\"\x12\n" +
+	"node_count\x18\x05 \x01(\rR\tnodeCount\x12&\n" +
+	"\fdevice_limit\x18\x06 \x01(\rH\x00R\vdeviceLimit\x88\x01\x01B\x0f\n" +
+	"\r_device_limit\"\x12\n" +
 	"\x10ListUsersRequest\">\n" +
 	"\x11ListUsersResponse\x12)\n" +
 	"\x05users\x18\x01 \x03(\v2\x13.whalescale.v1.UserR\x05users\"'\n" +
@@ -3894,6 +3905,7 @@ func file_whalescale_v1_admin_proto_init() {
 		return
 	}
 	file_whalescale_v1_control_proto_init()
+	file_whalescale_v1_admin_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

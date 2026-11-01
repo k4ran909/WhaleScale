@@ -110,9 +110,15 @@ func (a *Admin) ListUsers(ctx context.Context, req *connect.Request[v1.ListUsers
 		return nil, internal(a, "list users", err)
 	}
 	resp := &v1.ListUsersResponse{}
+	pol := a.svc.CurrentPolicy()
 	for _, u := range users {
-		resp.Users = append(resp.Users, &v1.User{Id: u.ID, Name: u.Name, Email: u.Email,
-			CreatedAt: timestamppb.New(u.CreatedAt), NodeCount: uint32(u.NodeCount)})
+		pu := &v1.User{Id: u.ID, Name: u.Name, Email: u.Email,
+			CreatedAt: timestamppb.New(u.CreatedAt), NodeCount: uint32(u.NodeCount)}
+		if n, ok := pol.DeviceLimit(u.Name); ok {
+			limit := uint32(n)
+			pu.DeviceLimit = &limit
+		}
+		resp.Users = append(resp.Users, pu)
 	}
 	return connect.NewResponse(resp), nil
 }
