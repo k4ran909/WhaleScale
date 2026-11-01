@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -35,6 +36,8 @@ type Config struct {
 	STUN       []string
 	DNSSuffix  string
 	PolicyFile string
+	// PolicySync follows a policy in a Git repository instead.
+	PolicySync *PolicySyncConfig
 	OIDC       *OIDCConfig
 	// GatewayDomain enables the gateway: <name>.<GatewayDomain> must resolve
 	// to this server (a wildcard DNS record).
@@ -62,6 +65,7 @@ type Server struct {
 	started time.Time
 
 	policyMod time.Time
+	psync     *policySync
 }
 
 func New(st *store.Store, cfg Config) (*Server, error) {
@@ -91,7 +95,21 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if s.auth, err = newAuth(context.Background(), s, cfg.OIDC); err != nil {
 		return nil, err
 	}
-	if err := s.loadInitialPolicy(); err != nil {
+	if cfg.PolicySync != nil {
+		if cfg.PolicyFile != "" {
+			return nil, errors.New("use either a policy file or a policy URL, not both")
+		}
+		if s.psync, err = newPolicySync(s, *cfg.PolicySync); err != nil {
+			return nil, err
+		}
+		s.control.SetPolicyStatus(func() control.PolicyStatus {
+			st := s.psync.Status()
+			return control.PolicyStatus{URL: st.URL, LastSync: st.LastSync, Revision: st.Revision, Error: st.Error}
+		})
+		if err := s.psync.start(context.Background()); err != nil {
+			return nil, err
+		}
+	} else if err := s.loadInitialPolicy(); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -130,6 +148,9 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /gateway/ask", s.gateway.AskHandler())
 	}
 	s.auth.routes(mux)
+	if s.psync != nil && s.psync.cfg.WebhookSecret != "" {
+		mux.HandleFunc("POST /policy/sync", s.psync.webhook)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.store.SchemaVersion(r.Context()); err != nil {
 			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
@@ -266,6 +287,9 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 	defer t.Stop()
 	last, _ := s.store.Fingerprint(ctx)
 	var lastPrune time.Time
+	if s.psync != nil {
+		go s.psync.run(ctx)
+	}
 	for {
 		select {
 		case <-ctx.Done():

@@ -145,7 +145,16 @@ export const api = {
   listAPIKeys: () => call<{ keys?: APIKey[] }>("ListAPIKeys").then((r) => r.keys ?? []),
   createAPIKey: (expirationSeconds: number) => call<{ key: APIKey; secret: string }>("CreateAPIKey", { expirationSeconds }),
   expireAPIKey: (prefix: string) => call("ExpireAPIKey", { prefix }),
-  getPolicy: () => call<{ policy: string; source: string; editable?: boolean }>("GetPolicy"),
+  getPolicy: () =>
+    call<{
+      policy: string;
+      source: string;
+      editable?: boolean;
+      syncUrl?: string;
+      lastSync?: string;
+      revision?: string;
+      syncError?: string;
+    }>("GetPolicy"),
   checkPolicy: (policy: string) => call<{ errors?: string[]; warnings?: string[] }>("CheckPolicy", { policy }),
   setPolicy: (policy: string) => call<{ warnings?: string[] }>("SetPolicy", { policy }),
   explainAccess: (src: string, dst: string, policy?: string) =>

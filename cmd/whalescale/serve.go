@@ -35,6 +35,8 @@ type serveOpts struct {
 	oidcIssuer, oidcClientID, oidcSecret, oidcSecretFile     string
 	oidcAdmins, oidcUsers, oidcDomains                       string
 	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
+	policyURL, policyTokenFile, webhookSecretFile            string
+	policySyncInterval                                       time.Duration
 	console, tlsACME, flowLogs                               bool
 	flowRetention                                            time.Duration
 }
@@ -50,6 +52,10 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.StringVar(&o.stunListen, "stun-listen", ":3478", "comma-separated UDP addresses for STUN; two ports let nodes detect symmetric NAT; empty disables")
 	fs.StringVar(&o.dnsSuffix, "dns-suffix", "whale.internal", "MagicDNS domain suffix")
 	fs.StringVar(&o.policyFile, "policy", "", "policy file (JSON); without it, the policy is edited in the console")
+	fs.StringVar(&o.policyURL, "policy-url", "", "follow the policy at this HTTPS URL, e.g. a Git repository's raw file on a branch")
+	fs.StringVar(&o.policyTokenFile, "policy-url-token-file", "", "file with a token sent as 'Authorization: Bearer' when fetching policy-url (private repositories)")
+	fs.DurationVar(&o.policySyncInterval, "policy-sync-interval", time.Minute, "how often to check policy-url for changes")
+	fs.StringVar(&o.webhookSecretFile, "policy-webhook-secret-file", "", "file with the secret for POST /policy/sync push webhooks (GitHub, Gitea, GitLab)")
 	fs.StringVar(&o.certFile, "tls-cert", "", "TLS certificate file (PEM)")
 	fs.StringVar(&o.keyFile, "tls-key", "", "TLS private key file (PEM)")
 	fs.BoolVar(&o.tlsACME, "tls-acme", false, "get certificates from Let's Encrypt automatically (needs port 443 reachable from the internet)")
@@ -101,6 +107,16 @@ func (o *serveOpts) resolve() []error {
 		}
 		if o.acmeCache == "" {
 			o.acmeCache = filepath.Join(filepath.Dir(o.db), "acme")
+		}
+	}
+	if o.policyURL != "" && o.policyFile != "" {
+		errs = append(errs, errors.New("use either policy or policy-url, not both"))
+	}
+	for _, f := range []string{o.policyTokenFile, o.webhookSecretFile} {
+		if f != "" {
+			if _, err := os.Stat(f); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	if o.recordingsDir == "" {
@@ -206,6 +222,8 @@ func cmdConfigtest(args []string) error {
 		"gateway-domain": o.gatewayDomain, "tls-acme": fmt.Sprint(o.tlsACME), "acme-email": o.acmeEmail,
 		"acme-cache": o.acmeCache, "recordings-dir": o.recordingsDir,
 		"flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
+		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
+		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -278,6 +296,24 @@ func cmdServe(args []string) error {
 		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
 		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
 		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log,
+	}
+	if o.policyURL != "" {
+		ps := &server.PolicySyncConfig{URL: o.policyURL, Interval: o.policySyncInterval}
+		if o.policyTokenFile != "" {
+			b, err := os.ReadFile(o.policyTokenFile)
+			if err != nil {
+				return err
+			}
+			ps.Token = strings.TrimSpace(string(b))
+		}
+		if o.webhookSecretFile != "" {
+			b, err := os.ReadFile(o.webhookSecretFile)
+			if err != nil {
+				return err
+			}
+			ps.WebhookSecret = strings.TrimSpace(string(b))
+		}
+		cfg.PolicySync = ps
 	}
 	if o.console {
 		cfg.Console = web.Dist()

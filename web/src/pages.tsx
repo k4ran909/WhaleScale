@@ -555,6 +555,14 @@ export function Policy() {
       {loaded.data?.source === "file" && (
         <Banner kind="warn">This policy comes from a file given with --policy. Edit that file; the server reloads it within 5 s.</Banner>
       )}
+      {loaded.data?.source === "url" && (
+        <Banner kind={loaded.data.syncError ? "error" : "ok"}>
+          Synced from <code>{loaded.data.syncUrl}</code>
+          {loaded.data.revision && <> (revision {loaded.data.revision}, checked {timeAgo(loaded.data.lastSync)})</>}. Change
+          it in the repository; a push webhook applies it at once.
+          {loaded.data.syncError && <> Last sync failed, so the previous policy is still in force: {loaded.data.syncError}</>}
+        </Banner>
+      )}
       {loaded.data?.source === "default" && <Banner kind="ok">No policy saved yet: every machine can reach every other machine.</Banner>}
       {saved && <Banner kind="ok">{saved}</Banner>}
       {saveErr && <Banner kind="error">{saveErr}</Banner>}

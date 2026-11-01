@@ -236,7 +236,18 @@ func (a *Admin) GetPolicy(ctx context.Context, req *connect.Request[v1.GetPolicy
 	if source == "default" {
 		text = DefaultPolicyText
 	}
-	return connect.NewResponse(&v1.GetPolicyResponse{Policy: text, Source: source, Editable: source != "file"}), nil
+	resp := &v1.GetPolicyResponse{Policy: text, Source: source, Editable: source != "file" && source != "url"}
+	a.svc.policyMu.RLock()
+	status := a.svc.policyStatus
+	a.svc.policyMu.RUnlock()
+	if source == "url" && status != nil {
+		st := status()
+		resp.SyncUrl, resp.Revision, resp.SyncError = st.URL, st.Revision, st.Error
+		if !st.LastSync.IsZero() {
+			resp.LastSync = timestamppb.New(st.LastSync)
+		}
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // DefaultPolicyText is what the editor starts from when no policy is set.
@@ -283,9 +294,13 @@ func (a *Admin) SetPolicy(ctx context.Context, req *connect.Request[v1.SetPolicy
 	if err != nil {
 		return nil, err
 	}
-	if _, source := a.svc.Policy(); source == "file" {
+	switch _, source := a.svc.Policy(); source {
+	case "file":
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the policy comes from a file (--policy); edit that file instead"))
+	case "url":
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the policy is synced from a Git repository; change it there"))
 	}
 	p, errs, warns := a.check(ctx, req.Msg.Policy)
 	if len(errs) > 0 {

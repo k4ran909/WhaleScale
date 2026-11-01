@@ -112,10 +112,15 @@ message ExpirePreAuthKeyResponse {}
 message GetPolicyRequest {}
 message GetPolicyResponse {
   string policy = 1;
-  // "default" (allow all), "database" or "file".
+  // "default" (allow all), "database", "file" or "url" (synced from Git).
   string source = 2;
-  // False when the policy comes from a file passed with --policy.
+  // False when the policy comes from a file or a URL.
   bool editable = 3;
+  // For "url": where it syncs from and how the last sync went.
+  string sync_url = 4;
+  google.protobuf.Timestamp last_sync = 5;
+  string revision = 6;
+  string sync_error = 7;
 }
 message CheckPolicyRequest { string policy = 1; }
 message CheckPolicyResponse {

@@ -56,7 +56,8 @@ type Service struct {
 	policyMu     sync.RWMutex
 	policy       *policy.Policy
 	policyText   string
-	policySource string // "default", "database" or "file"
+	policySource string // "default", "database", "file" or "url"
+	policyStatus func() PolicyStatus
 
 	version atomic.Uint64
 
@@ -111,6 +112,21 @@ func (s *Service) SetPolicy(p *policy.Policy, text, source string) {
 	s.policy, s.policyText, s.policySource = p, text, source
 	s.policyMu.Unlock()
 	s.NotifyAll()
+}
+
+// PolicyStatus describes a policy synced from a URL.
+type PolicyStatus struct {
+	URL      string
+	LastSync time.Time
+	Revision string
+	Error    string
+}
+
+// SetPolicyStatus registers where sync status comes from.
+func (s *Service) SetPolicyStatus(f func() PolicyStatus) {
+	s.policyMu.Lock()
+	s.policyStatus = f
+	s.policyMu.Unlock()
 }
 
 // CurrentPolicy returns the active policy.
