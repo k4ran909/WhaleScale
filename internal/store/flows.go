@@ -60,7 +60,7 @@ func (s *Store) QueryFlows(ctx context.Context, q FlowQuery) ([]Flow, error) {
 		args = append(args, q.Node)
 	}
 	if q.DeniedOnly {
-		sqlq += ` AND denied = 1`
+		sqlq += ` AND denied = TRUE`
 	}
 	sqlq += ` ORDER BY ended_at DESC, id DESC LIMIT ?`
 	args = append(args, q.Limit)

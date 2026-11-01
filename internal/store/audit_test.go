@@ -3,14 +3,14 @@ package store
 import (
 	"context"
 	"errors"
-	"path/filepath"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"testing"
 	"time"
 )
 
 func TestAuditChain(t *testing.T) {
 	ctx := context.Background()
-	st, err := Open(ctx, filepath.Join(t.TempDir(), "ws.db"))
+	st, err := Open(ctx, storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

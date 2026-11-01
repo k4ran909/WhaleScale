@@ -1,8 +1,8 @@
 # Whalescale
 
-A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite. See [plan.md](plan.md) for the vision and roadmap.
+A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite, or PostgreSQL for several servers. See [plan.md](plan.md) for the vision and roadmap.
 
-> **Status: Phase 3 complete.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`. See [Known gaps](#known-gaps).
+> **Status: Phase 4 complete.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`; plus network lock, temporary access, device posture, an audit log, and failover across servers sharing PostgreSQL. See [Known gaps](#known-gaps).
 
 ## How it fits together
 
@@ -327,12 +327,15 @@ The console's Access policy page has the same "Explain access" panel, and it eva
 
 ## Several servers (failover)
 
-Several `whalescale serve` processes can share one database. Start each with its own `listen`, `public-url`, `stun-listen` and `relay-quic-listen`, and the same `db`:
+Run two or more servers against one PostgreSQL database, on different hosts, and a server can fail without taking the network with it:
+
+```yaml
+# on every server: the same database, its own public URL
+db: postgres://whalescale:PASSWORD@db.internal:5432/whalescale?sslmode=require
+public-url: https://ws1.example.com     # ws2.example.com on the second, ...
+```
 
 ```bash
-whalescale serve --db /var/lib/whalescale/whalescale.db --listen :8080 --public-url https://ws1.example.com
-# the second one needs its own ports:
-whalescale serve --db /var/lib/whalescale/whalescale.db --listen :8081 --public-url https://ws2.example.com --stun-listen :3488,:3489 --relay-quic-listen :3490
 whalescale cluster      # who's up, and who leads
 ```
 
@@ -341,8 +344,14 @@ whalescale cluster      # who's up, and who leads
 - **Relayed connections pause briefly.** All machines use the oldest running server's relay, so they meet on the same one. If that server goes away they move to the next: at once on a clean shutdown, or within the heartbeat timeout (3× the watch interval, 15 s by default) after a crash.
 - **Changes reach every server.** A change made on one server (a policy save, an approval, a machine joining) reaches machines on the others within a quarter of a second. Who is online is shared too.
 - **One leader for periodic jobs.** One server at a time holds the leader lease and runs grant expiry, log pruning and Git policy sync. Another takes over when it stops (`whalescale_leader` in `/metrics`).
+- **The database is the one shared piece.** Make PostgreSQL itself highly available (a managed service, or Patroni) to remove the last single point of failure. Back it up with `pg_dump`.
+- **On a single host,** servers can instead share an SQLite file (each with its own `listen`, `public-url`, `stun-listen` and `relay-quic-listen`). That covers crashes and zero-downtime upgrades without running PostgreSQL.
 
-Today the servers must share an SQLite file, so they run on one host. That covers crashes and zero-downtime upgrades (start the new version, stop the old). Separate hosts need a shared database server; Postgres support is the next step. Some things still belong to one server: a browser login must finish on the server that started it, a gateway tunnel serves public requests only on its own server, and the console's topology view shows the paths of that server's machines.
+Some things still belong to one server:
+- a browser login must finish on the server that started it;
+- a gateway tunnel serves public requests only on its own server;
+- SSH recordings are saved on the server that received them (point `recordings-dir` at shared storage to view them from any server);
+- the console's topology view shows the paths of that server's machines.
 
 ## Scale
 

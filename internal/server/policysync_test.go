@@ -5,11 +5,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -68,7 +68,7 @@ func TestPolicySync(t *testing.T) {
 	repo := &fakeRepo{body: repoPolicyA}
 	rs := httptest.NewServer(repo)
 	defer rs.Close()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "ws.db"))
+	st, err := store.Open(context.Background(), storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestPolicySyncStartup(t *testing.T) {
 	rs := httptest.NewServer(repo)
 	defer rs.Close()
 	dir := t.TempDir()
-	st, err := store.Open(context.Background(), filepath.Join(dir, "ws.db"))
+	st, err := store.Open(context.Background(), storetest.DSN(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

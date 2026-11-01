@@ -81,12 +81,12 @@ func (s *Store) CreateAccessRequest(ctx context.Context, nodeID uint64, dst stri
 	if autoApprove {
 		status, by, decided, expires = AccessApproved, "policy", now.Unix(), now.Add(d).Unix()
 	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO access_requests(node_id, dst, duration, reason, status, requested_at, decided_by, decided_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, nodeID, dst, int64(d/time.Second), reason, status, now.Unix(), by, decided, expires)
+	var id int64
+	err := s.db.QueryRowContext(ctx, `INSERT INTO access_requests(node_id, dst, duration, reason, status, requested_at, decided_by, decided_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, nodeID, dst, int64(d/time.Second), reason, status, now.Unix(), by, decided, expires).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return s.accessByID(ctx, s.db, uint64(id))
 }
 
@@ -152,6 +152,9 @@ func (s *Store) DecideAccessRequest(ctx context.Context, id uint64, approve bool
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := tx.lock(ctx, "access-requests"); err != nil {
+		return nil, err
+	}
 	a, err := s.accessByID(ctx, tx, id)
 	if err != nil {
 		return nil, err

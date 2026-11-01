@@ -32,17 +32,22 @@ func (s *Store) Audit(ctx context.Context, actor, action string, kv ...any) erro
 		return err
 	}
 	defer tx.Rollback()
+	// One writer at a time, or two servers would both chain onto the same
+	// entry.
+	if err := tx.lock(ctx, "audit-log"); err != nil {
+		return err
+	}
 	prev := make([]byte, sha256.Size)
 	err = tx.QueryRowContext(ctx, `SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1`).Scan(&prev)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO audit_log(at, actor, action, detail, prev_hash, hash) VALUES (?, ?, ?, ?, ?, x'')`,
-		e.At.Unix(), e.Actor, e.Action, e.Detail, prev)
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO audit_log(at, actor, action, detail, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+		e.At.Unix(), e.Actor, e.Action, e.Detail, prev, []byte{}).Scan(&id)
 	if err != nil {
 		return err
 	}
-	id, _ := res.LastInsertId()
 	e.ID = uint64(id)
 	if _, err := tx.ExecContext(ctx, `UPDATE audit_log SET hash = ? WHERE id = ?`, auditHash(prev, e), id); err != nil {
 		return err
@@ -96,7 +101,7 @@ func (s *Store) QueryAudit(ctx context.Context, q AuditQuery) ([]AuditEvent, err
 		q.Limit = 500
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id, at, actor, action, detail FROM audit_log
-		WHERE at >= ? AND instr(actor, ?) > 0 AND instr(action, ?) > 0 ORDER BY id DESC LIMIT ?`,
+		WHERE at >= ? AND `+s.db.contains("actor")+` AND `+s.db.contains("action")+` ORDER BY id DESC LIMIT ?`,
 		q.Since.Unix(), q.Actor, q.Action, q.Limit)
 	if err != nil {
 		return nil, err

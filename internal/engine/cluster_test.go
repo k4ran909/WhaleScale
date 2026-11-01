@@ -2,12 +2,12 @@ package engine
 
 import (
 	"context"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"net"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -91,7 +91,7 @@ func TestClusterFailover(t *testing.T) {
 
 func testClusterFailover(t *testing.T, crash bool) {
 	dir := tempDir(t)
-	dbPath := filepath.Join(dir, "ws.db")
+	dbPath := storetest.DSN(t, dir)
 	s1 := startClusterServer(t, dbPath)
 	time.Sleep(50 * time.Millisecond) // s1 is the older member
 	s2 := startClusterServer(t, dbPath)

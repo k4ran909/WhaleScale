@@ -103,15 +103,15 @@ func (s *Store) UserForOIDC(ctx context.Context, subject, email string) (*User, 
 		if i > 0 {
 			name = fmt.Sprintf("%s-%d", base, i)
 		}
-		res, err := s.db.ExecContext(ctx, `INSERT INTO users(name, email, oidc_subject, created_at) VALUES (?, ?, ?, ?)`,
-			name, email, subject, now.Unix())
+		var id int64
+		err := s.db.QueryRowContext(ctx, `INSERT INTO users(name, email, oidc_subject, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
+			name, email, subject, now.Unix()).Scan(&id)
 		if isUniqueErr(err) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		id, _ := res.LastInsertId()
 		return &User{ID: uint64(id), Name: name, CreatedAt: now}, nil
 	}
 	return nil, errors.New("could not pick a unique user name")
@@ -141,12 +141,12 @@ func (s *Store) CreateAPIKey(ctx context.Context, ttl time.Duration) (*APIKey, s
 	plain := "wsapi-" + prefix + "-" + secret
 	now := time.Now()
 	k := &APIKey{Prefix: prefix, CreatedAt: now, ExpiresAt: now.Add(ttl)}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO api_keys(prefix, hash, created_at, expires_at) VALUES (?, ?, ?, ?)`,
-		prefix, hashSecret(plain), now.Unix(), k.ExpiresAt.Unix())
+	var id int64
+	err = s.db.QueryRowContext(ctx, `INSERT INTO api_keys(prefix, hash, created_at, expires_at) VALUES (?, ?, ?, ?) RETURNING id`,
+		prefix, hashSecret(plain), now.Unix(), k.ExpiresAt.Unix()).Scan(&id)
 	if err != nil {
 		return nil, "", err
 	}
-	id, _ := res.LastInsertId()
 	k.ID = uint64(id)
 	return k, plain, nil
 }
@@ -248,7 +248,7 @@ func (s *Store) SetAdvertisedRoutes(ctx context.Context, nodeID uint64, prefixes
 		return false, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT prefix FROM routes WHERE node_id = ? AND advertised = 1`, nodeID)
+	rows, err := tx.QueryContext(ctx, `SELECT prefix FROM routes WHERE node_id = ? AND advertised = TRUE`, nodeID)
 	if err != nil {
 		return false, err
 	}
@@ -272,12 +272,12 @@ func (s *Store) SetAdvertisedRoutes(ctx context.Context, nodeID uint64, prefixes
 	if !changed {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE routes SET advertised = 0 WHERE node_id = ?`, nodeID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE routes SET advertised = FALSE WHERE node_id = ?`, nodeID); err != nil {
 		return false, err
 	}
 	for p := range after {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO routes(node_id, prefix, advertised) VALUES (?, ?, 1)
-			ON CONFLICT(node_id, prefix) DO UPDATE SET advertised = 1`, nodeID, p); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO routes(node_id, prefix, advertised) VALUES (?, ?, TRUE)
+			ON CONFLICT(node_id, prefix) DO UPDATE SET advertised = TRUE`, nodeID, p); err != nil {
 			return false, err
 		}
 	}
@@ -401,13 +401,13 @@ func (s *Store) SaveRecording(ctx context.Context, dir string, r Recording, data
 		return nil, err
 	}
 	r.Size = int64(len(data))
-	res, err := s.db.ExecContext(ctx, `INSERT INTO recordings(node_name, local_user, src_node, src_user, started_at, ended_at, size, file)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, r.NodeName, r.LocalUser, r.SrcNode, r.SrcUser, r.StartedAt.Unix(), r.EndedAt.Unix(), r.Size, r.File)
+	var id int64
+	err = s.db.QueryRowContext(ctx, `INSERT INTO recordings(node_name, local_user, src_node, src_user, started_at, ended_at, size, file)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, r.NodeName, r.LocalUser, r.SrcNode, r.SrcUser, r.StartedAt.Unix(), r.EndedAt.Unix(), r.Size, r.File).Scan(&id)
 	if err != nil {
 		os.Remove(filepath.Join(dir, r.File))
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	r.ID = uint64(id)
 	return &r, nil
 }

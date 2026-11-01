@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 func openTest(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	s, err := Open(context.Background(), storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func openTest(t *testing.T) *Store {
 
 func TestMigrateIdempotent(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "test.db")
+	path := storetest.DSN(t, t.TempDir())
 	s, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)

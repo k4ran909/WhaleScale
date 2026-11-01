@@ -3,11 +3,11 @@ package control
 import (
 	"context"
 	"fmt"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"math/rand"
 	"net/netip"
-	"path/filepath"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -21,7 +21,7 @@ import (
 func newTestService(t testing.TB, cfg Config) (*Service, *store.Store) {
 	t.Helper()
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "ws.db"))
+	st, err := store.Open(ctx, storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

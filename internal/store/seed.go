@@ -24,6 +24,9 @@ func (s *Store) SeedNodes(ctx context.Context, users []string, perUser int, pref
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := tx.lock(ctx, "node-allocation"); err != nil {
+		return nil, err
+	}
 	used := map[netip.Addr]bool{}
 	rows, err := tx.QueryContext(ctx, `SELECT ipv4 FROM nodes`)
 	if err != nil {
@@ -39,7 +42,7 @@ func (s *Store) SeedNodes(ctx context.Context, users []string, perUser int, pref
 	}
 	rows.Close()
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO nodes(user_id, name, machine_key, ipv4, ipv6, os, token_hash,
-		created_at, last_seen, node_key, disco_key, endpoints) VALUES (?, ?, ?, ?, ?, 'linux', ?, ?, ?, ?, ?, ?)`)
+		created_at, last_seen, node_key, disco_key, endpoints) VALUES (?, ?, ?, ?, ?, 'linux', ?, ?, ?, ?, ?, ?) RETURNING id`)
 	if err != nil {
 		return nil, err
 	}
@@ -64,12 +67,11 @@ func (s *Store) SeedNodes(ctx context.Context, users []string, perUser int, pref
 				return nil, ErrPoolExhausted
 			}
 			ep := fmt.Sprintf(`["192.0.2.%d:41641"]`, len(ids)%250+1)
-			res, err := stmt.ExecContext(ctx, uid, fmt.Sprintf("%s%s-%d", prefix, user, k), randKey(), a.String(),
-				ipv6For(v6, a).String(), hashSecret(randKey()), now, now, randKey(), randKey(), ep)
-			if err != nil {
+			var id int64
+			if err := stmt.QueryRowContext(ctx, uid, fmt.Sprintf("%s%s-%d", prefix, user, k), randKey(), a.String(),
+				ipv6For(v6, a).String(), hashSecret(randKey()), now, now, randKey(), randKey(), ep).Scan(&id); err != nil {
 				return nil, err
 			}
-			id, _ := res.LastInsertId()
 			ids = append(ids, uint64(id))
 		}
 	}

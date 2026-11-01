@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -19,7 +19,7 @@ import (
 
 func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "ws.db"))
+	st, err := store.Open(context.Background(), storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

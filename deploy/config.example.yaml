@@ -11,6 +11,10 @@ tls-key: /etc/whalescale/tls/privkey.pem
 # Or let the server get certificates itself (port 443 must be reachable):
 # tls-acme: true
 # acme-email: you@example.com
+# Several servers on different hosts share a PostgreSQL database instead
+# of an SQLite file (see "Several servers" in the README):
+# db: postgres://whalescale:PASSWORD@db.internal:5432/whalescale?sslmode=require
+
 # Two ports let nodes detect symmetric NAT.
 stun-listen: ":3478,:3479"
 # QUIC relay (UDP); nodes fall back to the WebSocket relay if it's blocked.

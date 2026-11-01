@@ -38,6 +38,10 @@ func (s *Store) SetExposures(ctx context.Context, nodeID uint64, reqs []Exposure
 		return false, nil, err
 	}
 	defer tx.Rollback()
+	// Names are first come, first served across all nodes and servers.
+	if err := tx.lock(ctx, "exposure-names"); err != nil {
+		return false, nil, err
+	}
 
 	type row struct {
 		port       uint16
@@ -59,7 +63,7 @@ func (s *Store) SetExposures(ctx context.Context, nodeID uint64, reqs []Exposure
 	}
 	rows.Close()
 
-	if _, err := tx.ExecContext(ctx, `UPDATE exposures SET advertised = 0 WHERE node_id = ?`, nodeID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE exposures SET advertised = FALSE WHERE node_id = ?`, nodeID); err != nil {
 		return false, nil, err
 	}
 	wanted := map[string]bool{}
@@ -71,17 +75,23 @@ func (s *Store) SetExposures(ctx context.Context, nodeID uint64, reqs []Exposure
 		old, mine := before[r.Name]
 		switch {
 		case mine && old.port == r.Port:
-			_, err = tx.ExecContext(ctx, `UPDATE exposures SET advertised = 1 WHERE node_id = ? AND name = ?`, nodeID, r.Name)
+			_, err = tx.ExecContext(ctx, `UPDATE exposures SET advertised = TRUE WHERE node_id = ? AND name = ?`, nodeID, r.Name)
 		case mine:
 			changed = true
-			_, err = tx.ExecContext(ctx, `UPDATE exposures SET advertised = 1, port = ?, approved = 0 WHERE node_id = ? AND name = ?`,
+			_, err = tx.ExecContext(ctx, `UPDATE exposures SET advertised = TRUE, port = ?, approved = FALSE WHERE node_id = ? AND name = ?`,
 				r.Port, nodeID, r.Name)
 		default:
-			_, err = tx.ExecContext(ctx, `INSERT INTO exposures(node_id, name, port) VALUES (?, ?, ?)`, nodeID, r.Name, r.Port)
-			if isUniqueErr(err) {
-				taken, err = append(taken, r.Name), nil
+			// Checked first rather than caught: PostgreSQL abandons a
+			// transaction after any failed statement.
+			var holders int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM exposures WHERE name = ?`, r.Name).Scan(&holders); err != nil {
+				return false, nil, err
+			}
+			if holders > 0 {
+				taken = append(taken, r.Name)
 				continue
 			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO exposures(node_id, name, port) VALUES (?, ?, ?)`, nodeID, r.Name, r.Port)
 			changed = true
 		}
 		if err != nil {

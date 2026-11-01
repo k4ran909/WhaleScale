@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/k4ran909/whalescale/internal/netlock"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"google.golang.org/protobuf/proto"
 	"io"
 	"log/slog"
@@ -61,7 +62,7 @@ func newTestNetWith(t *testing.T, policyJSON string, configure func(*server.Conf
 	}
 
 	dir := tempDir(t)
-	st, err := store.Open(ctx, filepath.Join(dir, "ws.db"))
+	st, err := store.Open(ctx, storetest.DSN(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

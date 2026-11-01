@@ -33,7 +33,7 @@ var (
 )
 
 type Store struct {
-	db *sql.DB
+	db *db
 }
 
 type User struct {
@@ -84,28 +84,40 @@ type Node struct {
 	SSHHostKey               string
 }
 
-// Open opens (creating if needed) the database at path and applies migrations.
+// IsPostgres reports whether a db setting names a PostgreSQL database
+// (a postgres:// URL) rather than an SQLite file.
+func IsPostgres(dsn string) bool {
+	return strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")
+}
+
+// Open opens (creating if needed) the database and applies migrations.
+// path is an SQLite file, or a postgres:// URL for a PostgreSQL database
+// several servers on different hosts can share.
 func Open(ctx context.Context, path string) (*Store, error) {
+	if IsPostgres(path) {
+		return openPostgres(ctx, path)
+	}
 	// BEGIN IMMEDIATE: transactions take the write lock up front, so two
 	// servers sharing the file wait for each other instead of failing.
 	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_txlock=immediate"
-	db, err := sql.Open("sqlite", dsn)
+	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	// SQLite allows one writer; a single connection avoids SQLITE_BUSY.
-	db.SetMaxOpenConns(1)
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+	sqldb.SetMaxOpenConns(1)
+	if err := sqldb.PingContext(ctx); err != nil {
+		sqldb.Close()
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	if err := migrate(ctx, db); err != nil {
-		db.Close()
+	d := &db{DB: sqldb}
+	if err := migrate(ctx, d); err != nil {
+		sqldb.Close()
 		return nil, err
 	}
-	s := &Store{db: db}
+	s := &Store{db: d}
 	if _, err := s.IPv6Prefix(ctx); err != nil {
-		db.Close()
+		sqldb.Close()
 		return nil, err
 	}
 	return s, nil
@@ -145,14 +157,14 @@ func (s *Store) CreateUser(ctx context.Context, name string) (*User, error) {
 		return nil, fmt.Errorf("invalid user name %q: use lowercase letters, digits and '-'", name)
 	}
 	now := time.Now()
-	res, err := s.db.ExecContext(ctx, `INSERT INTO users(name, created_at) VALUES (?, ?)`, name, now.Unix())
+	var id int64
+	err := s.db.QueryRowContext(ctx, `INSERT INTO users(name, created_at) VALUES (?, ?) RETURNING id`, name, now.Unix()).Scan(&id)
 	if err != nil {
 		if isUniqueErr(err) {
 			return nil, fmt.Errorf("user %q: %w", name, ErrAlreadyExists)
 		}
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
 	return &User{ID: uint64(id), Name: name, CreatedAt: now}, nil
 }
 
@@ -205,12 +217,12 @@ func (s *Store) CreatePreAuthKey(ctx context.Context, user string, reusable, eph
 	now := time.Now()
 	k := &PreAuthKey{User: user, Prefix: prefix, Reusable: reusable, Ephemeral: ephemeral,
 		ExpiresAt: now.Add(ttl), CreatedAt: now}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO preauth_keys(user_id, prefix, hash, reusable, ephemeral, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, uid, prefix, hashSecret(plain), reusable, ephemeral, k.ExpiresAt.Unix(), now.Unix())
+	var id int64
+	err = s.db.QueryRowContext(ctx, `INSERT INTO preauth_keys(user_id, prefix, hash, reusable, ephemeral, expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`, uid, prefix, hashSecret(plain), reusable, ephemeral, k.ExpiresAt.Unix(), now.Unix()).Scan(&id)
 	if err != nil {
 		return nil, "", err
 	}
-	id, _ := res.LastInsertId()
 	k.ID = uint64(id)
 	return k, plain, nil
 }
@@ -310,7 +322,7 @@ func (s *Store) RegisterNode(ctx context.Context, p RegisterParams) (*Node, stri
 	if err != nil {
 		return nil, "", err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE preauth_keys SET used = 1 WHERE id = ?`, keyID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE preauth_keys SET used = TRUE WHERE id = ?`, keyID); err != nil {
 		return nil, "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -342,8 +354,13 @@ func (s *Store) RegisterNodeForUser(ctx context.Context, userID uint64, p Regist
 	return n, token, tx.Commit()
 }
 
-func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64, userName string,
+func insertNode(ctx context.Context, tx *tx, prefix netip.Prefix, uid uint64, userName string,
 	keyID sql.NullInt64, ephemeral bool, p RegisterParams) (*Node, string, error) {
+	// Addresses and names are picked by reading what's taken: one
+	// registration at a time, across servers.
+	if err := tx.lock(ctx, "node-allocation"); err != nil {
+		return nil, "", err
+	}
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE machine_key = ?`, p.MachineKey).Scan(&exists); err != nil {
 		return nil, "", err
@@ -377,13 +394,13 @@ func insertNode(ctx context.Context, tx *sql.Tx, prefix netip.Prefix, uid uint64
 	}
 	token = "wsnode-" + token
 	now := time.Now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO nodes(user_id, name, machine_key, ipv4, ipv6, os, token_hash, ephemeral, preauth_key_id, created_at, last_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uid, name, p.MachineKey, v4.String(), v6.String(), p.OS, hashSecret(token), ephemeral, keyID, now.Unix(), now.Unix())
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO nodes(user_id, name, machine_key, ipv4, ipv6, os, token_hash, ephemeral, preauth_key_id, created_at, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		uid, name, p.MachineKey, v4.String(), v6.String(), p.OS, hashSecret(token), ephemeral, keyID, now.Unix(), now.Unix()).Scan(&id)
 	if err != nil {
 		return nil, "", err
 	}
-	id, _ := res.LastInsertId()
 	return &Node{ID: uint64(id), UserID: uid, User: userName, Name: name, MachineKey: p.MachineKey,
 		IPv4: v4, IPv6: v6, OS: p.OS, Ephemeral: ephemeral, CreatedAt: now, LastSeen: now}, token, nil
 }
@@ -609,7 +626,8 @@ func randHex(n int) (string, error) {
 }
 
 func isUniqueErr(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+	// SQLite says so in words; PostgreSQL with SQLSTATE 23505.
+	return err != nil && (strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "SQLSTATE 23505"))
 }
 
 // Fingerprint changes whenever nodes are added or removed; routes,
@@ -619,7 +637,16 @@ func isUniqueErr(err error) bool {
 func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 	var nodes, idSum, routes int64
 	var routeSig string
-	err := s.db.QueryRowContext(ctx, `SELECT
+	q := fingerprintSQLite
+	if s.db.pg {
+		q = fingerprintPostgres
+	}
+	err := s.db.QueryRowContext(ctx, q).Scan(&nodes, &idSum, &routes, &routeSig)
+	sum := sha256.Sum256([]byte(routeSig))
+	return fmt.Sprintf("%d/%d/%d/%x", nodes, idSum, routes, sum[:8]), err
+}
+
+const fingerprintSQLite = `SELECT
 		(SELECT COUNT(*) FROM nodes), (SELECT COALESCE(SUM(id), 0) FROM nodes),
 		(SELECT COUNT(*) FROM routes),
 		(SELECT COALESCE(group_concat(node_id || ':' || prefix || ':' || advertised || approved, ','), '')
@@ -630,7 +657,15 @@ func (s *Store) Fingerprint(ctx context.Context) (string, error) {
 		   FROM (SELECT id, relay_offered, relay_approved FROM nodes ORDER BY id)) ||
 		(SELECT 'L' || COUNT(*) || ':' || COALESCE(MAX(version), 0) FROM lock_chain) ||
 		(SELECT COALESCE(group_concat(node_key || ':' || hex(signature), ','), '')
-		   FROM (SELECT * FROM lock_signatures ORDER BY node_key))`).Scan(&nodes, &idSum, &routes, &routeSig)
-	sum := sha256.Sum256([]byte(routeSig))
-	return fmt.Sprintf("%d/%d/%d/%x", nodes, idSum, routes, sum[:8]), err
-}
+		   FROM (SELECT * FROM lock_signatures ORDER BY node_key))`
+
+const fingerprintPostgres = `SELECT
+		(SELECT COUNT(*) FROM nodes), (SELECT COALESCE(SUM(id), 0) FROM nodes),
+		(SELECT COUNT(*) FROM routes),
+		COALESCE((SELECT string_agg(node_id || ':' || prefix || ':' || advertised::int || approved::int, ',' ORDER BY node_id, prefix)
+		   FROM routes), '') ||
+		COALESCE((SELECT string_agg(node_id || ':' || name || ':' || port || ':' || advertised::int || approved::int, ',' ORDER BY name)
+		   FROM exposures), '') ||
+		COALESCE((SELECT string_agg(id || ':' || relay_offered::int || relay_approved::int, ',' ORDER BY id) FROM nodes), '') ||
+		(SELECT 'L' || COUNT(*) || ':' || COALESCE(MAX(version), 0) FROM lock_chain) ||
+		COALESCE((SELECT string_agg(node_key || ':' || encode(signature, 'hex'), ',' ORDER BY node_key) FROM lock_signatures), '')`

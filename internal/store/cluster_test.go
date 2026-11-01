@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"path/filepath"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"testing"
 	"time"
 )
@@ -10,7 +10,7 @@ import (
 // Two servers on one database file, as the cluster runs them.
 func TestClusterPrimitives(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "ws.db")
+	path := storetest.DSN(t, t.TempDir())
 	a, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)

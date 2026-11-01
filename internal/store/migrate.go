@@ -12,8 +12,17 @@ import (
 	"time"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/*.sql migrations_pg/*.sql
 var migrationFS embed.FS
+
+// migrationDir holds each dialect's migrations. PostgreSQL support starts
+// at version 12 with a baseline schema.
+func migrationDir(pg bool) string {
+	if pg {
+		return "migrations_pg"
+	}
+	return "migrations"
+}
 
 type migration struct {
 	version int
@@ -21,8 +30,9 @@ type migration struct {
 	sql     string
 }
 
-func loadMigrations() ([]migration, error) {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
+func loadMigrations(pg bool) ([]migration, error) {
+	dir := migrationDir(pg)
+	entries, err := fs.ReadDir(migrationFS, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +55,7 @@ func loadMigrations() ([]migration, error) {
 			return nil, fmt.Errorf("migrations %q and %q share version %d", prev, name, v)
 		}
 		seen[v] = name
-		body, err := migrationFS.ReadFile("migrations/" + name)
+		body, err := migrationFS.ReadFile(dir + "/" + name)
 		if err != nil {
 			return nil, err
 		}
@@ -58,16 +68,28 @@ func loadMigrations() ([]migration, error) {
 // migrate applies every pending migration, each in its own transaction.
 // Jumping across many versions at once is supported: migrations are applied
 // in order from whatever version the database is at.
-func migrate(ctx context.Context, db *sql.DB) error {
+func migrate(ctx context.Context, db *db) error {
+	if db.pg {
+		// Servers starting together must not migrate at the same time.
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext('whalescale-migrate'))`); err != nil {
+			return err
+		}
+		defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext('whalescale-migrate'))`)
+	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version    INTEGER PRIMARY KEY,
+		version    BIGINT PRIMARY KEY,
 		name       TEXT NOT NULL,
-		applied_at INTEGER NOT NULL
+		applied_at BIGINT NOT NULL
 	)`); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	ms, err := loadMigrations()
+	ms, err := loadMigrations(db.pg)
 	if err != nil {
 		return err
 	}
@@ -114,14 +136,18 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 // Inspect reports a database's schema version and the latest this binary
 // knows, without applying migrations (for 'whalescale doctor').
 func Inspect(ctx context.Context, path string) (current, latest int, err error) {
-	ms, err := loadMigrations()
+	ms, err := loadMigrations(IsPostgres(path))
 	if err != nil {
 		return 0, 0, err
 	}
 	if len(ms) > 0 {
 		latest = ms[len(ms)-1].version
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
+	driver, dsn := "sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)"
+	if IsPostgres(path) {
+		driver, dsn = "pgx", path
+	}
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return 0, latest, err
 	}

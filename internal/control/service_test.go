@@ -2,11 +2,11 @@ package control
 
 import (
 	"context"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,7 +20,7 @@ import (
 
 func TestRegisterAndNetworkMap(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "ws.db"))
+	st, err := store.Open(ctx, storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

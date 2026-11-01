@@ -50,12 +50,13 @@ func cmdDoctor(args []string) error {
 		c.ok("config is valid (public URL %s)", o.publicURL)
 	}
 
-	if _, err := os.Stat(o.db); err != nil {
+	dbName := store.Redact(o.db)
+	if _, err := os.Stat(o.db); err != nil && !store.IsPostgres(o.db) {
 		c.warn("database %s does not exist yet (it is created on first start)", o.db)
 	} else if cur, latest, err := store.Inspect(ctx, o.db); err != nil {
-		c.fail("database %s: %v", o.db, err)
+		c.fail("database %s: %v", dbName, err)
 	} else if cur < latest {
-		c.warn("database schema %d, this binary has %d: migrations run on next start (back up %s first)", cur, latest, o.db)
+		c.warn("database schema %d, this binary has %d: migrations run on next start (back up %s first)", cur, latest, dbName)
 	} else if cur > latest {
 		c.fail("database schema %d is newer than this binary (%d): upgrade whalescale", cur, latest)
 	} else {

@@ -47,7 +47,7 @@ var secretSettings = map[string]bool{"oidc-client-secret": true}
 func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	o := &serveOpts{}
 	fs.String("config", defaultConfigPath(), "config file (YAML, keys are these flag names)")
-	fs.StringVar(&o.db, "db", "whalescale.db", "SQLite database path")
+	fs.StringVar(&o.db, "db", "whalescale.db", "SQLite database path, or a postgres:// URL (servers on several hosts share one)")
 	fs.StringVar(&o.listen, "listen", ":8080", "HTTP(S) listen address")
 	fs.StringVar(&o.publicURL, "public-url", "", "URL nodes and browsers use to reach this server (default: derived from --listen)")
 	fs.StringVar(&o.relayQUICListen, "relay-quic-listen", ":3480", "UDP address for the QUIC relay (faster than the WebSocket relay); empty disables")
@@ -108,7 +108,7 @@ func (o *serveOpts) resolve() []error {
 			errs = append(errs, errors.New("tls-acme needs public-url (the name to get a certificate for)"))
 		}
 		if o.acmeCache == "" {
-			o.acmeCache = filepath.Join(filepath.Dir(o.db), "acme")
+			o.acmeCache = filepath.Join(store.DataDir(o.db), "acme")
 		}
 	}
 	if o.policyURL != "" && o.policyFile != "" {
@@ -122,7 +122,7 @@ func (o *serveOpts) resolve() []error {
 		}
 	}
 	if o.recordingsDir == "" {
-		o.recordingsDir = filepath.Join(filepath.Dir(o.db), "recordings")
+		o.recordingsDir = filepath.Join(store.DataDir(o.db), "recordings")
 	}
 	if d := o.gatewayDomain; d != "" && (strings.Contains(d, "/") || strings.Contains(d, ":") || !strings.Contains(strings.Trim(d, "."), ".")) {
 		errs = append(errs, fmt.Errorf("gateway-domain %q must be a bare domain like apps.example.com", d))
@@ -215,7 +215,7 @@ func cmdConfigtest(args []string) error {
 	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
 	sort.Strings(names)
 	vals := map[string]string{
-		"db": o.db, "listen": o.listen, "public-url": o.publicURL, "stun-listen": o.stunListen,
+		"db": store.Redact(o.db), "listen": o.listen, "public-url": o.publicURL, "stun-listen": o.stunListen,
 		"dns-suffix": o.dnsSuffix, "policy": o.policyFile, "tls-cert": o.certFile, "tls-key": o.keyFile,
 		"metrics-listen": o.metricsListen, "log-level": o.logLevel, "console": fmt.Sprint(o.console),
 		"oidc-issuer": o.oidcIssuer, "oidc-client-id": o.oidcClientID, "oidc-client-secret": o.oidcSecret,
@@ -377,7 +377,7 @@ func cmdServe(args []string) error {
 	go func() {
 		log.Info("whalescale listening", "addr", o.listen, "public_url", o.publicURL, "stun", stunAdvertise, "quic_relay", cfg.RelayQUICAddr,
 			"tls", tlsOn, "acme", o.tlsACME, "gateway_domain", o.gatewayDomain, "oidc", o.oidcIssuer != "",
-			"db", o.db, "version", version.Version)
+			"db", store.Redact(o.db), "version", version.Version)
 		if tlsOn {
 			errc <- hs.ListenAndServeTLS(o.certFile, o.keyFile) // empty with ACME: certs come from TLSConfig
 		} else {

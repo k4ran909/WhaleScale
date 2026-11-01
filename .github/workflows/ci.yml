@@ -11,6 +11,14 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -26,6 +34,10 @@ jobs:
           git diff --exit-code -- gen/
       - run: go vet ./...
       - run: go test -race -timeout 5m ./...
+      - name: Tests on PostgreSQL
+        env:
+          WHALESCALE_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        run: go test -race -timeout 5m ./internal/store/... ./internal/control/... ./internal/server/... ./internal/engine/...
 
   console:
     runs-on: ubuntu-latest

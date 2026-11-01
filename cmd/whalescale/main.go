@@ -108,7 +108,7 @@ func main() {
 // adminFlags makes a flag set whose --db defaults to the configured database.
 func adminFlags(name string) (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
-	db := fs.String("db", configuredDB(), "path to the SQLite database")
+	db := fs.String("db", configuredDB(), "SQLite database path or postgres:// URL")
 	return fs, db
 }
 

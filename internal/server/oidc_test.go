@@ -7,13 +7,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/k4ran909/whalescale/internal/store/storetest"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -105,7 +105,7 @@ func (p *fakeIdP) as(email string) {
 
 func newOIDCServer(t *testing.T, idp *fakeIdP) (*httptest.Server, *store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "ws.db"))
+	st, err := store.Open(context.Background(), storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -208,7 +208,16 @@ Change the policy so the Windows PC can't reach the Linux machine, and add `"acc
 - [ ] The console's Audit log lists the request, approval and expiry with who did each; "Verify chain" says intact
 - [ ] On the VPS, `whalescale audit --verify` agrees
 
-## 12. Service lifecycle
+## 12. Two servers (optional)
+
+On a second VPS, run `whalescale serve` with the same `db:` (a PostgreSQL URL both can reach) and its own `public-url`.
+
+- [ ] `whalescale cluster` on either lists both servers and one leader
+- [ ] Machines connected to different servers see each other online; a policy saved on one server reaches machines on the other within a second
+- [ ] Stop the server your Windows PC uses (`systemctl stop whalescale`): `ws status` shows it moved to the other server, and a running `ping` to a direct peer doesn't drop a packet
+- [ ] Start it again and stop the other one: same result
+
+## 13. Service lifecycle
 
 - [ ] Reboot each machine: the tunnel comes back up on its own
 - [ ] `ws down`: peers show it offline within ~30 s; `ws up` brings it back
