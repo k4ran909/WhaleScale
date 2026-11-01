@@ -72,6 +72,8 @@ type Backend interface {
 	Prefs() clientstate.Prefs
 	Up(clientstate.Prefs) error
 	Down() error
+	// Switch makes another profile (network) active.
+	Switch(profile string) error
 }
 
 func Handler(b Backend) http.Handler {
@@ -130,6 +132,20 @@ func Handler(b Backend) http.Handler {
 			return
 		}
 		writeJSON(w, b.Prefs())
+	})
+	mux.HandleFunc("POST /v1/switch", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Profile string `json:"profile"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := b.Switch(req.Profile); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /v1/down", func(w http.ResponseWriter, r *http.Request) {
 		if err := b.Down(); err != nil {
@@ -245,3 +261,8 @@ func (c *Client) Up(p clientstate.Prefs) (clientstate.Prefs, error) {
 
 // Down stops the tunnel; wsd keeps running.
 func (c *Client) Down() error { return c.post("/v1/down", nil, nil) }
+
+// Switch makes another profile active.
+func (c *Client) Switch(profile string) error {
+	return c.post("/v1/switch", map[string]string{"profile": profile}, nil)
+}

@@ -52,7 +52,9 @@ Usage:
                               network lock: only machines signed by your keys are accepted
   ws mcp [--server URL]       MCP server on stdio for AI agents ($WS_API_KEY; a read-only key makes a read-only agent)
   ws netcheck [--json]        public address, NAT type, relay reachability
-  ws logout
+  ws logout                   log out the current profile (another profile is removed)
+  ws profiles                 networks this machine belongs to; * marks the current one
+  ws switch PROFILE           switch to another network ('ws login --profile NAME' adds one)
   ws version
 
 The auth key may also come from $WS_AUTHKEY, which keeps it out of shell history.
@@ -93,6 +95,10 @@ func run(cmd string, args []string) error {
 		return cmdAccess(args)
 	case "lock":
 		return cmdLock(args)
+	case "switch":
+		return cmdSwitch(args)
+	case "profiles":
+		return cmdProfiles(args)
 	case "mcp":
 		return cmdMCP(args)
 	case "status":
@@ -123,6 +129,7 @@ func client(server string) whalescalev1connect.ControlServiceClient {
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	server := fs.String("server", "", "control server URL, e.g. https://ws.example.com")
+	profile := fs.String("profile", "", "log in as another profile (network) and switch to it; see 'ws profiles'")
 	authKey := fs.String("authkey", os.Getenv("WS_AUTHKEY"), "pre-auth key from 'whalescale preauthkeys create'")
 	hostname := fs.String("hostname", "", "node name (default: this machine's hostname)")
 	lockTrust := fs.String("lock-trust", "", "network lock keys (wslock:..., comma-separated) to require; without it the first lock state seen is trusted")
@@ -148,16 +155,23 @@ func cmdLogin(args []string) error {
 		fmt.Fprintln(os.Stderr, "warning: server URL is plain http; your auth key and node token are sent unencrypted")
 	}
 
-	path, err := clientstate.DefaultPath()
+	base, err := clientstate.DefaultPath()
 	if err != nil {
 		return err
+	}
+	profName, path := clientstate.Current(base)
+	if *profile != "" {
+		if !clientstate.ValidProfileName(*profile) {
+			return fmt.Errorf("profile name %q: use up to 32 lowercase letters, digits, '-' and '_'", *profile)
+		}
+		profName, path = *profile, clientstate.ProfilePath(base, *profile)
 	}
 	st, err := clientstate.Load(path)
 	if err != nil {
 		return err
 	}
 	if st != nil && st.NodeToken != "" {
-		return fmt.Errorf("already logged in to %s as %q; run 'ws logout' first", st.ServerURL, st.NodeName)
+		return fmt.Errorf("profile %q is already logged in to %s as %q; run 'ws logout' first, or use another --profile", profName, st.ServerURL, st.NodeName)
 	}
 	if st == nil {
 		key, err := clientstate.NewMachineKey()
@@ -199,7 +213,20 @@ func cmdLogin(args []string) error {
 		return fmt.Errorf("registered, but saving state failed: %w", err)
 	}
 	fmt.Printf("logged in as %s (user %s), addresses %s\n", n.Name, n.User, strings.Join(n.Addresses, ", "))
-	if _, err := localapi.NewClient(localapi.SocketPath(path)).Prefs(); err == nil {
+	lc := localapi.NewClient(localapi.SocketPath(base))
+	_, running := lc.Prefs()
+	if *profile != "" {
+		// A new profile becomes the active one.
+		if running == nil {
+			if err := lc.Switch(profName); err != nil {
+				return err
+			}
+		} else if err := clientstate.SetCurrent(base, profName); err != nil {
+			return err
+		}
+		fmt.Printf("now using profile %q\n", profName)
+	}
+	if running == nil {
 		fmt.Println("wsd is running: start the tunnel with 'ws up'")
 	} else {
 		fmt.Println("next: start wsd (or 'wsd install-service'), then 'ws up'")
@@ -494,19 +521,25 @@ func cmdDown(args []string) error {
 	return nil
 }
 
+// loadState returns the active profile's state and the base state path
+// (which locates wsd's socket).
 func loadState() (*clientstate.State, string, error) {
-	path, err := clientstate.DefaultPath()
+	base, err := clientstate.DefaultPath()
 	if err != nil {
 		return nil, "", err
 	}
+	name, path := clientstate.Current(base)
 	st, err := clientstate.Load(path)
 	if err != nil {
 		return nil, "", err
 	}
 	if st == nil || st.NodeToken == "" {
+		if name != clientstate.DefaultProfile {
+			return nil, "", fmt.Errorf("profile %q is not logged in; run 'ws login --profile %s'", name, name)
+		}
 		return nil, "", errors.New("not logged in; run 'ws login'")
 	}
-	return st, path, nil
+	return st, base, nil
 }
 
 func cmdStatus(args []string) error {
@@ -540,6 +573,11 @@ func cmdStatus(args []string) error {
 			fmt.Println("last error:", s.LastError)
 		}
 		return nil
+	}
+	if base, err := clientstate.DefaultPath(); err == nil {
+		if name, _ := clientstate.Current(base); name != clientstate.DefaultProfile {
+			fmt.Printf("profile: %s (%s)\n", name, st.ServerURL)
+		}
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "\tNAME\tADDRESS\tUSER\tOS\tPATH\tLATENCY")
@@ -739,16 +777,30 @@ func first(ss []string) string {
 }
 
 func cmdLogout(args []string) error {
-	path, err := clientstate.DefaultPath()
+	base, err := clientstate.DefaultPath()
 	if err != nil {
 		return err
 	}
+	profName, path := clientstate.Current(base)
 	st, err := clientstate.Load(path)
 	if err != nil {
 		return err
 	}
 	if st == nil || st.NodeToken == "" {
 		fmt.Println("not logged in")
+		return nil
+	}
+	if profName != clientstate.DefaultProfile {
+		// Other profiles go entirely; the default profile becomes active.
+		lc := localapi.NewClient(localapi.SocketPath(base))
+		if _, err := lc.Prefs(); err == nil {
+			lc.Down()
+		}
+		if err := clientstate.RemoveProfile(base, profName); err != nil {
+			return err
+		}
+		fmt.Printf("removed profile %q; now using the default profile\n", profName)
+		fmt.Println("ask an admin to run 'whalescale nodes delete' to remove the node from that network")
 		return nil
 	}
 	// Keep the machine key; forget server credentials. Server-side removal
@@ -864,4 +916,62 @@ func cmdAccess(args []string) error {
 		return nil
 	}
 	return usage
+}
+
+func cmdProfiles(args []string) error {
+	base, err := clientstate.DefaultPath()
+	if err != nil {
+		return err
+	}
+	list, err := clientstate.Profiles(base)
+	if err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		fmt.Println("no profiles yet; run 'ws login'")
+		return nil
+	}
+	cur, _ := clientstate.Current(base)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "\tPROFILE\tSERVER\tMACHINE")
+	for _, p := range list {
+		mark, machine := "", p.State.NodeName
+		if p.Name == cur {
+			mark = "*"
+		}
+		if p.State.NodeToken == "" {
+			machine = "(logged out)"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", mark, p.Name, p.State.ServerURL, machine)
+	}
+	return tw.Flush()
+}
+
+func cmdSwitch(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: ws switch PROFILE (see 'ws profiles')")
+	}
+	name := args[0]
+	base, err := clientstate.DefaultPath()
+	if err != nil {
+		return err
+	}
+	if st, err := clientstate.Load(clientstate.ProfilePath(base, name)); err != nil {
+		return err
+	} else if st == nil || !clientstate.ValidProfileName(name) {
+		return fmt.Errorf("no profile %q; add it with 'ws login --profile %s --server URL'", name, name)
+	}
+	lc := localapi.NewClient(localapi.SocketPath(base))
+	if _, err := lc.Prefs(); err == nil {
+		if err := lc.Switch(name); err != nil {
+			return err
+		}
+		fmt.Printf("switched to %q\n", name)
+		return nil
+	}
+	if err := clientstate.SetCurrent(base, name); err != nil {
+		return err
+	}
+	fmt.Printf("switched to %q (wsd isn't running; it uses this profile when it starts)\n", name)
+	return nil
 }

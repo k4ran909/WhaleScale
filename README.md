@@ -70,6 +70,20 @@ ping laptop.whale.internal
 
 On Windows, unzip the release, put [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`, and in an Administrator terminal run `wsd install-service`, then `ws login --server ...` and `ws up`.
 
+### Several networks on one machine
+
+A machine can belong to more than one network (work, home, a customer's) and switch between them:
+
+```bash
+sudo ws login --profile work --server https://ws.work.example   # adds a profile and switches to it
+sudo ws profiles                                                # * marks the active one
+sudo ws switch default                                          # back to the first network
+```
+
+- **Separate identities:** each profile has its own machine identity, keys and settings.
+- **One at a time:** networks all use 100.64.0.0/10, so having two up at once would mix their routes and DNS. Switching takes a second or two.
+- **Logging out:** `ws logout` on an added profile removes it and returns to the default profile.
+
 ## Web console
 
 Served at the server's URL. Sign in with an API key (`whalescale apikeys create`), or with your identity provider if OIDC is configured (only emails in `oidc-admins` get in). Pages:

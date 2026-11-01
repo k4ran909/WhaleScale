@@ -290,7 +290,8 @@ func lockSign(ctx context.Context, admin whalescalev1connect.AdminServiceClient,
 // machine uses, the API key comes from apiKeyFile or $WS_API_KEY.
 func adminClient(server, apiKeyFile string) (whalescalev1connect.AdminServiceClient, string, error) {
 	if server == "" {
-		if path, err := clientstate.DefaultPath(); err == nil {
+		if base, err := clientstate.DefaultPath(); err == nil {
+			_, path := clientstate.Current(base)
 			if st, err := clientstate.Load(path); err == nil && st != nil {
 				server = st.ServerURL
 			}

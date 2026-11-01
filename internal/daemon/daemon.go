@@ -59,13 +59,13 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go srv.Serve(ln)
 	defer srv.Close()
 
-	st, err := clientstate.Load(d.opts.StatePath)
+	st, err := clientstate.Load(d.statePath())
 	if err != nil {
 		return err
 	}
 	switch {
 	case st == nil || st.NodeToken == "":
-		d.log.Info("not logged in yet; waiting for 'ws login' then 'ws up'", "state", d.opts.StatePath)
+		d.log.Info("not logged in yet; waiting for 'ws login' then 'ws up'", "state", d.statePath())
 	case st.Prefs.Down:
 		d.log.Info("tunnel is down (ws down); run 'ws up' to start it")
 	default:
@@ -79,6 +79,41 @@ func (d *Daemon) Run(ctx context.Context) error {
 	defer d.mu.Unlock()
 	d.stopLocked()
 	return nil
+}
+
+// statePath is the active profile's state file (see clientstate profiles);
+// opts.StatePath is the base, which also fixes the socket's location.
+func (d *Daemon) statePath() string {
+	_, p := clientstate.Current(d.opts.StatePath)
+	return p
+}
+
+// Switch makes another profile (network) active: the tunnel stops, and
+// starts again on the new profile if it is logged in and not set down.
+func (d *Daemon) Switch(name string) error {
+	if !clientstate.ValidProfileName(name) {
+		return fmt.Errorf("invalid profile name %q", name)
+	}
+	if _, err := os.Stat(clientstate.ProfilePath(d.opts.StatePath, name)); err != nil {
+		return fmt.Errorf("no profile %q; add it with 'ws login --profile %s'", name, name)
+	}
+	d.mu.Lock()
+	d.stopLocked()
+	d.st = nil
+	err := clientstate.SetCurrent(d.opts.StatePath, name)
+	d.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	st, err := clientstate.Load(d.statePath())
+	if err != nil {
+		return err
+	}
+	d.log.Info("switched profile", "profile", name)
+	if st == nil || st.NodeToken == "" || st.Prefs.Down {
+		return nil
+	}
+	return d.Up(st.Prefs)
 }
 
 func (d *Daemon) stopLocked() {
@@ -99,7 +134,7 @@ func (d *Daemon) Prefs() clientstate.Prefs {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.st == nil {
-		if st, err := clientstate.Load(d.opts.StatePath); err == nil && st != nil {
+		if st, err := clientstate.Load(d.statePath()); err == nil && st != nil {
 			return st.Prefs
 		}
 		return clientstate.Prefs{}
@@ -116,7 +151,7 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	st, err := clientstate.Load(d.opts.StatePath)
+	st, err := clientstate.Load(d.statePath())
 	if err != nil {
 		return err
 	}
@@ -125,12 +160,12 @@ func (d *Daemon) Up(p clientstate.Prefs) error {
 	}
 	p.Down = false
 	st.Prefs = p
-	if err := clientstate.Save(d.opts.StatePath, st); err != nil {
+	if err := clientstate.Save(d.statePath(), st); err != nil {
 		return err
 	}
 	d.stopLocked()
 	eng, err := engine.New(engine.Options{
-		State: st, StatePath: d.opts.StatePath, Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
+		State: st, StatePath: d.statePath(), Userspace: d.opts.Userspace, TUNName: d.opts.TUNName,
 		Port: d.opts.Port, Log: d.log, AdvertiseRoutes: routes, AcceptRoutes: p.AcceptRoutes,
 		ExitNode: p.ExitNode, Exposures: p.Exposures, OfferRelay: p.Relay, PortMap: d.opts.PortMap, SSH: p.SSH,
 	})
@@ -151,14 +186,14 @@ func (d *Daemon) Down() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.stopLocked()
-	st, err := clientstate.Load(d.opts.StatePath)
+	st, err := clientstate.Load(d.statePath())
 	if err != nil || st == nil {
 		return err
 	}
 	st.Prefs.Down = true
 	d.st = st
 	d.log.Info("tunnel down")
-	return clientstate.Save(d.opts.StatePath, st)
+	return clientstate.Save(d.statePath(), st)
 }
 
 // ParseRoutes validates advertised routes.
