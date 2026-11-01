@@ -558,15 +558,22 @@ func TestPeerRelay(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	nodes, _ := n.store.ListNodes(ctx, "")
-	for _, nd := range nodes {
-		if nd.Name == "relay-vps" {
-			if !nd.RelayOffered {
-				t.Fatal("relay offer never reached the server")
+	var relay *store.Node
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		nodes, _ := n.store.ListNodes(ctx, "")
+		for i := range nodes {
+			if nodes[i].Name == "relay-vps" {
+				relay = &nodes[i]
 			}
-			if err := n.store.SetRelayApproved(ctx, nd.ID, true); err != nil {
+		}
+		if relay != nil && relay.RelayOffered {
+			if err := n.store.SetRelayApproved(ctx, relay.ID, true); err != nil {
 				t.Fatal(err)
 			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("relay offer never reached the server")
 		}
 	}
 
@@ -587,11 +594,7 @@ func TestPeerRelay(t *testing.T) {
 
 	// Taking the approval away stops relaying; traffic falls back to the
 	// server relay rather than breaking.
-	for _, nd := range nodes {
-		if nd.Name == "relay-vps" {
-			n.store.SetRelayApproved(ctx, nd.ID, false)
-		}
-	}
+	n.store.SetRelayApproved(ctx, relay.ID, false)
 	waitPath(t, a, "cgnat-b", "relay")
 	if err := roundTrip(a, b, 8443, 15*time.Second); err != nil {
 		t.Fatalf("TCP after relay withdrawal: %v", err)

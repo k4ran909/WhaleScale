@@ -62,9 +62,18 @@ type Service struct {
 	policyStatus func() PolicyStatus
 
 	version atomic.Uint64
+	// storeDirty means stored node data may have changed since the last
+	// snapshot read it. Policy pushes and online changes don't set it, so
+	// they skip the database entirely.
+	storeDirty atomic.Bool
 
-	mu      sync.Mutex
-	subs    map[uint64]map[chan struct{}]bool // node ID -> stream wake-ups
+	snapMu sync.Mutex
+	snap   *snapshot
+
+	mu sync.Mutex
+	// changed is closed and replaced on every change: one broadcast wakes
+	// every stream, at a cost that doesn't grow with the network.
+	changed chan struct{}
 	online  map[uint64]int
 	paths   map[uint64]pathSet // node ID -> latest report
 	pending map[string]*pendingReg
@@ -82,6 +91,10 @@ type pathSet struct {
 type Stats struct {
 	Registrations atomic.Uint64
 	MapsSent      atomic.Uint64
+	// Snapshots counts network snapshots built (one per batch of changes).
+	Snapshots atomic.Uint64
+	// Compiles counts policy compilations; endpoint changes don't cause one.
+	Compiles atomic.Uint64
 }
 
 // pendingReg is a node registration waiting for a browser login.
@@ -101,9 +114,10 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 		cfg.DNSSuffix = "whale.internal"
 	}
 	svc := &Service{store: s, log: log, cfg: cfg, policy: policy.AllowAll(), policySource: "default",
-		subs: map[uint64]map[chan struct{}]bool{}, online: map[uint64]int{},
+		changed: make(chan struct{}), online: map[uint64]int{},
 		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{}}
 	svc.version.Store(1)
+	svc.storeDirty.Store(true)
 	return svc
 }
 
@@ -113,7 +127,7 @@ func (s *Service) SetPolicy(p *policy.Policy, text, source string) {
 	s.policyMu.Lock()
 	s.policy, s.policyText, s.policySource = p, text, source
 	s.policyMu.Unlock()
-	s.NotifyAll()
+	s.notify(false)
 }
 
 // PolicyStatus describes a policy synced from a URL.
@@ -145,19 +159,28 @@ func (s *Service) Policy() (text, source string) {
 	return s.policyText, s.policySource
 }
 
-// NotifyAll wakes every open stream to send a new network map.
-func (s *Service) NotifyAll() {
+// NotifyAll tells every open stream that stored data changed, so each
+// node gets whatever part of the change concerns it.
+func (s *Service) NotifyAll() { s.notify(true) }
+
+// notify starts a new map version and wakes every stream. storeChanged
+// says whether the database must be read again.
+func (s *Service) notify(storeChanged bool) {
+	if storeChanged {
+		s.storeDirty.Store(true)
+	}
 	s.version.Add(1)
 	s.mu.Lock()
+	close(s.changed)
+	s.changed = make(chan struct{})
+	s.mu.Unlock()
+}
+
+// changes returns a channel that is closed at the next NotifyAll.
+func (s *Service) changes() <-chan struct{} {
+	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, chans := range s.subs {
-		for ch := range chans {
-			select {
-			case ch <- struct{}{}:
-			default:
-			}
-		}
-	}
+	return s.changed
 }
 
 func (s *Service) Register(ctx context.Context, req *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
@@ -475,10 +498,15 @@ func (s *Service) GetNetworkMap(ctx context.Context, req *connect.Request[v1.Get
 	if err != nil {
 		return nil, err
 	}
-	nm, err := s.buildMap(ctx, self.ID)
+	snap, err := s.snapshot()
 	if err != nil {
 		return nil, err
 	}
+	i, ok := snap.index[self.ID]
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("node was deleted"))
+	}
+	nm := fullMap(snap, i, &v1.NetworkMap{})
 	return connect.NewResponse(&v1.GetNetworkMapResponse{Self: nm.Self, Peers: nm.Peers}), nil
 }
 
@@ -487,42 +515,49 @@ func (s *Service) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.
 	if err != nil {
 		return err
 	}
-	wake := make(chan struct{}, 1)
+	return s.runMapStream(ctx, self.ID, req.Msg.Deltas, stream.Send)
+}
+
+// runMapStream sends node id its map, then an update whenever something
+// relevant to it changes, until ctx ends or send fails.
+func (s *Service) runMapStream(ctx context.Context, id uint64, deltas bool, send func(*v1.StreamNetworkMapResponse) error) error {
 	s.mu.Lock()
-	if s.subs[self.ID] == nil {
-		s.subs[self.ID] = map[chan struct{}]bool{}
-	}
-	s.subs[self.ID][wake] = true
-	s.online[self.ID]++
-	firstStream := s.online[self.ID] == 1
+	s.online[id]++
+	firstStream := s.online[id] == 1
 	s.mu.Unlock()
 	if firstStream {
-		s.NotifyAll() // peers learn we're online
+		s.notify(false) // peers learn we're online
 	}
 	defer func() {
 		s.mu.Lock()
-		delete(s.subs[self.ID], wake)
-		s.online[self.ID]--
-		gone := s.online[self.ID] == 0
+		s.online[id]--
+		gone := s.online[id] == 0
 		if gone {
-			delete(s.online, self.ID)
-			delete(s.subs, self.ID)
+			delete(s.online, id)
 		}
 		s.mu.Unlock()
 		if gone {
-			s.NotifyAll()
+			s.notify(false)
 		}
 	}()
 
-	send := func() error {
-		nm, err := s.buildMap(ctx, self.ID)
+	m := &mapStream{id: id, deltas: deltas}
+	// Taken before each push, so a change during the push isn't missed.
+	wake := s.changes()
+	push := func() error {
+		snap, err := s.snapshot()
 		if err != nil {
 			return err
 		}
+		resp, err := s.next(m, snap)
+		if err != nil || resp == nil {
+			return err
+		}
 		s.stats.MapsSent.Add(1)
-		return stream.Send(&v1.StreamNetworkMapResponse{NetworkMap: nm})
+		pack(resp, snap)
+		return send(resp)
 	}
-	if err := send(); err != nil {
+	if err := push(); err != nil {
 		return err
 	}
 	t := time.NewTicker(keepAliveInterval)
@@ -532,96 +567,16 @@ func (s *Service) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.
 		case <-ctx.Done():
 			return nil
 		case <-wake:
-			if err := send(); err != nil {
+			wake = s.changes()
+			if err := push(); err != nil {
 				return err
 			}
 		case <-t.C:
-			if err := stream.Send(&v1.StreamNetworkMapResponse{KeepAlive: true}); err != nil {
+			if err := send(&v1.StreamNetworkMapResponse{KeepAlive: true}); err != nil {
 				return err
 			}
 		}
 	}
-}
-
-// buildMap computes the network map for one node under the current policy.
-func (s *Service) buildMap(ctx context.Context, selfID uint64) (*v1.NetworkMap, error) {
-	all, err := s.store.ListNodes(ctx, "")
-	if err != nil {
-		s.log.Error("list nodes", "err", err)
-		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
-	}
-	pnodes := PolicyNodes(all)
-	var self *store.Node
-	for i := range all {
-		n := &all[i]
-		if n.ID == selfID {
-			self = n
-		}
-	}
-	if self == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("node was deleted"))
-	}
-	s.policyMu.RLock()
-	compiled := s.policy.Compile(pnodes)
-	s.policyMu.RUnlock()
-
-	nm := &v1.NetworkMap{
-		Self:    s.toProto(self),
-		Dns:     &v1.DNSConfig{Suffix: s.cfg.DNSSuffix},
-		Relays:  s.cfg.Relays,
-		Stun:    s.cfg.STUN,
-		Version: s.version.Load(),
-		// An empty, non-nil filter means deny-all inbound.
-		PacketFilter: []*v1.FilterRule{},
-	}
-	for i := range all {
-		n := &all[i]
-		if n.ID != selfID && compiled.Peers[selfID][n.ID] {
-			nm.Peers = append(nm.Peers, s.toProto(n))
-		}
-	}
-	for _, r := range compiled.Rules[selfID] {
-		fr := &v1.FilterRule{}
-		for _, p := range r.Src {
-			fr.SrcPrefixes = append(fr.SrcPrefixes, p.String())
-		}
-		for _, p := range r.Dst {
-			fr.DstPrefixes = append(fr.DstPrefixes, p.String())
-		}
-		for _, pr := range r.Ports {
-			fr.Ports = append(fr.Ports, &v1.PortRange{First: uint32(pr.First), Last: uint32(pr.Last)})
-		}
-		nm.PacketFilter = append(nm.PacketFilter, fr)
-	}
-	nm.RelayOffered, nm.RelayApproved = self.RelayOffered, self.RelayApproved
-	nm.FlowLogs = s.cfg.FlowLogs
-	nm.QuicRelay, nm.QuicRelayCertSha256 = s.cfg.QUICRelay, s.cfg.QUICRelayPin
-	for _, r := range compiled.SSH[selfID] {
-		sr := &v1.SSHRule{Users: r.Users, Record: r.Record}
-		for _, p := range r.Src {
-			sr.SrcPrefixes = append(sr.SrcPrefixes, p.String())
-		}
-		nm.SshRules = append(nm.SshRules, sr)
-	}
-	for i := range all {
-		n := &all[i]
-		if n.ID == selfID || n.NodeKey == "" || n.DiscoKey == "" {
-			continue
-		}
-		if n.RelayOffered && n.RelayApproved {
-			nm.PeerRelays = append(nm.PeerRelays, &v1.PeerRelay{Name: n.Name, NodeKey: n.NodeKey, DiscoKey: n.DiscoKey,
-				Endpoints: n.Endpoints})
-		}
-		// A relay serves every node: it only forwards ciphertext, and who
-		// may talk to whom is still enforced by WireGuard and the filter.
-		if self.RelayOffered && self.RelayApproved {
-			nm.RelayClients = append(nm.RelayClients, &v1.RelayClient{NodeKey: n.NodeKey, DiscoKey: n.DiscoKey})
-		}
-	}
-	if err := s.addExposures(ctx, nm, selfID); err != nil {
-		s.log.Error("list exposures", "err", err)
-	}
-	return nm, nil
 }
 
 // PolicyNodes converts stored nodes to what the policy engine needs.
@@ -686,38 +641,6 @@ func (s *Service) exposureURL(name string) string {
 	return "https://" + name + "." + s.cfg.GatewayDomain
 }
 
-// addExposures puts the node's exposures, and why any aren't live, into
-// its network map.
-func (s *Service) addExposures(ctx context.Context, nm *v1.NetworkMap, selfID uint64) error {
-	list, err := s.store.NodeExposures(ctx, selfID)
-	if err != nil {
-		return err
-	}
-	if s.cfg.GatewayDomain != "" {
-		nm.GatewayUrl = s.cfg.GatewayURL
-	}
-	for _, e := range list {
-		if !e.Advertised {
-			continue
-		}
-		x := &v1.Exposure{Name: e.Name, Port: uint32(e.Port), Approved: e.Approved, Url: s.exposureURL(e.Name)}
-		switch {
-		case s.cfg.GatewayDomain == "":
-			x.Problem = "the server has no gateway domain configured"
-		case !e.Approved:
-			x.Problem = "waiting for an admin to approve it"
-		}
-		nm.Exposures = append(nm.Exposures, x)
-	}
-	s.mu.Lock()
-	taken := s.taken[selfID]
-	s.mu.Unlock()
-	for _, name := range taken {
-		nm.Exposures = append(nm.Exposures, &v1.Exposure{Name: name, Problem: "name taken by another machine"})
-	}
-	return nil
-}
-
 // parseAdvertised validates routes a node offers. Routes into the mesh's own
 // ranges would loop traffic back into the tunnel, so they are refused.
 func parseAdvertised(ss []string, mesh6 netip.Prefix) ([]netip.Prefix, error) {
@@ -762,6 +685,10 @@ func (s *Service) toProto(n *store.Node) *v1.Node {
 	s.mu.Lock()
 	online := s.online[n.ID] > 0
 	s.mu.Unlock()
+	return s.nodeProto(n, online)
+}
+
+func (s *Service) nodeProto(n *store.Node, online bool) *v1.Node {
 	var routes, advertised []string
 	exit := false
 	for _, r := range n.Routes {

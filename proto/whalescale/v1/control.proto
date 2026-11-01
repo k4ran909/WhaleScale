@@ -127,12 +127,40 @@ message GetNetworkMapResponse {
   repeated Node peers = 2;
 }
 
-message StreamNetworkMapRequest {}
+message StreamNetworkMapRequest {
+  // The client applies NetworkMapDelta messages. Without this the server
+  // sends a complete map whenever something relevant to the node changes.
+  bool deltas = 1;
+}
 
 message StreamNetworkMapResponse {
-  // Empty on keep-alive messages.
+  // A complete map. With deltas, only the first message on a stream.
   NetworkMap network_map = 1;
   bool keep_alive = 2;
+  // A change to the map built from the previous messages on this stream.
+  NetworkMapDelta delta = 3;
+}
+
+// NetworkMapDelta carries only what changed for one node, so a change to
+// one machine, or a policy push, costs bytes in proportion to its effect
+// rather than to the size of the network.
+message NetworkMapDelta {
+  uint64 version = 1;
+  // Set when this node's own entry changed.
+  Node self = 2;
+  // Peers that are new or changed (complete entries), and peer IDs that
+  // are no longer visible.
+  repeated Node peers_changed = 3;
+  repeated uint64 peers_removed = 4;
+  // Set when the packet filter changed. An empty list means deny all.
+  PacketFilter packet_filter = 5;
+  // Set when anything else changed. Replaces every NetworkMap field except
+  // self, peers, packet_filter and version.
+  NetworkMap settings = 6;
+}
+
+message PacketFilter {
+  repeated FilterRule rules = 1;
 }
 
 message NetworkMap {

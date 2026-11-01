@@ -41,10 +41,10 @@ func TestCompile(t *testing.T) {
 	}
 	c := p.Compile(testNodes)
 
-	if !c.Peers[2][3] || !c.Peers[3][2] {
+	if !c.CanTalk(2, 3) || !c.CanTalk(3, 2) {
 		t.Fatal("bob and nas should be peers")
 	}
-	if !c.Peers[1][2] {
+	if !c.CanTalk(1, 2) {
 		t.Fatal("alice-pc should see bob-pc (admins -> *)")
 	}
 
@@ -70,8 +70,8 @@ func TestCompile(t *testing.T) {
 func TestAllowAll(t *testing.T) {
 	c := AllowAll().Compile(testNodes)
 	for _, n := range testNodes {
-		if len(c.Peers[n.ID]) != len(testNodes)-1 {
-			t.Fatalf("node %d peers = %v", n.ID, c.Peers[n.ID])
+		if len(c.Peers(n.ID)) != len(testNodes)-1 {
+			t.Fatalf("node %d peers = %v", n.ID, c.Peers(n.ID))
 		}
 	}
 }
@@ -99,7 +99,7 @@ func TestRoutedSubnets(t *testing.T) {
 	if len(rules) != 1 || len(rules[0].Dst) != 1 || rules[0].Dst[0] != netip.MustParsePrefix("192.168.1.10/32") {
 		t.Fatalf("router rules = %+v", rules)
 	}
-	if !c.Peers[1][2] {
+	if !c.CanTalk(1, 2) {
 		t.Fatal("laptop must see the router to reach the subnet")
 	}
 	// A user selector grants the router's own addresses, not its subnet.
@@ -141,7 +141,7 @@ func TestSSHRules(t *testing.T) {
 	for _, r := range c.Rules[3] {
 		opened = opened || (len(r.Ports) == 1 && r.Ports[0] == PortRange{First: 22, Last: 22})
 	}
-	if !opened || !c.Peers[1][3] {
+	if !opened || !c.CanTalk(1, 3) {
 		t.Fatalf("ssh rule did not open port 22: %+v", c.Rules[3])
 	}
 

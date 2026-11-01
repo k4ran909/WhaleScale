@@ -247,6 +247,20 @@ guest → karan port 22: DENIED  (using the policy saved in the console)
 
 The console's Access policy page has the same "Explain access" panel, and it evaluates your unsaved edits. For subnet addresses, explain also warns when the policy allows something that no approved router serves.
 
+## Scale
+
+Each change to the network (a node coming online, an endpoint moving, a policy push) is turned into one shared snapshot. Every node then gets only the part that concerns it: changed peers, a new packet filter, or nothing at all. The policy compiler works on groups of nodes with identical access rather than on node pairs, and merges source addresses into CIDRs, so `"*"` over 10,000 machines costs a few prefixes rather than 20,000.
+
+`make loadtest` connects 10,010 simulated nodes (100 teams, shared servers) to one control server and times policy pushes. On a laptop (i5-10200H):
+
+| | Time to reach all 10,010 nodes | Sent |
+|---|---|---|
+| Policy push changing ports | ~100 ms | 4 MB |
+| Policy push giving every node 100 more peers | ~370 ms | 390 MB |
+| All nodes connecting at once | ~0.5 s | 240 MB |
+
+Older clients that don't ask for deltas still get complete maps, now only when something relevant to them changed.
+
 ## Operations
 
 | Command | What |
@@ -258,7 +272,7 @@ The console's Access policy page has the same "Explain access" panel, and it eva
 | `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
 | `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
-| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic |
+| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots and policy compiles |
 
 ## Layout
 
@@ -269,7 +283,8 @@ The console's Access policy page has the same "Explain access" panel, and it eva
 | `web/` | Console source (React + TS); `web/dist` is the committed build embedded in the server |
 | `deploy/` | Docker Compose, install script, systemd unit, example config |
 | `internal/store`, `internal/config` | SQLite + migrations; config layering |
-| `internal/control`, `internal/server` | Control and admin APIs, OIDC, console, metrics |
+| `internal/control`, `internal/server` | Control and admin APIs, network snapshots and deltas, OIDC, console, metrics |
+| `internal/netmap` | Client side of map deltas |
 | `internal/policy`, `internal/filter` | ACL compiler; stateful packet filter |
 | `internal/meshconn`, `internal/disco`, `internal/stun`, `internal/relay` | Paths: direct vs relay |
 | `internal/engine`, `internal/daemon`, `internal/localapi` | Agent core, lifecycle, `ws` ↔ `wsd` API |

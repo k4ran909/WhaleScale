@@ -38,6 +38,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/gateway"
 	"github.com/k4ran909/whalescale/internal/key"
 	"github.com/k4ran909/whalescale/internal/meshconn"
+	"github.com/k4ran909/whalescale/internal/netmap"
 	"github.com/k4ran909/whalescale/internal/osnet"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/portmap"
@@ -376,19 +377,31 @@ func (e *Engine) mapLoop() {
 }
 
 func (e *Engine) streamOnce() error {
-	req := connect.NewRequest(&v1.StreamNetworkMapRequest{})
+	req := connect.NewRequest(&v1.StreamNetworkMapRequest{Deltas: true})
 	e.authed(req)
 	stream, err := e.api.StreamNetworkMap(e.ctx, req)
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
+	// The map as built from this stream's messages: a full map first, then
+	// deltas against it.
+	var nm *v1.NetworkMap
 	for stream.Receive() {
 		msg := stream.Msg()
-		if msg.KeepAlive || msg.NetworkMap == nil {
+		switch {
+		case msg.NetworkMap != nil:
+			nm = msg.NetworkMap
+		case msg.Delta != nil:
+			next, err := netmap.Apply(nm, msg.Delta)
+			if err != nil {
+				return err
+			}
+			nm = next
+		default:
 			continue
 		}
-		if err := e.apply(msg.NetworkMap); err != nil {
+		if err := e.apply(nm); err != nil {
 			e.log.Error("apply network map", "err", err)
 			e.mu.Lock()
 			e.lastErr = err.Error()
