@@ -55,6 +55,24 @@ jobs:
           npm run build
           git diff --exit-code -- dist/ || { echo "web/dist is stale: run 'make web' and commit"; exit 1; }
 
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform/go.mod
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Provider acceptance tests (against a real in-process server)
+        working-directory: terraform
+        env:
+          TF_ACC: "1"
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+
   helm:
     runs-on: ubuntu-latest
     steps:

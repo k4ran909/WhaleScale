@@ -1,7 +1,7 @@
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS := -s -w -X github.com/k4ran909/whalescale/internal/version.Commit=$(COMMIT)
 
-.PHONY: build test generate lint clean web docker loadtest
+.PHONY: build test generate lint clean web docker loadtest terraform
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
@@ -16,6 +16,11 @@ generate:
 # Policy pushes to 10,010 simulated nodes (WHALESCALE_LOADTEST_NODES to change).
 loadtest:
 	WHALESCALE_LOADTEST_STRICT=1 go test ./internal/control/ -run TestLoad10k -v -count=1
+
+# The Terraform provider (its own module) and its acceptance tests, which
+# need terraform or tofu on PATH (or TF_ACC_TERRAFORM_PATH).
+terraform:
+	cd terraform && go build -o ../bin/ . && TF_ACC=1 go test -count=1 ./...
 
 lint:
 	go vet ./...
