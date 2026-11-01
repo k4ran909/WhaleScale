@@ -1,0 +1,87 @@
+# Whalescale server. Required: publicURL.
+#
+# One release is one server. For failover, install the chart twice (with
+# different publicURLs) against the same PostgreSQL database.
+
+image:
+  repository: ghcr.io/k4ran909/whalescale
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The HTTPS address machines and browsers use, e.g. https://ws.example.com.
+publicURL: ""
+
+database:
+  # Empty: SQLite on the persistent volume. Or a postgres:// URL (for
+  # several servers sharing one network); it is stored in a Secret.
+  url: ""
+  # Or name an existing Secret holding the URL under existingSecretKey.
+  existingSecret: ""
+  existingSecretKey: url
+
+# Browser login with any OpenID Connect provider (optional).
+oidc:
+  issuer: ""
+  clientID: ""
+  clientSecret: ""
+  # Or an existing Secret holding the client secret under existingSecretKey.
+  existingSecret: ""
+  existingSecretKey: client-secret
+  admins: []
+  allowedDomains: []
+
+# Any other 'whalescale serve' setting, written to its config file, e.g.:
+#   post-quantum: true
+#   flow-logs: true
+#   gateway-domain: apps.example.com
+#   policy-url: https://raw.githubusercontent.com/you/infra/main/policy.json
+config: {}
+
+persistence:
+  # Holds the SQLite database (when database.url is empty), SSH recordings
+  # and ACME certificates. Without it they live in an emptyDir.
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+# Console, admin API and the WebSocket relay (HTTP; put TLS in front with
+# the ingress or your own proxy).
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+# STUN (3478, 3479) and the QUIC relay (3480) are UDP and must be reachable
+# from the internet directly. Local traffic policy keeps clients' real
+# addresses, which STUN reports back to them.
+udp:
+  enabled: true
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  loadBalancerIP: ""
+  annotations: {}
+  # The DNS name or IP machines use for these ports, if not publicURL's host
+  # (for example when HTTPS arrives through an ingress on another address).
+  host: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Secret with the certificate for publicURL's host (e.g. from cert-manager).
+  tlsSecretName: ""
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

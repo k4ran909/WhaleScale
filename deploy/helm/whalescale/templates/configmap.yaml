@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "whalescale.fullname" . }}
+  labels:
+    {{- include "whalescale.labels" . | nindent 4 }}
+data:
+  # 'whalescale serve' settings. The database, listen addresses and
+  # directories come from the image and the pod's environment.
+  config.yaml: |
+    public-url: {{ required "publicURL is required, e.g. --set publicURL=https://ws.example.com" .Values.publicURL | quote }}
+    {{- if .Values.udp.host }}
+    udp-host: {{ .Values.udp.host | quote }}
+    {{- end }}
+    {{- with .Values.oidc }}
+    {{- if .issuer }}
+    oidc-issuer: {{ .issuer | quote }}
+    oidc-client-id: {{ required "oidc.clientID is required with oidc.issuer" .clientID | quote }}
+    {{- with .admins }}
+    oidc-admins: {{ toJson . }}
+    {{- end }}
+    {{- with .allowedDomains }}
+    oidc-allowed-domains: {{ toJson . }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.config }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}

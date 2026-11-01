@@ -1,0 +1,10 @@
+apiVersion: v2
+name: whalescale
+description: Self-hosted mesh VPN control server (control plane, relay, STUN, web console)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/k4ran909/WhaleScale
+sources:
+  - https://github.com/k4ran909/WhaleScale
+keywords: [vpn, wireguard, mesh, tailscale, headscale]

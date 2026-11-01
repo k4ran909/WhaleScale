@@ -55,6 +55,21 @@ jobs:
           npm run build
           git diff --exit-code -- dist/ || { echo "web/dist is stale: run 'make web' and commit"; exit 1; }
 
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.22.1
+      - name: Lint and render the chart
+        run: |
+          helm lint --strict deploy/helm/whalescale --set publicURL=https://ws.example.com
+          helm template ws deploy/helm/whalescale --set publicURL=https://ws.example.com \
+            --set database.url=postgres://ws@db/ws --set ingress.enabled=true \
+            --set oidc.issuer=https://auth.example.com --set oidc.clientID=ws --set oidc.clientSecret=x > /dev/null
+          ! helm template ws deploy/helm/whalescale > /dev/null 2>&1 # publicURL is required
+
   build:
     needs: test
     runs-on: ubuntu-latest

@@ -1,0 +1,23 @@
+Whalescale is starting at {{ .Values.publicURL }}.
+
+1. DNS: point {{ include "whalescale.publicHost" . }} at your ingress (HTTPS){{ if .Values.udp.enabled }}, and UDP 3478-3480 at the
+   {{ include "whalescale.fullname" . }}-udp load balancer:
+
+     kubectl get svc {{ include "whalescale.fullname" . }}-udp -n {{ .Release.Namespace }}
+
+   If that address isn't where {{ include "whalescale.publicHost" . }} points, set udp.host to it (or to a DNS name for it).{{ end }}
+
+2. Create a user and a key to add machines:
+
+     kubectl exec -n {{ .Release.Namespace }} {{ include "whalescale.fullname" . }}-0 -- whalescale users create you
+     kubectl exec -n {{ .Release.Namespace }} {{ include "whalescale.fullname" . }}-0 -- whalescale preauthkeys create --user you
+
+   and an API key to sign in to the console:
+
+     kubectl exec -n {{ .Release.Namespace }} {{ include "whalescale.fullname" . }}-0 -- whalescale apikeys create
+
+3. On each machine: ws login --server {{ .Values.publicURL }} --authkey <key>
+{{- if not (include "whalescale.usesPostgres" .) }}
+
+The database is SQLite on the {{ if .Values.persistence.enabled }}persistent volume{{ else }}pod's emptyDir, which is lost with the pod: enable persistence{{ end }}.
+{{- end }}

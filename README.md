@@ -40,6 +40,22 @@ sudo systemctl enable --now whalescale
 sudo whalescale doctor                        # checks health, TLS expiry, relays (WebSocket and QUIC), both STUN ports, OIDC
 ```
 
+### Kubernetes (Helm)
+
+```bash
+helm install ws deploy/helm/whalescale \
+  --set publicURL=https://ws.example.com \
+  --set ingress.enabled=true --set ingress.className=nginx --set ingress.tlsSecretName=ws-tls
+```
+
+- **Two services:** HTTPS (console, API, WebSocket relay) goes through your ingress. STUN and the QUIC relay are UDP, so they get a `LoadBalancer` service (`ws-whalescale-udp`, ports 3478–3480) with `externalTrafficPolicy: Local`, which keeps machines' real addresses visible to STUN.
+- **DNS:** point the public hostname at the ingress. If the UDP load balancer has a different address, set `udp.host` to it.
+- **Database:** SQLite on a persistent volume by default. With `database.url` (or an existing Secret) it uses PostgreSQL.
+- **Failover:** install a second release with its own `publicURL` against the same PostgreSQL database.
+- **Other settings:** `config:` takes any other server setting (`post-quantum: true`, `flow-logs: true`, `policy-url`, ...), and `oidc:` sets up browser login.
+- **Hardened pod:** runs as non-root with a read-only root filesystem and no service-account token.
+- **Images:** release builds publish `ghcr.io/k4ran909/whalescale` for amd64 and arm64.
+
 Settings layer as: config file, then `conf.d/*.yaml` (upgrades never touch these), then `WHALESCALE_*` environment variables, then flags. Unknown keys are errors.
 
 ## Adding devices
@@ -440,7 +456,7 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 | `cmd/whalescale`, `cmd/wsd`, `cmd/ws` | Server, agent, CLI |
 | `proto/`, `gen/` | APIs (protobuf / Connect-RPC) and generated code |
 | `web/` | Console source (React + TS); `web/dist` is the committed build embedded in the server |
-| `deploy/` | Docker Compose, install script, systemd unit, example config |
+| `deploy/` | Docker Compose, Helm chart, install script, systemd unit, example config |
 | `internal/store`, `internal/config` | SQLite + migrations; config layering |
 | `internal/control`, `internal/server` | Control and admin APIs, network snapshots and deltas, OIDC, console, metrics |
 | `internal/netmap` | Client side of map deltas |

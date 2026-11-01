@@ -37,7 +37,7 @@ type serveOpts struct {
 	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
 	policyURL, policyTokenFile, webhookSecretFile            string
 	policySyncInterval                                       time.Duration
-	relayQUICListen                                          string
+	relayQUICListen, udpHost                                 string
 	console, tlsACME, flowLogs, postQuantum                  bool
 	flowRetention                                            time.Duration
 }
@@ -50,6 +50,7 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.StringVar(&o.db, "db", "whalescale.db", "SQLite database path, or a postgres:// URL (servers on several hosts share one)")
 	fs.StringVar(&o.listen, "listen", ":8080", "HTTP(S) listen address")
 	fs.StringVar(&o.publicURL, "public-url", "", "URL nodes and browsers use to reach this server (default: derived from --listen)")
+	fs.StringVar(&o.udpHost, "udp-host", "", "host or IP machines reach STUN and the QUIC relay at (default: the public-url host); set it when UDP arrives elsewhere than HTTPS, such as a separate load balancer")
 	fs.StringVar(&o.relayQUICListen, "relay-quic-listen", ":3480", "UDP address for the QUIC relay (faster than the WebSocket relay); empty disables")
 	fs.StringVar(&o.stunListen, "stun-listen", ":3478", "comma-separated UDP addresses for STUN; two ports let nodes detect symmetric NAT; empty disables")
 	fs.StringVar(&o.dnsSuffix, "dns-suffix", "whale.internal", "MagicDNS domain suffix")
@@ -227,7 +228,7 @@ func cmdConfigtest(args []string) error {
 		"post-quantum": fmt.Sprint(o.postQuantum), "flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
 		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
 		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
-		"relay-quic-listen": o.relayQUICListen,
+		"relay-quic-listen": o.relayQUICListen, "udp-host": o.udpHost,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -281,6 +282,10 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	udpHost := pu.Hostname()
+	if o.udpHost != "" {
+		udpHost = o.udpHost
+	}
 	var stunAdvertise []string
 	for _, a := range splitList(o.stunListen) {
 		pc, err := net.ListenPacket("udp", a)
@@ -288,7 +293,7 @@ func cmdServe(args []string) error {
 			return fmt.Errorf("stun listen %s: %w", a, err)
 		}
 		_, port, _ := net.SplitHostPort(pc.LocalAddr().String())
-		stunAdvertise = append(stunAdvertise, net.JoinHostPort(pu.Hostname(), port))
+		stunAdvertise = append(stunAdvertise, net.JoinHostPort(udpHost, port))
 		go func() {
 			if err := stun.Serve(ctx, pc, log); err != nil {
 				log.Error("stun", "err", err)
@@ -307,7 +312,7 @@ func cmdServe(args []string) error {
 			return fmt.Errorf("relay-quic-listen %s: %w", o.relayQUICListen, err)
 		}
 		_, port, _ := net.SplitHostPort(quicPC.LocalAddr().String())
-		cfg.RelayQUICAddr = net.JoinHostPort(pu.Hostname(), port)
+		cfg.RelayQUICAddr = net.JoinHostPort(udpHost, port)
 	}
 	if o.policyURL != "" {
 		ps := &server.PolicySyncConfig{URL: o.policyURL, Interval: o.policySyncInterval}
