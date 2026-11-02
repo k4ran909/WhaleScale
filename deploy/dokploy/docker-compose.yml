@@ -40,6 +40,23 @@ services:
       - "3479:3479/udp" # second STUN port: detects symmetric NAT
       - "3480:3480/udp" # QUIC relay; machines fall back to the WebSocket relay
       - "127.0.0.1:9090:9090" # Prometheus metrics, this host only
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.ws-whalescale-web.rule=Host(`${WS_DOMAIN}`)"
+      - "traefik.http.routers.ws-whalescale-web.entrypoints=web"
+      - "traefik.http.routers.ws-whalescale-web.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.ws-whalescale-websecure.rule=Host(`${WS_DOMAIN}`)"
+      - "traefik.http.routers.ws-whalescale-websecure.entrypoints=websecure"
+      - "traefik.http.routers.ws-whalescale-websecure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ws-whalescale.loadbalancer.server.port=8080"
+    networks:
+      - dokploy-network
+      - default
 
 volumes:
   whalescale-data:
+
+networks:
+  dokploy-network:
+    external: true
