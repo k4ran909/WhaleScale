@@ -174,3 +174,25 @@ func TestMultipathNoLoss(t *testing.T) {
 		t.Fatalf("multipath lost traffic for %v", gap)
 	}
 }
+
+// With lazy discovery, idle peers aren't probed at all; the first traffic
+// goes through the relay at once and a direct path follows within seconds.
+func TestLazyDiscovery(t *testing.T) {
+	n := newTestNet(t, "")
+	a := n.nodeWith("lz-a", Options{LazyDiscovery: true})
+	b := n.nodeWith("lz-b", Options{LazyDiscovery: true})
+	echo(t, b, 7603)
+	time.Sleep(4 * time.Second) // more than a heartbeat
+	for _, p := range a.Status().Peers {
+		if p.Name == "lz-b" && p.Path != "idle" {
+			t.Fatalf("idle peer has path %q (it was probed)", p.Path)
+		}
+	}
+	start := time.Now()
+	if err := roundTrip(a, b, 7603, 5*time.Second); err != nil {
+		t.Fatalf("first traffic to an idle peer: %v", err)
+	}
+	t.Logf("first round trip to an idle peer took %v", time.Since(start).Round(time.Millisecond))
+	waitPath(t, a, "lz-b", "direct")
+	t.Logf("direct path %v after traffic started", time.Since(start).Round(time.Millisecond))
+}

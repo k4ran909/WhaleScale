@@ -487,6 +487,8 @@ Each change to the network (a node coming online, an endpoint moving, a policy p
 
 Older clients that don't ask for deltas still get complete maps, now only when something relevant to them changed.
 
+On the machines themselves, path discovery is lazy in networks of more than 100 peers. Only peers with WireGuard traffic in the last two minutes are kept probed, and `ws status` shows the rest as `idle`. The first packets to an idle peer go through the relay at once while a direct path is found, usually within a round trip or two. Smaller networks keep every path warm.
+
 ## Operations
 
 | Command | What |
@@ -527,7 +529,6 @@ Older clients that don't ask for deltas still get complete maps, now only when s
 - **Exit nodes**: the exit side (forwarding + NAT) is Linux-only; DNS queries still go to the device's own DNS servers rather than through the exit node.
 - Subnet routing is Linux-only for now.
 - Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
-- Discovery pings every peer every 3 s, which is fine for small networks; limiting it to active peers is Phase 4 work.
 
 ## Development
 

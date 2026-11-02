@@ -89,6 +89,9 @@ type Options struct {
 	// Multipath sends every packet over the direct path and a relay at
 	// once, so a path dying loses nothing (see meshconn.Options.Redundant).
 	Multipath bool
+	// LazyDiscovery probes only peers with recent traffic even in small
+	// networks (tests; networks of over 100 peers always are).
+	LazyDiscovery bool
 	// PortMap asks the home router (PCP, NAT-PMP or UPnP) to forward the
 	// WireGuard port, making this node directly reachable.
 	PortMap bool
@@ -263,6 +266,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		OnPQ: e.pq.Handle, PSKID: e.pq.PSKID, OnPeerPSKID: e.pq.Observe,
 		IncludeLoopback: e.opts.IncludeLoopback && !e.opts.ForceRelay,
 		Redundant:       e.opts.Multipath,
+		LazyDiscovery:   e.opts.LazyDiscovery,
 		DisableDirect:   e.opts.NoDirect,
 		Exclude:         exclude,
 		OnEndpoints: func(eps []netip.AddrPort) {

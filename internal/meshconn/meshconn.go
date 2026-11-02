@@ -47,6 +47,13 @@ const (
 	// rather than when its trust runs out.
 	quietProbe   = time.Second
 	probeTimeout = time.Second
+	// Lazy discovery: in networks of more than lazyAbove peers, only peers
+	// with WireGuard traffic in the last activeWindow are kept probed;
+	// traffic to an idle peer starts discovery on the spot (its first
+	// packets go through the relay meanwhile). Pinging every peer every
+	// heartbeat costs O(peers) packets per node and doesn't scale.
+	activeWindow = 2 * time.Minute
+	lazyAbove    = 100
 	stunInterval = 20 * time.Second
 	recvQueue    = 1024
 	maxPacket    = 65535
@@ -71,13 +78,16 @@ type Options struct {
 	// Exclude lists prefixes never to advertise or use as direct paths,
 	// such as the mesh's own address ranges (a tunnel inside the tunnel).
 	Exclude []netip.Prefix
-	// Post-quantum key exchange hooks (see internal/pq). OnPQ gets PQ*
-	// disco messages from peers; PSKID says what to put in pings to a
-	// peer; OnPeerPSKID gets what a peer's ping says.
 	// Redundant sends every packet over the direct path and a relay at
 	// once, so losing either costs nothing (WireGuard drops the duplicate
 	// that arrives second). Twice the bandwidth while a direct path is up.
-	Redundant   bool
+	Redundant bool
+	// LazyDiscovery makes discovery lazy whatever the network's size
+	// (tests; larger networks are lazy anyway).
+	LazyDiscovery bool
+	// Post-quantum key exchange hooks (see internal/pq). OnPQ gets PQ*
+	// disco messages from peers; PSKID says what to put in pings to a
+	// peer; OnPeerPSKID gets what a peer's ping says.
 	OnPQ        func(peer key.Public, m disco.Message)
 	PSKID       func(peer key.Public) [8]byte
 	OnPeerPSKID func(peer key.Public, id [8]byte)
@@ -187,6 +197,24 @@ type peer struct {
 	relayLatency time.Duration
 
 	rx, tx atomic.Uint64
+	// lastActive is the last WireGuard packet either way (unix nanos).
+	lastActive atomic.Int64
+}
+
+// touch records WireGuard traffic with the peer and reports whether it
+// had been idle.
+func (p *peer) touch(now time.Time) (wasIdle bool) {
+	prev := p.lastActive.Swap(now.UnixNano())
+	return now.Sub(time.Unix(0, prev)) > activeWindow
+}
+
+func (p *peer) active(now time.Time) bool {
+	return now.Sub(time.Unix(0, p.lastActive.Load())) <= activeWindow
+}
+
+// lazyLocked reports whether discovery is lazy. Called with Conn.mu held.
+func (c *Conn) lazyLocked() bool {
+	return c.opts.LazyDiscovery || len(c.peers) > lazyAbove
 }
 
 // directOK reports whether the direct path is usable: proven by a recent
@@ -441,6 +469,9 @@ func (b *bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 	if probe {
 		go c.sendPing(p, discoPath{udp: addr}, nil)
 	}
+	if p.touch(now) {
+		go c.discover(p)
+	}
 	// The copy in redundant mode goes through a peer relay if one is
 	// proven, else the server relay.
 	var spareRelay netip.AddrPort
@@ -510,6 +541,9 @@ func (c *Conn) receiveFunc(done chan struct{}) conn.ReceiveFunc {
 
 func (c *Conn) deliver(data []byte, p *peer) {
 	p.rx.Add(uint64(len(data)))
+	if p.touch(time.Now()) {
+		go c.discover(p) // the peer started talking: find a direct path back
+	}
 	select {
 	case c.recv <- rxPacket{data: data, ep: p.ep}:
 	default: // WireGuard is not keeping up; drop
@@ -802,9 +836,16 @@ func (c *Conn) heartbeatLoop() {
 		c.mu.Unlock()
 		c.helloRelays()
 
+		c.mu.Lock()
+		lazy := c.lazyLocked()
+		c.mu.Unlock()
+		now := time.Now()
 		for _, p := range peers {
+			if lazy && !p.active(now) {
+				continue // idle: no traffic, no probing, until someone sends
+			}
 			c.mu.Lock()
-			trusted := p.directOK(time.Now())
+			trusted := p.directOK(now)
 			best := p.bestAddr
 			sendCMM := !trusted && time.Since(p.lastCMM) >= callMeMaybeGap
 			if sendCMM {
@@ -823,6 +864,27 @@ func (c *Conn) heartbeatLoop() {
 				c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.CallMeMaybe{Endpoints: myEps}), discoPath{})
 			}
 		}
+	}
+}
+
+// discover looks for a direct path to p right away, as a heartbeat would:
+// used when traffic starts with an idle peer.
+func (c *Conn) discover(p *peer) {
+	c.mu.Lock()
+	if p.directOK(time.Now()) {
+		c.mu.Unlock()
+		return
+	}
+	myEps := slices.Clone(c.endpoints)
+	sendCMM := time.Since(p.lastCMM) >= time.Second
+	if sendCMM {
+		p.lastCMM = time.Now()
+	}
+	c.mu.Unlock()
+	c.pingCandidates(p, nil)
+	c.probeViaRelays(p, nil)
+	if sendCMM && len(myEps) > 0 {
+		c.sendDisco(p, disco.Seal(c.opts.DiscoKey, p.discoKey, &disco.CallMeMaybe{Endpoints: myEps}), discoPath{})
 	}
 }
 
@@ -1132,6 +1194,8 @@ func (c *Conn) Status() []PeerStatus {
 			s.Path, s.Addr, s.Latency, s.LastPong = "direct", p.bestAddr.String(), p.bestLatency, p.lastPong
 		case p.relayVia != nil && time.Since(p.relayPong) < trustDuration:
 			s.Path, s.Addr, s.Latency, s.LastPong = "peer-relay", p.relayVia.name, p.relayLatency, p.relayPong
+		case c.lazyLocked() && !p.active(time.Now()):
+			s.Path = "idle" // no recent traffic; a path is found when there is
 		case relayUp:
 			s.Path = "relay"
 		default:
