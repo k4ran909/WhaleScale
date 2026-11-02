@@ -30,6 +30,10 @@ docker compose exec whalescale whalescale users create karan
 docker compose exec whalescale whalescale apikeys create     # sign in to https://ws.example.com with this
 ```
 
+### Dokploy
+
+[`deploy/dokploy/docker-compose.yml`](deploy/dokploy/docker-compose.yml) runs behind Dokploy's Traefik with the UDP ports published directly; [docs/dokploy.md](docs/dokploy.md) has the steps.
+
 ### Bare metal (Linux)
 
 ```bash

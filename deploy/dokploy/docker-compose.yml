@@ -1,0 +1,45 @@
+# Whalescale server on Dokploy: Dokploy's Traefik terminates HTTPS for the
+# console, API and WebSocket relay; STUN and the QUIC relay are UDP, which
+# Traefik doesn't carry, so they're published on the host directly.
+#
+# In Dokploy: Create Service -> Compose, source this repository, compose
+# path ./deploy/dokploy/docker-compose.yml. Then:
+#   Environment:  WS_DOMAIN=ws.example.com
+#   Domains:      ws.example.com -> service "whalescale", port 8080, HTTPS on
+#   Firewall:     allow UDP 3478, 3479 and 3480 on this host
+# See docs/dokploy.md for the first admin, keys and checks.
+services:
+  whalescale:
+    build:
+      context: ../..
+    restart: unless-stopped
+    environment:
+      WHALESCALE_PUBLIC_URL: https://${WS_DOMAIN:?set WS_DOMAIN in the environment}
+      # Traefik reaches the container over Docker's private networks: trust
+      # its X-Forwarded-For there, so rate limits apply to each client
+      # rather than to Traefik. Port 8080 isn't published, so only
+      # containers on those networks can connect.
+      WHALESCALE_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      # Where machines send UDP (STUN, QUIC relay): WS_DOMAIN by default.
+      # If that name goes through a proxy that doesn't carry UDP (such as
+      # Cloudflare's orange cloud), set WS_UDP_HOST to the server's IP or a
+      # DNS-only name.
+      WHALESCALE_UDP_HOST: ${WS_UDP_HOST:-}
+      WHALESCALE_POST_QUANTUM: ${WS_POST_QUANTUM:-false}
+      # Optional browser login with any OpenID Connect provider:
+      # WHALESCALE_OIDC_ISSUER: https://auth.example.com/application/o/whalescale/
+      # WHALESCALE_OIDC_CLIENT_ID: whalescale
+      # WHALESCALE_OIDC_CLIENT_SECRET: change-me
+      # WHALESCALE_OIDC_ADMINS: you@example.com
+    volumes:
+      - whalescale-data:/var/lib/whalescale
+    expose:
+      - "8080" # HTTPS via Traefik: route the domain here
+    ports:
+      - "3478:3478/udp" # STUN
+      - "3479:3479/udp" # second STUN port: detects symmetric NAT
+      - "3480:3480/udp" # QUIC relay; machines fall back to the WebSocket relay
+      - "127.0.0.1:9090:9090" # Prometheus metrics, this host only
+
+volumes:
+  whalescale-data:
