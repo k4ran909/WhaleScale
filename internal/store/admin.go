@@ -29,6 +29,17 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	return err
 }
 
+// SettingOrCreate returns a setting, storing value first if it has none.
+// Of servers racing to create it, all get the one that was stored first.
+func (s *Store) SettingOrCreate(ctx context.Context, key, value string) (string, error) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO NOTHING`, key, value); err != nil {
+		return "", err
+	}
+	v, _, err := s.Setting(ctx, key)
+	return v, err
+}
+
 // --- users ---
 
 // UserDetail adds admin-facing fields to User.

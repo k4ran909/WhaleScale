@@ -41,6 +41,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/key"
 	"github.com/k4ran909/whalescale/internal/meshconn"
 	"github.com/k4ran909/whalescale/internal/netmap"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/osinfo"
 	"github.com/k4ran909/whalescale/internal/osnet"
 	"github.com/k4ran909/whalescale/internal/policy"
@@ -155,6 +156,7 @@ type Engine struct {
 	pq      *pq.Manager
 	wgDev   atomic.Pointer[device.Device]
 	gw      *gateway.Client
+	creds   *nodeauth.Credentials
 	portmap *portmap.Client
 	sshKey  ssh.Signer
 	router  *osnet.Router
@@ -219,7 +221,7 @@ func New(opts Options) (*Engine, error) {
 	}
 	e := &Engine{
 		opts: opts, log: opts.Log, nodeKey: nk, disco: dk, hc: hc, bypass: bypass, sshKey: sshKey,
-		api:     whalescalev1connect.NewControlServiceClient(hc, st.ServerURL),
+		creds:   nodeauth.NewCredentials(st.MachineKey, st.NodeToken),
 		apiURL:  st.ServerURL,
 		filter:  filter.New(),
 		dns:     dnsserver.New(opts.Log),
@@ -227,12 +229,51 @@ func New(opts Options) (*Engine, error) {
 		ready:   make(chan struct{}),
 		epCh:    make(chan []netip.AddrPort, 1),
 	}
+	if st.ServerKey != "" {
+		if err := e.creds.SetServerKey(st.ServerKey); err != nil {
+			return nil, fmt.Errorf("server key: %w", err)
+		}
+	}
+	e.api = e.controlClient(st.ServerURL)
 	e.lockHead = e.loadLockHead()
 	return e, nil
 }
 
-func (e *Engine) authed(req connect.AnyRequest) {
-	req.Header().Set("Authorization", "Bearer "+e.opts.State.NodeToken)
+// controlClient talks to the control server at url, every call
+// authenticated with e.creds.
+func (e *Engine) controlClient(url string) whalescalev1connect.ControlServiceClient {
+	return whalescalev1connect.NewControlServiceClient(e.hc, url, connect.WithInterceptors(e.creds.Interceptor()))
+}
+
+// noteServerKey starts signing requests with the machine key once a map
+// names the server's key (nodes that logged in before the server had one,
+// or with an older client). The key is saved first: once the server has
+// seen a proof, it refuses this node's token.
+func (e *Engine) noteServerKey(k string) {
+	have := e.creds.ServerKey()
+	switch {
+	case k == "" || k == have:
+		return
+	case have != "":
+		// A key learned over TLS and kept since; a different one now means
+		// the server lost its database or something is impersonating it.
+		e.log.Warn("the control server's key changed; keeping the one this machine trusts (run 'ws login' again if the server was rebuilt)")
+		return
+	}
+	if _, err := nodeauth.NewSigner(e.opts.State.MachineKey, k); err != nil {
+		e.log.Warn("bad server key in network map", "err", err)
+		return
+	}
+	e.opts.State.ServerKey = k
+	if e.opts.StatePath != "" {
+		if err := clientstate.Save(e.opts.StatePath, e.opts.State); err != nil {
+			e.log.Warn("save server key; still using the node token", "err", err)
+			e.opts.State.ServerKey = ""
+			return
+		}
+	}
+	e.creds.SetServerKey(k)
+	e.log.Info("signing requests with the machine key from now on")
 }
 
 // setPSK makes WireGuard use psk (zero: none) with peer from its next
@@ -365,7 +406,6 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 		OfferRelay: e.opts.OfferRelay, SshHostKey: e.sshHostPublic(),
 		OsVersion: osVersion, ClientVersion: version.Version,
 	})
-	e.authed(req)
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
 	defer cancel()
 	_, err := e.client().UpdateNode(ctx, req)
@@ -462,7 +502,7 @@ func (e *Engine) failover() bool {
 	i := slices.Index(urls, e.apiURL)
 	next := urls[(i+1)%len(urls)]
 	e.log.Warn("switching control server", "from", e.apiURL, "to", next)
-	e.api = whalescalev1connect.NewControlServiceClient(e.hc, strings.TrimRight(next, "/"))
+	e.api = e.controlClient(strings.TrimRight(next, "/"))
 	e.apiURL = next
 	return next != e.failoverStart || e.failoverStart == ""
 }
@@ -479,7 +519,6 @@ func (e *Engine) noteControlURLs(urls []string) {
 
 func (e *Engine) streamOnce() error {
 	req := connect.NewRequest(&v1.StreamNetworkMapRequest{Deltas: true})
-	e.authed(req)
 	stream, err := e.client().StreamNetworkMap(e.ctx, req)
 	if err != nil {
 		return err
@@ -503,6 +542,7 @@ func (e *Engine) streamOnce() error {
 			continue
 		}
 		e.noteControlURLs(nm.ControlUrls)
+		e.noteServerKey(nm.ServerKey)
 		if err := e.apply(e.enforceLock(nm)); err != nil {
 			e.log.Error("apply network map", "err", err)
 			e.mu.Lock()
@@ -541,7 +581,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	e.conn.SetSTUNServers(stunAddrs)
 	if len(nm.Relays) > 0 && nm.Relays[0] != e.relayURL {
 		e.relayURL = nm.Relays[0]
-		rc := relay.NewClient(e.relayURL, e.opts.State.NodeToken, e.hc, e.log)
+		rc := relay.NewClient(e.relayURL, e.creds.ForURL, e.hc, e.log)
 		if pin, err := hex.DecodeString(nm.QuicRelayCertSha256); err == nil && nm.QuicRelay != "" && len(pin) == 32 {
 			lc := net.ListenConfig{}
 			if e.bypass != nil {
@@ -594,7 +634,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 
 	// Gateway tunnel, for published local services.
 	if nm.GatewayUrl != "" && len(e.opts.Exposures) > 0 && e.gw == nil {
-		e.gw = gateway.NewClient(nm.GatewayUrl, e.opts.State.NodeToken, e.hc, e.log)
+		e.gw = gateway.NewClient(nm.GatewayUrl, e.creds.ForURL, e.hc, e.log)
 		e.gw.SetExposures(e.opts.Exposures)
 		e.wg.Add(1)
 		go func() { defer e.wg.Done(); e.gw.Run(e.ctx) }()
@@ -957,7 +997,6 @@ func (e *Engine) uploadRecording(m sshserver.RecordingMeta, data []byte) {
 		LocalUser: m.LocalUser, SrcNode: m.SrcNode, SrcUser: m.SrcUser,
 		StartedAt: timestamppb.New(m.Started), EndedAt: timestamppb.New(m.Ended), Data: data,
 	})
-	e.authed(req)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	_, err := e.client().UploadRecording(ctx, req)
@@ -1070,7 +1109,6 @@ func (e *Engine) reportLoop() {
 				BytesSent: f.BytesSent, BytesRecv: f.BytesRecv, PacketsSent: f.PacketsSent, PacketsRecv: f.PacketsRecv})
 		}
 		req := connect.NewRequest(&v1.ReportStatusRequest{Paths: paths, Flows: flows})
-		e.authed(req)
 		ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
 		if _, err := e.client().ReportStatus(ctx, req); err != nil {
 			e.log.Debug("report status", "err", err)

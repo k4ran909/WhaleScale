@@ -82,6 +82,9 @@ type Node struct {
 	// OSVersion and ClientVersion are reported posture.
 	OSVersion, ClientVersion string
 	SSHHostKey               string
+	// SignedAuth: the node proves requests with its machine key, and its
+	// bearer token is no longer accepted.
+	SignedAuth bool
 }
 
 // IsPostgres reports whether a db setting names a PostgreSQL database
@@ -405,11 +408,28 @@ func insertNode(ctx context.Context, tx *tx, prefix netip.Prefix, uid uint64, us
 		IPv4: v4, IPv6: v6, OS: p.OS, Ephemeral: ephemeral, CreatedAt: now, LastSeen: now}, token, nil
 }
 
-const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints, n.relay_offered, n.relay_approved, n.ssh_host_key, n.os_version, n.client_version`
+const nodeColumns = `n.id, n.user_id, u.name, n.name, n.machine_key, n.ipv4, n.ipv6, n.os, n.ephemeral, n.created_at, n.last_seen, n.node_key, n.disco_key, n.endpoints, n.relay_offered, n.relay_approved, n.ssh_host_key, n.os_version, n.client_version, n.signed_auth`
+
+// NodeByMachineKey finds the node with this machine key (after its proof
+// was checked) and bumps last_seen.
+func (s *Store) NodeByMachineKey(ctx context.Context, machineKey string) (*Node, error) {
+	return s.nodeWhere(ctx, `n.machine_key = ?`, machineKey)
+}
+
+// MarkSignedAuth records that a node proves requests with its machine key,
+// so its bearer token is refused from now on.
+func (s *Store) MarkSignedAuth(ctx context.Context, id uint64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE nodes SET signed_auth = TRUE WHERE id = ?`, id)
+	return err
+}
 
 // NodeByToken authenticates a node token and bumps last_seen.
 func (s *Store) NodeByToken(ctx context.Context, token string) (*Node, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+nodeColumns+` FROM nodes n JOIN users u ON u.id = n.user_id WHERE n.token_hash = ?`, hashSecret(token))
+	return s.nodeWhere(ctx, `n.token_hash = ?`, hashSecret(token))
+}
+
+func (s *Store) nodeWhere(ctx context.Context, cond string, arg any) (*Node, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+nodeColumns+` FROM nodes n JOIN users u ON u.id = n.user_id WHERE `+cond, arg)
 	n, err := scanNode(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -529,7 +549,7 @@ func scanNode(r scanner) (*Node, error) {
 	var created, seen int64
 	var eps string
 	if err := r.Scan(&n.ID, &n.UserID, &n.User, &n.Name, &n.MachineKey, &v4, &v6, &n.OS, &n.Ephemeral, &created, &seen,
-		&n.NodeKey, &n.DiscoKey, &eps, &n.RelayOffered, &n.RelayApproved, &n.SSHHostKey, &n.OSVersion, &n.ClientVersion); err != nil {
+		&n.NodeKey, &n.DiscoKey, &eps, &n.RelayOffered, &n.RelayApproved, &n.SSHHostKey, &n.OSVersion, &n.ClientVersion, &n.SignedAuth); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal([]byte(eps), &n.Endpoints); err != nil {

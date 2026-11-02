@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/k4ran909/whalescale/internal/key"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 )
 
 func TestRelay(t *testing.T) {
@@ -18,7 +19,8 @@ func TestRelay(t *testing.T) {
 	a, _ := key.NewPrivate()
 	b, _ := key.NewPrivate()
 	tokens := map[string]key.Public{"tok-a": a.Public(), "tok-b": b.Public()}
-	srv := httptest.NewServer(NewServer(func(_ context.Context, tok string) (key.Public, error) {
+	srv := httptest.NewServer(NewServer(func(_ context.Context, cred, _, _ string) (key.Public, error) {
+		tok := strings.TrimPrefix(cred, "Bearer ")
 		if k, ok := tokens[tok]; ok {
 			return k, nil
 		}
@@ -29,8 +31,8 @@ func TestRelay(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ca := NewClient(url, "tok-a", nil, log)
-	cb := NewClient(url, "tok-b", nil, log)
+	ca := NewClient(url, nodeauth.Bearer("tok-a"), nil, log)
+	cb := NewClient(url, nodeauth.Bearer("tok-b"), nil, log)
 	go ca.Run(ctx)
 	go cb.Run(ctx)
 
@@ -55,7 +57,7 @@ func TestRelay(t *testing.T) {
 	}
 
 	// A client cannot spoof its source: the server stamps the authenticated key.
-	bad := NewClient(url, "nope", nil, log)
+	bad := NewClient(url, nodeauth.Bearer("nope"), nil, log)
 	bctx, bcancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer bcancel()
 	if err := bad.session(bctx); err == nil {

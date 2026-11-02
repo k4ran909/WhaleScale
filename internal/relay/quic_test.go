@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/k4ran909/whalescale/internal/key"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 )
 
 func waitConnected(t *testing.T, cs ...*Client) {
@@ -39,7 +40,8 @@ func TestQUICRelay(t *testing.T) {
 	b, _ := key.NewPrivate()
 	c, _ := key.NewPrivate()
 	tokens := map[string]key.Public{"tok-a": a.Public(), "tok-b": b.Public(), "tok-c": c.Public()}
-	srv := NewServer(func(_ context.Context, tok string) (key.Public, error) {
+	srv := NewServer(func(_ context.Context, cred, _, _ string) (key.Public, error) {
+		tok := strings.TrimPrefix(cred, "Bearer ")
 		if k, ok := tokens[tok]; ok {
 			return k, nil
 		}
@@ -74,8 +76,8 @@ func TestQUICRelay(t *testing.T) {
 		t.Fatal("probe accepted a wrong pin")
 	}
 
-	ca := NewClient(wsURL, "tok-a", nil, log)
-	cb := NewClient(wsURL, "tok-b", nil, log)
+	ca := NewClient(wsURL, nodeauth.Bearer("tok-a"), nil, log)
+	cb := NewClient(wsURL, nodeauth.Bearer("tok-b"), nil, log)
 	ca.SetQUIC(quicAddr, pin, nil)
 	cb.SetQUIC(quicAddr, pin, nil)
 	go ca.Run(ctx)
@@ -109,7 +111,7 @@ func TestQUICRelay(t *testing.T) {
 	// A client that can't verify the relay certificate falls back to
 	// WebSocket and still works. (Its own identity: a second connection
 	// with the same key would replace the first.)
-	cbad := NewClient(wsURL, "tok-c", nil, log)
+	cbad := NewClient(wsURL, nodeauth.Bearer("tok-c"), nil, log)
 	cbad.SetQUIC(quicAddr, make([]byte, 32), nil)
 	go cbad.Run(ctx)
 	waitConnected(t, cbad)
@@ -122,7 +124,7 @@ func TestQUICRelay(t *testing.T) {
 	}
 
 	// Bad tokens are refused on QUIC too.
-	evil := NewClient(wsURL, "nope", nil, log)
+	evil := NewClient(wsURL, nodeauth.Bearer("nope"), nil, log)
 	evil.SetQUIC(quicAddr, pin, nil)
 	qctx, qcancel := context.WithTimeout(ctx, 3*time.Second)
 	defer qcancel()
@@ -138,7 +140,8 @@ func TestReconnect(t *testing.T) {
 	a, _ := key.NewPrivate()
 	b, _ := key.NewPrivate()
 	tokens := map[string]key.Public{"tok-a": a.Public(), "tok-b": b.Public()}
-	srv := NewServer(func(_ context.Context, tok string) (key.Public, error) {
+	srv := NewServer(func(_ context.Context, cred, _, _ string) (key.Public, error) {
+		tok := strings.TrimPrefix(cred, "Bearer ")
 		if k, ok := tokens[tok]; ok {
 			return k, nil
 		}
@@ -149,8 +152,8 @@ func TestReconnect(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(hs.URL, "http")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ca := NewClient(wsURL, "tok-a", nil, log)
-	cb := NewClient(wsURL, "tok-b", nil, log)
+	ca := NewClient(wsURL, nodeauth.Bearer("tok-a"), nil, log)
+	cb := NewClient(wsURL, nodeauth.Bearer("tok-b"), nil, log)
 	go ca.Run(ctx)
 	go cb.Run(ctx)
 	waitConnected(t, ca, cb)

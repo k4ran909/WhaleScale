@@ -3,12 +3,14 @@ package control
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ import (
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/key"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
 )
@@ -61,6 +64,11 @@ type Config struct {
 	ServerID string
 	// PostQuantum turns on post-quantum pre-shared keys between nodes.
 	PostQuantum bool
+	// NodeAuthKey is the server's X25519 key for machine proofs, and
+	// NodeAuthHosts the host[:port] names clients reach this server by.
+	// Without a key, nodes authenticate with bearer tokens only.
+	NodeAuthKey   *ecdh.PrivateKey
+	NodeAuthHosts []string
 }
 
 type Service struct {
@@ -103,6 +111,9 @@ type Service struct {
 	clusterWindow time.Duration
 	presence      map[uint64]bool
 	localChange   atomic.Bool
+
+	verifier  *nodeauth.Verifier
+	serverKey string
 }
 
 type pathSet struct {
@@ -141,6 +152,10 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 		changed: make(chan struct{}), online: map[uint64]int{},
 		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{}}
 	svc.version.Store(1)
+	if cfg.NodeAuthKey != nil {
+		svc.verifier = nodeauth.NewVerifier(cfg.NodeAuthKey, cfg.NodeAuthHosts)
+		svc.serverKey = base64.StdEncoding.EncodeToString(cfg.NodeAuthKey.PublicKey().Bytes())
+	}
 	svc.storeDirty.Store(true)
 	return svc
 }
@@ -268,7 +283,7 @@ func (s *Service) Register(ctx context.Context, req *connect.Request[v1.Register
 	s.Audit(ctx, "user:"+node.User, "node registered", "node", node.Name, "ipv4", node.IPv4, "os", node.OS, "method", "pre-auth key")
 	s.stats.Registrations.Add(1)
 	s.NotifyAll()
-	return connect.NewResponse(&v1.RegisterResponse{Node: s.toProto(node), NodeToken: token}), nil
+	return connect.NewResponse(&v1.RegisterResponse{Node: s.toProto(node), NodeToken: token, ServerKey: s.serverKey}), nil
 }
 
 const pendingTTL = 10 * time.Minute
@@ -370,11 +385,11 @@ func (s *Service) WaitRegistration(ctx context.Context, req *connect.Request[v1.
 		}
 		return nil, connect.NewError(connect.CodeInternal, errors.New("registration failed"))
 	}
-	return connect.NewResponse(&v1.WaitRegistrationResponse{Node: s.toProto(p.node), NodeToken: p.token}), nil
+	return connect.NewResponse(&v1.WaitRegistrationResponse{Node: s.toProto(p.node), NodeToken: p.token, ServerKey: s.serverKey}), nil
 }
 
 func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.ReportStatusRequest]) (*connect.Response[v1.ReportStatusResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +416,7 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 const MaxRecording = 32 << 20
 
 func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -481,7 +496,7 @@ func randomID() (string, error) {
 }
 
 func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.UpdateNodeRequest]) (*connect.Response[v1.UpdateNodeResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -561,7 +576,7 @@ func (s *Service) UpdateNode(ctx context.Context, req *connect.Request[v1.Update
 }
 
 func (s *Service) GetNetworkMap(ctx context.Context, req *connect.Request[v1.GetNetworkMapRequest]) (*connect.Response[v1.GetNetworkMapResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +593,7 @@ func (s *Service) GetNetworkMap(ctx context.Context, req *connect.Request[v1.Get
 }
 
 func (s *Service) StreamNetworkMap(ctx context.Context, req *connect.Request[v1.StreamNetworkMapRequest], stream *connect.ServerStream[v1.StreamNetworkMapResponse]) error {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -661,23 +676,24 @@ func PolicyNodes(all []store.Node) []policy.Node {
 	return out
 }
 
-// RelayAuth lets the relay accept a node token and learn its node key.
-func (s *Service) RelayAuth(ctx context.Context, token string) (key.Public, error) {
-	n, err := s.store.NodeByToken(ctx, token)
+// RelayAuth checks a relay connection's credential and returns the node
+// key it may relay for.
+func (s *Service) RelayAuth(ctx context.Context, cred, method, path string) (key.Public, error) {
+	n, err := s.NodeFor(ctx, cred, method, path)
 	if err != nil {
 		return key.Public{}, err
 	}
 	return key.ParsePublic(n.NodeKey)
 }
 
-func (s *Service) authenticate(ctx context.Context, header string) (*store.Node, error) {
-	token, ok := strings.CutPrefix(header, "Bearer ")
-	if !ok || token == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing node token"))
-	}
-	n, err := s.store.NodeByToken(ctx, token)
+func (s *Service) authenticate(ctx context.Context, req connect.AnyRequest) (*store.Node, error) {
+	n, err := s.NodeFor(ctx, req.Header().Get("Authorization"), http.MethodPost, req.Spec().Procedure)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unknown node token; run 'ws login' again"))
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unknown node; run 'ws login' again"))
+	}
+	var ce *connect.Error
+	if errors.As(err, &ce) {
+		return nil, err
 	}
 	if err != nil {
 		s.log.Error("authenticate node", "err", err)
@@ -685,6 +701,50 @@ func (s *Service) authenticate(ctx context.Context, header string) (*store.Node,
 	}
 	return n, nil
 }
+
+// NodeFor authenticates a node credential for a request with this method
+// and path: a proof signed with the machine key (see internal/nodeauth), or
+// a bearer token. Once a node has used a proof, its token is refused: a
+// token that leaked from a log or a proxy is then worth nothing.
+func (s *Service) NodeFor(ctx context.Context, cred, method, path string) (*store.Node, error) {
+	if nodeauth.IsProof(cred) {
+		if s.verifier == nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("this server doesn't accept machine proofs"))
+		}
+		mk, err := s.verifier.Verify(cred, method, path, time.Now())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		}
+		n, err := s.store.NodeByMachineKey(ctx, mk)
+		if err != nil {
+			return nil, err
+		}
+		if !n.SignedAuth {
+			if err := s.store.MarkSignedAuth(ctx, n.ID); err != nil {
+				return nil, err
+			}
+			s.log.Info("node now proves requests with its machine key; its token is retired", "node", n.Name)
+		}
+		return n, nil
+	}
+	token, ok := strings.CutPrefix(cred, "Bearer ")
+	if !ok || token == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing node credentials"))
+	}
+	n, err := s.store.NodeByToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	if n.SignedAuth {
+		return nil, connect.NewError(connect.CodeUnauthenticated,
+			errors.New("this machine signs its requests; its bearer token is no longer accepted"))
+	}
+	return n, nil
+}
+
+// ServerKey is the public key nodes sign requests against (base64), or ""
+// when machine proofs are off.
+func (s *Service) ServerKey() string { return s.serverKey }
 
 var meshRange4 = netip.MustParsePrefix("100.64.0.0/10")
 
@@ -801,7 +861,7 @@ func (s *Service) nodeProto(n *store.Node, online bool) *v1.Node {
 // Logout removes the calling node: its token stops working and peers drop
 // it from their maps.
 func (s *Service) Logout(ctx context.Context, req *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/clientstate"
 	"github.com/k4ran909/whalescale/internal/localapi"
 	"github.com/k4ran909/whalescale/internal/netlock"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/version"
 )
 
@@ -127,6 +128,20 @@ func client(server string) whalescalev1connect.ControlServiceClient {
 	return whalescalev1connect.NewControlServiceClient(httpClient, strings.TrimRight(server, "/"))
 }
 
+// nodeClient calls the control server as this machine: requests signed
+// with the machine key, or carrying the node token if the server key isn't
+// known yet.
+func nodeClient(st *clientstate.State) (whalescalev1connect.ControlServiceClient, error) {
+	creds := nodeauth.NewCredentials(st.MachineKey, st.NodeToken)
+	if st.ServerKey != "" {
+		if err := creds.SetServerKey(st.ServerKey); err != nil {
+			return nil, fmt.Errorf("server key: %w", err)
+		}
+	}
+	return whalescalev1connect.NewControlServiceClient(httpClient, strings.TrimRight(st.ServerURL, "/"),
+		connect.WithInterceptors(creds.Interceptor())), nil
+}
+
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	server := fs.String("server", "", "control server URL, e.g. https://ws.example.com")
@@ -202,13 +217,15 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
-	n, token := resp.Msg.Node, resp.Msg.NodeToken
+	n, token, serverKey := resp.Msg.Node, resp.Msg.NodeToken, resp.Msg.ServerKey
 	if resp.Msg.AuthUrl != "" {
-		if n, token, err = waitBrowserLogin(st.ServerURL, resp.Msg.AuthUrl, resp.Msg.RegistrationId); err != nil {
+		w, err := waitBrowserLogin(st.ServerURL, resp.Msg.AuthUrl, resp.Msg.RegistrationId)
+		if err != nil {
 			return err
 		}
+		n, token, serverKey = w.Node, w.NodeToken, w.ServerKey
 	}
-	st.NodeToken, st.NodeID, st.NodeName = token, n.Id, n.Name
+	st.NodeToken, st.ServerKey, st.NodeID, st.NodeName = token, serverKey, n.Id, n.Name
 	st.LockTrust = trust
 	if err := clientstate.Save(path, st); err != nil {
 		return fmt.Errorf("registered, but saving state failed: %w", err)
@@ -237,7 +254,7 @@ func cmdLogin(args []string) error {
 
 // waitBrowserLogin shows the sign-in link and waits until the user has
 // finished logging in, for up to ten minutes.
-func waitBrowserLogin(server, authURL, regID string) (*v1.Node, string, error) {
+func waitBrowserLogin(server, authURL, regID string) (*v1.WaitRegistrationResponse, error) {
 	fmt.Printf("\nTo add this device, open this link and sign in:\n\n    %s\n\n", authURL)
 	openBrowser(authURL)
 	fmt.Println("Waiting for you to sign in...")
@@ -248,16 +265,16 @@ func waitBrowserLogin(server, authURL, regID string) (*v1.Node, string, error) {
 		resp, err := long.WaitRegistration(ctx, connect.NewRequest(&v1.WaitRegistrationRequest{RegistrationId: regID}))
 		cancel()
 		if err == nil {
-			return resp.Msg.Node, resp.Msg.NodeToken, nil
+			return resp.Msg, nil
 		}
 		switch connect.CodeOf(err) {
 		case connect.CodeDeadlineExceeded, connect.CodeUnavailable:
 			time.Sleep(time.Second)
 		default:
-			return nil, "", fmt.Errorf("login: %w", err)
+			return nil, fmt.Errorf("login: %w", err)
 		}
 	}
-	return nil, "", errors.New("timed out waiting for the browser login; run 'ws login' again")
+	return nil, errors.New("timed out waiting for the browser login; run 'ws login' again")
 }
 
 // openBrowser tries to open url; the printed link is the fallback.
@@ -645,9 +662,11 @@ func cmdStatus(args []string) error {
 func serverStatus(st *clientstate.State, asJSON bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	req := connect.NewRequest(&v1.GetNetworkMapRequest{})
-	req.Header().Set("Authorization", "Bearer "+st.NodeToken)
-	resp, err := client(st.ServerURL).GetNetworkMap(ctx, req)
+	c, err := nodeClient(st)
+	if err != nil {
+		return err
+	}
+	resp, err := c.GetNetworkMap(ctx, connect.NewRequest(&v1.GetNetworkMapRequest{}))
 	if err != nil {
 		return fmt.Errorf("get network map: %w", err)
 	}
@@ -799,9 +818,10 @@ func cmdLogout(args []string) error {
 	// credentials here and say what's left to do.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	req := connect.NewRequest(&v1.LogoutRequest{})
-	req.Header().Set("Authorization", "Bearer "+st.NodeToken)
-	_, serverErr := client(st.ServerURL).Logout(ctx, req)
+	c, serverErr := nodeClient(st)
+	if serverErr == nil {
+		_, serverErr = c.Logout(ctx, connect.NewRequest(&v1.LogoutRequest{}))
+	}
 	if connect.CodeOf(serverErr) == connect.CodeUnauthenticated {
 		serverErr = nil // already removed there
 	}
@@ -817,7 +837,7 @@ func cmdLogout(args []string) error {
 		fmt.Printf("removed profile %q; now using the default profile\n", profName)
 	} else {
 		// Keep the machine key; forget the server credentials.
-		st.NodeToken, st.NodeID, st.NodeName = "", 0, ""
+		st.NodeToken, st.ServerKey, st.NodeID, st.NodeName = "", "", 0, ""
 		if err := clientstate.Save(path, st); err != nil {
 			return err
 		}
@@ -843,13 +863,14 @@ func cmdAccess(args []string) error {
 	if err != nil {
 		return err
 	}
-	c := client(st.ServerURL)
-	authed := func(r connect.AnyRequest) { r.Header().Set("Authorization", "Bearer "+st.NodeToken) }
+	c, err := nodeClient(st)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
 	switch args[0] {
 	case "list":
 		req := connect.NewRequest(&v1.ListAccessRequest{})
-		authed(req)
 		resp, err := c.ListAccess(ctx, req)
 		if err != nil {
 			return err
@@ -898,7 +919,6 @@ func cmdAccess(args []string) error {
 			return usage
 		}
 		req := connect.NewRequest(&v1.RequestAccessRequest{Dst: dst, DurationSeconds: uint64(*dur / time.Second), Reason: *reason})
-		authed(req)
 		resp, err := c.RequestAccess(ctx, req)
 		if err != nil {
 			return err
@@ -908,7 +928,6 @@ func cmdAccess(args []string) error {
 			fmt.Fprintf(os.Stderr, "\rrequest %d is waiting for an admin to approve it...", a.Id)
 			time.Sleep(3 * time.Second)
 			lr := connect.NewRequest(&v1.ListAccessRequest{})
-			authed(lr)
 			list, err := c.ListAccess(ctx, lr)
 			if err != nil {
 				return err

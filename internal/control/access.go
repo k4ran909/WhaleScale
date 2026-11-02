@@ -87,7 +87,7 @@ func policyNode(n *store.Node) policy.Node {
 }
 
 func (s *Service) RequestAccess(ctx context.Context, req *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (s *Service) requestAccess(ctx context.Context, self *store.Node, m *v1.Req
 }
 
 func (s *Service) ListAccess(ctx context.Context, req *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error) {
-	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	self, err := s.authenticate(ctx, req)
 	if err != nil {
 		return nil, err
 	}

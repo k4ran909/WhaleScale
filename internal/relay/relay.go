@@ -23,6 +23,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/k4ran909/whalescale/internal/key"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 )
 
 const (
@@ -32,7 +33,9 @@ const (
 )
 
 // Authenticator maps a bearer token to the node key it may send as.
-type Authenticator func(ctx context.Context, token string) (key.Public, error)
+// Authenticator checks a node credential (an Authorization value: a node
+// proof or "Bearer <token>") for a request with this method and path.
+type Authenticator func(ctx context.Context, credential, method, path string) (key.Public, error)
 
 type Server struct {
 	auth Authenticator
@@ -113,12 +116,12 @@ func NewServer(auth Authenticator, log *slog.Logger) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	tok, ok := bearer(r.Header.Get("Authorization"))
-	if !ok {
-		http.Error(w, "missing token", http.StatusUnauthorized)
+	cred := r.Header.Get("Authorization")
+	if cred == "" {
+		http.Error(w, "missing credentials", http.StatusUnauthorized)
 		return
 	}
-	k, err := s.auth(r.Context(), tok)
+	k, err := s.auth(r.Context(), cred, r.Method, r.URL.Path)
 	if err != nil || k.IsZero() {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -172,14 +175,6 @@ func (s *Server) Connected(k key.Public) bool {
 	return s.clients[k] != nil
 }
 
-func bearer(h string) (string, bool) {
-	const p = "Bearer "
-	if len(h) > len(p) && h[:len(p)] == p {
-		return h[len(p):], true
-	}
-	return "", false
-}
-
 // Packet is one packet received from the relay.
 type Packet struct {
 	Src  key.Public
@@ -188,9 +183,9 @@ type Packet struct {
 
 // Client keeps a connection to one relay server, reconnecting as needed.
 type Client struct {
-	url   string
-	token string
-	log   *slog.Logger
+	url  string
+	cred nodeauth.Credential
+	log  *slog.Logger
 
 	hc   *http.Client
 	recv chan Packet
@@ -252,9 +247,10 @@ func (c *Client) takeReconnect() bool {
 	return r
 }
 
-// NewClient makes a relay client. hc may be nil for the default client.
-func NewClient(url, token string, hc *http.Client, log *slog.Logger) *Client {
-	return &Client{url: url, token: token, log: log, hc: hc,
+// NewClient makes a relay client that authenticates with cred. hc may be
+// nil for the default client.
+func NewClient(url string, cred nodeauth.Credential, hc *http.Client, log *slog.Logger) *Client {
+	return &Client{url: url, cred: cred, log: log, hc: hc,
 		recv: make(chan Packet, sendQueue), send: make(chan []byte, sendQueue)}
 }
 
@@ -379,7 +375,7 @@ func (c *Client) session(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	conn, _, err := websocket.Dial(dctx, c.url, &websocket.DialOptions{
 		HTTPClient: c.hc,
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.token}},
+		HTTPHeader: http.Header{"Authorization": {c.cred(http.MethodGet, c.url)}},
 	})
 	cancel()
 	if err != nil {

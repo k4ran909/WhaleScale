@@ -70,6 +70,8 @@ ping laptop.whale.internal
 
 For short-lived machines (CI runners, containers), use an ephemeral key: `whalescale preauthkeys create --user ci --reusable --ephemeral`. Machines it adds are removed once they've been offline for `ephemeral-timeout` (10 minutes by default). `ws logout` removes a machine from the server right away.
 
+Machines prove each request with their machine key rather than sending a reusable token. The server has an X25519 key; a machine learns its public half at login (over TLS) and then signs every control, relay and gateway request. Each signature covers the method, the server, the path and the time, and the server accepts it once. Once a machine has signed a request, its login token is refused. So a header copied from a proxy log, a debugging dump or a TLS-inspecting middlebox is useless, and so is the token itself. Older clients keep using the token until they're upgraded. If machines reach the server under names other than `--public-url`'s (an internal address, say), list them with `--node-auth-hosts`.
+
 On Windows, unzip the release, put [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`, and in an Administrator terminal run `wsd install-service`, then `ws login --server ...` and `ws up`.
 
 ### Several networks on one machine
@@ -528,7 +530,7 @@ On the machines themselves, path discovery is lazy in networks of more than 100 
 - **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
 - **Exit nodes**: the exit side (forwarding + NAT) is Linux-only; DNS queries still go to the device's own DNS servers rather than through the exit node.
 - Subnet routing is Linux-only for now.
-- Nodes authenticate with a bearer token rather than a Noise handshake bound to the machine key. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
+- Machine keys live in a file (protected, but not in a TPM or secure enclave): whoever copies a machine's whole state can still act as it until it's removed. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
 
 ## Development
 

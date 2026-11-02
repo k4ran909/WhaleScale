@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 )
 
 type State struct {
@@ -20,6 +21,10 @@ type State struct {
 	// NodeKey is the WireGuard private key, base64. Created by wsd on first run.
 	NodeKey   string `json:"node_key,omitempty"`
 	NodeToken string `json:"node_token,omitempty"`
+	// ServerKey is the control server's X25519 key (base64), learned when
+	// logging in: requests are signed against it with the machine key
+	// instead of carrying the node token.
+	ServerKey string `json:"server_key,omitempty"`
 	NodeID    uint64 `json:"node_id,omitempty"`
 	NodeName  string `json:"node_name,omitempty"`
 	// SSHHostKey is the mesh SSH server's private host key (OpenSSH PEM).
@@ -105,7 +110,13 @@ func Load(path string) (*State, error) {
 }
 
 // Save writes state atomically with owner-only permissions.
+// saveMu serializes saves: the daemon and its engine (learning a server
+// key, a lock state) may save at once, and share the temporary file.
+var saveMu sync.Mutex
+
 func Save(path string, s *State) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}

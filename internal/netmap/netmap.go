@@ -81,5 +81,6 @@ func shallowCopy(m *v1.NetworkMap) *v1.NetworkMap {
 		LockChain:           m.LockChain,
 		ControlUrls:         m.ControlUrls,
 		PostQuantum:         m.PostQuantum,
+		ServerKey:           m.ServerKey,
 	}
 }

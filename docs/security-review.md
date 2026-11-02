@@ -72,7 +72,11 @@ This is a first pass by the project itself. It doesn't replace an independent au
 
 ## Residual risks and recommendations
 
-1. **Node tokens are bearer tokens, not bound to the machine key.** Anyone who copies a machine's state can impersonate it until the machine is removed. File protection (finding 1) is the guard today. Binding control-plane authentication to the machine key, as a Noise handshake would, is planned.
+1. **Machine keys are files.** Requests are bound to the machine key: each carries an HMAC keyed by the X25519 secret between the machine and the server, over the method, the server, the path, the time and a nonce (`internal/nodeauth`). Once a machine has signed a request, its bearer token is refused (`control.TestMachineProofs`; end to end in `engine.TestRelayFallback` and `TestGateway`). A token or header seen in transit, in a log or by a TLS-inspecting proxy is useless, and a proxy can't relay a machine's requests once the machine has pinned the server key. What remains:
+   - Anyone who copies a machine's whole state, private key included, can still act as it until it's removed. File protection (finding 1) is the guard; hardware-backed keys (TPM, Secure Enclave) would close it.
+   - Each server keeps its own nonce cache. Behind one hostname shared by several servers, a captured proof could be replayed against another server within the five-minute window. Give each server its own public URL (the failover setup already does).
+   - Machines that never upgrade keep using their tokens.
+   - A machine that logged in with an older client learns the server key from its first network map (trust on first use, over TLS).
 2. **The control server is trusted for policy.** See finding 8. Use the network lock, keep the policy in Git with review, and watch the audit log.
 3. **Unauthenticated endpoints should sit behind a rate limit.** These are starting a browser login (finding 4), `Register`, `/auth/apikey` and STUN. Put Caddy or another proxy in front with per-IP limits.
 4. **Uploads cost disk.** Any member can upload SSH recordings (up to 32 MB each) and flow logs. There's no per-machine quota yet; monitor the recordings directory and the database size.

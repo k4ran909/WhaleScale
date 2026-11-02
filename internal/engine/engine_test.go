@@ -151,6 +151,24 @@ func (n *testNet) nodeWith(name string, o Options) *Engine {
 	return e
 }
 
+// waitSigned waits until the server has seen e prove a request with its
+// machine key (learned from the map), which retires its token.
+func (n *testNet) waitSigned(e *Engine) {
+	n.t.Helper()
+	pub, _ := e.opts.State.PublicKey()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		node, err := n.store.NodeByMachineKey(context.Background(), pub)
+		if err == nil && node.SignedAuth && e.opts.State.ServerKey != "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			n.t.Fatalf("%s never signed a request (node %+v, err %v)", e.opts.State.NodeName, node, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func selfIP(e *Engine) netip.Addr {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -252,6 +270,8 @@ func TestRelayFallback(t *testing.T) {
 	a := n.node("relay-a", true)
 	b := n.node("relay-b", true)
 
+	n.waitSigned(a)
+	n.waitSigned(b)
 	waitPath(t, a, "relay-b", "relay")
 	if tr := a.Status().RelayTransport; tr != "quic" {
 		t.Fatalf("relay transport = %q, want quic", tr)
@@ -458,7 +478,7 @@ func TestGateway(t *testing.T) {
 	port, _ := strconv.Atoi(portStr)
 
 	n := newTestNetGateway(t, "", "apps.test")
-	n.nodeWith("nas", Options{Exposures: map[string]uint16{"ha": uint16(port)}})
+	n.waitSigned(n.nodeWith("nas", Options{Exposures: map[string]uint16{"ha": uint16(port)}}))
 
 	get := func(host, path string) (int, string) {
 		req, _ := http.NewRequest("GET", n.url+path, nil)
@@ -758,11 +778,12 @@ func TestAccessGrant(t *testing.T) {
 		t.Fatal("reached the database without a grant")
 	}
 
-	api := whalescalev1connect.NewControlServiceClient(httpClientForTest(), n.url)
+	// As 'ws access' does: signed with the machine key, which retired the
+	// node token once the engine started signing.
+	n.waitSigned(dev)
 	ask := func(dst string) (*connect.Response[v1.RequestAccessResponse], error) {
 		req := connect.NewRequest(&v1.RequestAccessRequest{Dst: dst, DurationSeconds: 600, Reason: "deploy"})
-		req.Header().Set("Authorization", "Bearer "+dev.opts.State.NodeToken)
-		return api.RequestAccess(context.Background(), req)
+		return dev.api.RequestAccess(context.Background(), req)
 	}
 	if _, err := ask("node:jit-db:22"); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("request outside the policy: %v", err)

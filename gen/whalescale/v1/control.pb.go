@@ -903,8 +903,10 @@ type RegisterResponse struct {
 	// Set when the user must finish logging in in a browser.
 	AuthUrl        string `protobuf:"bytes,3,opt,name=auth_url,json=authUrl,proto3" json:"auth_url,omitempty"`
 	RegistrationId string `protobuf:"bytes,4,opt,name=registration_id,json=registrationId,proto3" json:"registration_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The server key to sign requests against (see NetworkMap.server_key).
+	ServerKey     string `protobuf:"bytes,5,opt,name=server_key,json=serverKey,proto3" json:"server_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterResponse) Reset() {
@@ -965,6 +967,13 @@ func (x *RegisterResponse) GetRegistrationId() string {
 	return ""
 }
 
+func (x *RegisterResponse) GetServerKey() string {
+	if x != nil {
+		return x.ServerKey
+	}
+	return ""
+}
+
 type WaitRegistrationRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RegistrationId string                 `protobuf:"bytes,1,opt,name=registration_id,json=registrationId,proto3" json:"registration_id,omitempty"`
@@ -1010,9 +1019,11 @@ func (x *WaitRegistrationRequest) GetRegistrationId() string {
 }
 
 type WaitRegistrationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Node          *Node                  `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
-	NodeToken     string                 `protobuf:"bytes,2,opt,name=node_token,json=nodeToken,proto3" json:"node_token,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Node      *Node                  `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	NodeToken string                 `protobuf:"bytes,2,opt,name=node_token,json=nodeToken,proto3" json:"node_token,omitempty"`
+	// The server key to sign requests against (see NetworkMap.server_key).
+	ServerKey     string `protobuf:"bytes,3,opt,name=server_key,json=serverKey,proto3" json:"server_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1057,6 +1068,13 @@ func (x *WaitRegistrationResponse) GetNode() *Node {
 func (x *WaitRegistrationResponse) GetNodeToken() string {
 	if x != nil {
 		return x.NodeToken
+	}
+	return ""
+}
+
+func (x *WaitRegistrationResponse) GetServerKey() string {
+	if x != nil {
+		return x.ServerKey
 	}
 	return ""
 }
@@ -1674,7 +1692,10 @@ type NetworkMap struct {
 	ControlUrls []string `protobuf:"bytes,19,rep,name=control_urls,json=controlUrls,proto3" json:"control_urls,omitempty"`
 	// Agree on post-quantum pre-shared keys with peers (ML-KEM-768, rotated
 	// every two minutes) and mix them into WireGuard handshakes.
-	PostQuantum   bool `protobuf:"varint,20,opt,name=post_quantum,json=postQuantum,proto3" json:"post_quantum,omitempty"`
+	PostQuantum bool `protobuf:"varint,20,opt,name=post_quantum,json=postQuantum,proto3" json:"post_quantum,omitempty"`
+	// The server's X25519 key (base64): sign requests with the machine key
+	// against it instead of sending the node token (see internal/nodeauth).
+	ServerKey     string `protobuf:"bytes,21,opt,name=server_key,json=serverKey,proto3" json:"server_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1847,6 +1868,13 @@ func (x *NetworkMap) GetPostQuantum() bool {
 		return x.PostQuantum
 	}
 	return false
+}
+
+func (x *NetworkMap) GetServerKey() string {
+	if x != nil {
+		return x.ServerKey
+	}
+	return ""
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local
@@ -2705,19 +2733,23 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\vmachine_key\x18\x02 \x01(\tR\n" +
 	"machineKey\x12\x1a\n" +
 	"\bhostname\x18\x03 \x01(\tR\bhostname\x12\x0e\n" +
-	"\x02os\x18\x04 \x01(\tR\x02os\"\x9e\x01\n" +
+	"\x02os\x18\x04 \x01(\tR\x02os\"\xbd\x01\n" +
 	"\x10RegisterResponse\x12'\n" +
 	"\x04node\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04node\x12\x1d\n" +
 	"\n" +
 	"node_token\x18\x02 \x01(\tR\tnodeToken\x12\x19\n" +
 	"\bauth_url\x18\x03 \x01(\tR\aauthUrl\x12'\n" +
-	"\x0fregistration_id\x18\x04 \x01(\tR\x0eregistrationId\"B\n" +
+	"\x0fregistration_id\x18\x04 \x01(\tR\x0eregistrationId\x12\x1d\n" +
+	"\n" +
+	"server_key\x18\x05 \x01(\tR\tserverKey\"B\n" +
 	"\x17WaitRegistrationRequest\x12'\n" +
-	"\x0fregistration_id\x18\x01 \x01(\tR\x0eregistrationId\"b\n" +
+	"\x0fregistration_id\x18\x01 \x01(\tR\x0eregistrationId\"\x81\x01\n" +
 	"\x18WaitRegistrationResponse\x12'\n" +
 	"\x04node\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04node\x12\x1d\n" +
 	"\n" +
-	"node_token\x18\x02 \x01(\tR\tnodeToken\"\xe6\x02\n" +
+	"node_token\x18\x02 \x01(\tR\tnodeToken\x12\x1d\n" +
+	"\n" +
+	"server_key\x18\x03 \x01(\tR\tserverKey\"\xe6\x02\n" +
 	"\x11UpdateNodeRequest\x12\x19\n" +
 	"\bnode_key\x18\x01 \x01(\tR\anodeKey\x12\x1b\n" +
 	"\tdisco_key\x18\x02 \x01(\tR\bdiscoKey\x12\x1c\n" +
@@ -2760,7 +2792,7 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\rpacket_filter\x18\x05 \x01(\v2\x1b.whalescale.v1.PacketFilterR\fpacketFilter\x125\n" +
 	"\bsettings\x18\x06 \x01(\v2\x19.whalescale.v1.NetworkMapR\bsettings\"?\n" +
 	"\fPacketFilter\x12/\n" +
-	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\xd7\x06\n" +
+	"\x05rules\x18\x01 \x03(\v2\x19.whalescale.v1.FilterRuleR\x05rules\"\xf6\x06\n" +
 	"\n" +
 	"NetworkMap\x12'\n" +
 	"\x04self\x18\x01 \x01(\v2\x13.whalescale.v1.NodeR\x04self\x12)\n" +
@@ -2787,7 +2819,9 @@ const file_whalescale_v1_control_proto_rawDesc = "" +
 	"\n" +
 	"lock_chain\x18\x12 \x03(\v2\x18.whalescale.v1.LockStateR\tlockChain\x12!\n" +
 	"\fcontrol_urls\x18\x13 \x03(\tR\vcontrolUrls\x12!\n" +
-	"\fpost_quantum\x18\x14 \x01(\bR\vpostQuantum\"Z\n" +
+	"\fpost_quantum\x18\x14 \x01(\bR\vpostQuantum\x12\x1d\n" +
+	"\n" +
+	"server_key\x18\x15 \x01(\tR\tserverKey\"Z\n" +
 	"\aSSHRule\x12!\n" +
 	"\fsrc_prefixes\x18\x01 \x03(\tR\vsrcPrefixes\x12\x14\n" +
 	"\x05users\x18\x02 \x03(\tR\x05users\x12\x16\n" +

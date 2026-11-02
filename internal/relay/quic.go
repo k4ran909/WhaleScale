@@ -27,7 +27,8 @@ import (
 	"github.com/k4ran909/whalescale/internal/key"
 )
 
-// QUIC transport. A client opens one connection, sends "Bearer <token>\n"
+// QUIC transport. A client opens one connection, sends its credential line
+// (a node proof or "Bearer <token>")
 // on a first stream and waits for "OK\n". Frames then travel as QUIC
 // datagrams; one too large for a datagram (path MTU) goes on that stream
 // instead, as a 4-byte length and the frame. The server's certificate is
@@ -101,6 +102,13 @@ func (s *Server) ServeQUIC(ctx context.Context, pc net.PacketConn, cert tls.Cert
 	}
 }
 
+// Node proofs over QUIC name this method and path (there is no HTTP
+// request to take them from).
+const (
+	QUICMethod = "QUIC"
+	RelayPath  = "/relay"
+)
+
 func (s *Server) handleQUIC(conn *quic.Conn) {
 	actx, cancel := context.WithTimeout(conn.Context(), 10*time.Second)
 	st, err := conn.AcceptStream(actx)
@@ -112,12 +120,12 @@ func (s *Server) handleQUIC(conn *quic.Conn) {
 	st.SetReadDeadline(time.Now().Add(10 * time.Second))
 	br := bufio.NewReaderSize(st, 4096)
 	line, err := br.ReadString('\n')
-	tok, ok := bearer(strings.TrimSpace(line))
+	cred := strings.TrimSpace(line)
 	var k key.Public
-	if err == nil && ok {
-		k, err = s.auth(conn.Context(), tok)
+	if err == nil && cred != "" {
+		k, err = s.auth(conn.Context(), cred, QUICMethod, RelayPath)
 	}
-	if err != nil || !ok || k.IsZero() {
+	if err != nil || cred == "" || k.IsZero() {
 		conn.CloseWithError(2, "unauthorized")
 		return
 	}
@@ -244,7 +252,9 @@ func (c *Client) sessionQUIC(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.WriteString(st, "Bearer "+c.token+"\n"); err != nil {
+	// The proof names the WebSocket URL's server and RelayPath, which is
+	// what the server checks it against.
+	if _, err := io.WriteString(st, c.cred(QUICMethod, c.url)+"\n"); err != nil {
 		return err
 	}
 	st.SetReadDeadline(time.Now().Add(10 * time.Second))

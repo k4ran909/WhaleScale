@@ -5,7 +5,9 @@ package server
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -25,6 +27,7 @@ import (
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/control"
 	"github.com/k4ran909/whalescale/internal/gateway"
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/relay"
 	"github.com/k4ran909/whalescale/internal/store"
@@ -56,6 +59,9 @@ type Config struct {
 	// EphemeralTimeout: ephemeral nodes offline longer are removed
 	// (default control.DefaultEphemeralTimeout).
 	EphemeralTimeout time.Duration
+	// NodeAuthHosts are more host[:port] names nodes reach this server by,
+	// besides PublicURL's: machine proofs must name one of them.
+	NodeAuthHosts []string
 	// RelayQUICAddr (host:port) advertises a QUIC relay; the caller then
 	// runs ServeRelayQUIC on the matching UDP socket.
 	RelayQUICAddr string
@@ -104,9 +110,14 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir, FlowLogs: cfg.FlowLogs,
 		PostQuantum: cfg.PostQuantum,
 	}
+	if ccfg.NodeAuthKey, err = loadNodeAuthKey(st); err != nil {
+		return nil, fmt.Errorf("node auth key: %w", err)
+	}
+	pu, _ := url.Parse(cfg.PublicURL)
+	ccfg.NodeAuthHosts = append([]string{pu.Host}, cfg.NodeAuthHosts...)
 	if cfg.GatewayDomain != "" {
-		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, tok string) (*store.Node, error) {
-			return st.NodeByToken(ctx, tok)
+		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, cred, method, path string) (*store.Node, error) {
+			return s.control.NodeFor(ctx, cred, method, path)
 		}, cfg.Log)
 		ccfg.GatewayDomain = s.gateway.Domain()
 		ccfg.GatewayURL = strings.TrimSuffix(relayURL, "/relay") + "/gateway"
@@ -284,7 +295,29 @@ func longLived(h http.Handler) http.Handler {
 
 // quicCertKey stores the QUIC relay's self-signed certificate, so its pin
 // stays the same across restarts.
-const quicCertKey = "relay_quic_cert"
+const (
+	quicCertKey     = "relay_quic_cert"
+	nodeAuthKeyName = "node_auth_key"
+)
+
+// loadNodeAuthKey returns the X25519 key nodes sign requests against,
+// creating it on first start. It lives in the database, so every server of
+// a cluster has the same one.
+func loadNodeAuthKey(st *store.Store) (*ecdh.PrivateKey, error) {
+	k, err := nodeauth.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	text, err := st.SettingOrCreate(context.Background(), nodeAuthKeyName, base64.StdEncoding.EncodeToString(k.Bytes()))
+	if err != nil {
+		return nil, err
+	}
+	b, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, err
+	}
+	return ecdh.X25519().NewPrivateKey(b)
+}
 
 func loadQUICCert(st *store.Store) (tls.Certificate, []byte, error) {
 	ctx := context.Background()

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 )
 
 func TestMatch(t *testing.T) {
@@ -50,7 +52,7 @@ func TestClientOnlyServesItsOwnExposures(t *testing.T) {
 	}()
 	port, _ := strconv.Atoi(ln.Addr().(*net.TCPAddr).AddrPort().String()[len("127.0.0.1:"):])
 
-	c := NewClient("", "", nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := NewClient("", nodeauth.Bearer(""), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	c.SetExposures(map[string]uint16{"ha": uint16(port)})
 
 	try := func(header string) string {

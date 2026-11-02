@@ -152,6 +152,8 @@ message RegisterResponse {
   // Set when the user must finish logging in in a browser.
   string auth_url = 3;
   string registration_id = 4;
+  // The server key to sign requests against (see NetworkMap.server_key).
+  string server_key = 5;
 }
 
 message WaitRegistrationRequest {
@@ -161,6 +163,8 @@ message WaitRegistrationRequest {
 message WaitRegistrationResponse {
   Node node = 1;
   string node_token = 2;
+  // The server key to sign requests against (see NetworkMap.server_key).
+  string server_key = 3;
 }
 
 message UpdateNodeRequest {
@@ -281,6 +285,9 @@ message NetworkMap {
   // Agree on post-quantum pre-shared keys with peers (ML-KEM-768, rotated
   // every two minutes) and mix them into WireGuard handshakes.
   bool post_quantum = 20;
+  // The server's X25519 key (base64): sign requests with the machine key
+  // against it instead of sending the node token (see internal/nodeauth).
+  string server_key = 21;
 }
 
 // SSHRule lets connections from src_prefixes log in as the listed local

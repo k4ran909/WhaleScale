@@ -29,6 +29,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
 
+	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/store"
 )
 
@@ -45,7 +46,9 @@ func yamuxConfig() *yamux.Config {
 }
 
 // NodeAuth maps a node token to the node it belongs to.
-type NodeAuth func(ctx context.Context, token string) (*store.Node, error)
+// NodeAuth checks a node credential (an Authorization value) for a request
+// with this method and path.
+type NodeAuth func(ctx context.Context, credential, method, path string) (*store.Node, error)
 
 // Server routes public traffic to nodes' tunnels.
 type Server struct {
@@ -208,12 +211,12 @@ func (s *Server) dialExposure(ctx context.Context, _, addr string) (net.Conn, er
 // TunnelHandler accepts nodes' gateway tunnels.
 func (s *Server) TunnelHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok {
-			http.Error(w, "missing token", http.StatusUnauthorized)
+		cred := r.Header.Get("Authorization")
+		if cred == "" {
+			http.Error(w, "missing credentials", http.StatusUnauthorized)
 			return
 		}
-		node, err := s.auth(r.Context(), tok)
+		node, err := s.auth(r.Context(), cred, r.Method, r.URL.Path)
 		if err != nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -250,17 +253,17 @@ func (s *Server) TunnelHandler() http.Handler {
 // Client keeps a node's gateway tunnel up and proxies streams to the
 // node's own localhost.
 type Client struct {
-	url   string
-	token string
-	hc    *http.Client
-	log   *slog.Logger
+	url  string
+	cred nodeauth.Credential
+	hc   *http.Client
+	log  *slog.Logger
 
 	mu    sync.Mutex
 	ports map[string]uint16
 }
 
-func NewClient(url, token string, hc *http.Client, log *slog.Logger) *Client {
-	return &Client{url: url, token: token, hc: hc, log: log, ports: map[string]uint16{}}
+func NewClient(url string, cred nodeauth.Credential, hc *http.Client, log *slog.Logger) *Client {
+	return &Client{url: url, cred: cred, hc: hc, log: log, ports: map[string]uint16{}}
 }
 
 // SetExposures replaces the names this node serves and their local ports.
@@ -303,7 +306,7 @@ func (c *Client) session(ctx context.Context) error {
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	conn, _, err := websocket.Dial(dctx, c.url, &websocket.DialOptions{
 		HTTPClient: c.hc,
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + c.token}},
+		HTTPHeader: http.Header{"Authorization": {c.cred(http.MethodGet, c.url)}},
 	})
 	cancel()
 	if err != nil {
