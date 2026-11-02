@@ -76,11 +76,12 @@ func newAuth(ctx context.Context, s *Server, cfg *OIDCConfig) (*auth, error) {
 
 func (a *auth) enabled() bool { return a.provider != nil }
 
-func (a *auth) routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /auth/login", a.login)
-	mux.HandleFunc("GET /auth/node", a.nodeLogin)
-	mux.HandleFunc("GET /auth/callback", a.callback)
-	mux.HandleFunc("POST /auth/apikey", a.apiKeyLogin)
+// routes adds the login endpoints; limit wraps those anyone may call.
+func (a *auth) routes(mux *http.ServeMux, limit func(http.Handler) http.Handler) {
+	mux.Handle("GET /auth/login", limit(http.HandlerFunc(a.login)))
+	mux.Handle("GET /auth/node", limit(http.HandlerFunc(a.nodeLogin)))
+	mux.Handle("GET /auth/callback", limit(http.HandlerFunc(a.callback)))
+	mux.Handle("POST /auth/apikey", limit(http.HandlerFunc(a.apiKeyLogin)))
 	mux.HandleFunc("POST /auth/logout", a.logout)
 }
 

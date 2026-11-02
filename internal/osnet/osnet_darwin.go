@@ -3,6 +3,7 @@ package osnet
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -32,6 +33,11 @@ func apply(c Config) error {
 	}
 	if err := os.MkdirAll("/etc/resolver", 0o755); err != nil {
 		return err
+	}
+	if c.DNSAll {
+		// /etc/resolver only routes domains; the default resolver belongs to
+		// the network service settings.
+		slog.Warn("DNS doesn't go through the exit node on macOS yet; only mesh names use MagicDNS")
 	}
 	body := fmt.Sprintf("# managed by whalescale\nnameserver %s\n", c.DNSServer)
 	return os.WriteFile(resolverFile(c.DNSSuffix), []byte(body), 0o644)

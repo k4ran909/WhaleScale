@@ -106,6 +106,9 @@ type Options struct {
 	IncludeLoopback bool
 	ForceRelay      bool
 	HTTPClient      *http.Client
+	// dnsUpstream replaces the system's resolvers when answering for exit
+	// node clients.
+	dnsUpstream []string
 }
 
 type Engine struct {
@@ -164,6 +167,13 @@ type Engine struct {
 	lastErr string
 
 	epCh chan []netip.AddrPort
+
+	// DNS forwarding (dnsForward): our mesh addresses, the exit node's
+	// (when we use one), and whether we are an approved exit node.
+	selfIPs     []netip.Addr
+	exitDNS     netip.Addr
+	isExit      bool
+	dnsUpstream func(ctx context.Context, query []byte) ([]byte, error)
 }
 
 // New prepares an engine. Start runs it.
@@ -235,6 +245,8 @@ func New(opts Options) (*Engine, error) {
 		}
 	}
 	e.api = e.controlClient(st.ServerURL)
+	e.dnsUpstream = dnsserver.Upstream(opts.dnsUpstream)
+	e.dns.SetForwarder(e.dnsForward)
 	e.lockHead = e.loadLockHead()
 	return e, nil
 }
@@ -646,6 +658,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	claimed := map[netip.Prefix]bool{}
 	want := map[key.Public]string{}
 	var exit *ExitStatus
+	var exitDNS netip.Addr
 	if e.opts.ExitNode != "" {
 		exit = &ExitStatus{Name: e.opts.ExitNode, Problem: "no peer named " + e.opts.ExitNode}
 	}
@@ -687,6 +700,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 				// Kept while the exit node is offline too, so traffic resumes
 				// the moment it returns.
 				cfg.WriteString("allowed_ip=0.0.0.0/0\nallowed_ip=::/0\n")
+				exitDNS = addrs[0]
 				if p.Online {
 					exit.Problem, exit.Active = "", true
 				} else {
@@ -705,6 +719,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		}
 	}
 	e.exitStat = exit
+	e.exitDNS, e.isExit = exitDNS, nm.Self.ExitNode
 
 	var uapi strings.Builder
 	for k := range e.wgPeers {
@@ -753,6 +768,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 		selfIPs = append(selfIPs, self.v6)
 	}
 	e.filter.SetRules(rules, selfIPs)
+	e.selfIPs = selfIPs
 	e.filter.SetFlowLogging(nm.FlowLogs)
 
 	suffix := "whale.internal"
@@ -859,7 +875,7 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 			route6 = netip.PrefixFrom(self.v6, 48).Masked()
 		}
 		cfg := osnet.Config{Iface: ifname, IPv4: self.v4, IPv6: self.v6, Route4: meshRange4, Route6: route6,
-			MTU: MTU, DNSSuffix: suffix}
+			MTU: MTU, DNSSuffix: suffix, DNSAll: e.opts.ExitNode != ""}
 		if err := osnet.Apply(cfg); err != nil {
 			return fmt.Errorf("configure %s: %w", ifname, err)
 		}
@@ -1036,6 +1052,35 @@ func (e *Engine) bypassLoop() {
 func matchesPeer(p *v1.Node, target string) bool {
 	t := strings.TrimSuffix(strings.ToLower(target), ".")
 	return p.Name == t || p.Fqdn == t || slices.Contains(p.Addresses, t)
+}
+
+// dnsForward decides where MagicDNS sends names outside the mesh. This
+// machine's own lookups go through its exit node when it uses one, and fail
+// while the exit node can't be used rather than leak to the local network.
+// Peers' lookups are resolved upstream if this machine is an approved exit
+// node. Anything else is refused, as without exit nodes.
+func (e *Engine) dnsForward(ctx context.Context, from netip.Addr, query []byte) ([]byte, error) {
+	e.mu.Lock()
+	local := !from.IsValid() || from.IsLoopback() || slices.Contains(e.selfIPs, from)
+	exitDNS, isExit, tnet := e.exitDNS, e.isExit, e.tnet
+	e.mu.Unlock()
+	switch {
+	case local && e.opts.ExitNode != "":
+		if !exitDNS.IsValid() {
+			return nil, errors.New("exit node unavailable")
+		}
+		dst := netip.AddrPortFrom(exitDNS, 53)
+		return dnsserver.Exchange(ctx, func(ctx context.Context) (net.Conn, error) {
+			if tnet != nil {
+				return tnet.DialUDPAddrPort(netip.AddrPort{}, dst)
+			}
+			var d net.Dialer
+			return d.DialContext(ctx, "udp", dst.String())
+		}, query)
+	case !local && isExit:
+		return e.dnsUpstream(ctx, query)
+	}
+	return nil, dnsserver.ErrRefused
 }
 
 // ExitStatus describes the exit node this node is set to use.

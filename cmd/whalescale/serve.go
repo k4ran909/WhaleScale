@@ -38,7 +38,8 @@ type serveOpts struct {
 	gatewayDomain, acmeEmail, acmeCache, recordingsDir       string
 	policyURL, policyTokenFile, webhookSecretFile            string
 	policySyncInterval                                       time.Duration
-	relayQUICListen, udpHost, nodeAuthHosts                  string
+	relayQUICListen, udpHost, nodeAuthHosts, trustedProxies  string
+	rateLimit                                                int
 	console, tlsACME, flowLogs, postQuantum                  bool
 	flowRetention, ephemeralTimeout                          time.Duration
 }
@@ -70,6 +71,8 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.DurationVar(&o.flowRetention, "flow-log-retention", 7*24*time.Hour, "how long flow logs are kept")
 	fs.DurationVar(&o.ephemeralTimeout, "ephemeral-timeout", control.DefaultEphemeralTimeout, "remove ephemeral machines (from --ephemeral pre-auth keys) offline this long")
 	fs.StringVar(&o.recordingsDir, "recordings-dir", "", "where recorded SSH sessions are stored (default: 'recordings' next to the database)")
+	fs.IntVar(&o.rateLimit, "rate-limit", server.DefaultRateLimit, "unauthenticated requests (registrations, logins) one client address may make per minute; -1 disables")
+	fs.StringVar(&o.trustedProxies, "trusted-proxies", "", "comma-separated addresses or CIDR prefixes of reverse proxies whose X-Forwarded-For names the client (loopback is always trusted)")
 	fs.StringVar(&o.nodeAuthHosts, "node-auth-hosts", "", "comma-separated extra host[:port] names machines reach this server by (besides --public-url's); their signed requests must name one")
 	fs.StringVar(&o.gatewayDomain, "gateway-domain", "", "publish machines' services at <name>.<this domain>; needs a wildcard DNS record pointing here")
 	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
@@ -232,6 +235,7 @@ func cmdConfigtest(args []string) error {
 		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
 		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
 		"relay-quic-listen": o.relayQUICListen, "udp-host": o.udpHost, "node-auth-hosts": o.nodeAuthHosts,
+		"rate-limit": fmt.Sprint(o.rateLimit), "trusted-proxies": o.trustedProxies,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -309,6 +313,10 @@ func cmdServe(args []string) error {
 		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
 		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log, PostQuantum: o.postQuantum,
 		EphemeralTimeout: o.ephemeralTimeout, NodeAuthHosts: splitList(o.nodeAuthHosts),
+		RateLimit: o.rateLimit,
+	}
+	if cfg.TrustedProxies, err = server.ParsePrefixes(o.trustedProxies); err != nil {
+		return fmt.Errorf("trusted-proxies: %w", err)
 	}
 	var quicPC net.PacketConn
 	if o.relayQUICListen != "" {

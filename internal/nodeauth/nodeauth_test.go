@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-func keys(t *testing.T) (machinePriv, machinePub string, server *ecdh.PrivateKey) {
+func b64std(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
+
+func keys(t testing.TB) (machinePriv, machinePub string, server *ecdh.PrivateKey) {
 	t.Helper()
 	m, _ := ecdh.X25519().GenerateKey(rand.Reader)
 	s, _ := GenerateKey()

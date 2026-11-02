@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -62,6 +63,13 @@ type Config struct {
 	// NodeAuthHosts are more host[:port] names nodes reach this server by,
 	// besides PublicURL's: machine proofs must name one of them.
 	NodeAuthHosts []string
+	// RateLimit is how many unauthenticated requests (registrations,
+	// browser and API key logins) a client may make per minute; 0 means
+	// DefaultRateLimit, negative turns limiting off. TrustedProxies are
+	// reverse proxies whose X-Forwarded-For names the client (loopback is
+	// always trusted).
+	RateLimit      int
+	TrustedProxies []netip.Prefix
 	// RelayQUICAddr (host:port) advertises a QUIC relay; the caller then
 	// runs ServeRelayQUIC on the matching UDP socket.
 	RelayQUICAddr string
@@ -81,6 +89,7 @@ type Server struct {
 	log     *slog.Logger
 	started time.Time
 
+	limiter   *limiter
 	policyMod time.Time
 	psync     *policySync
 	quicCert  tls.Certificate
@@ -103,7 +112,8 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now(), id: id, relayURL: relayURL}
+	s := &Server{cfg: cfg, store: st, log: cfg.Log, started: time.Now(), id: id, relayURL: relayURL,
+		limiter: newLimiter(cfg.RateLimit, cfg.TrustedProxies)}
 	ccfg := control.Config{
 		ServerID:  id,
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
@@ -201,7 +211,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(path, limitBody(h, maxControlRequest))
 	mux.Handle(whalescalev1connect.ControlServiceUploadRecordingProcedure, h)
 	mux.Handle(whalescalev1connect.ControlServiceStreamNetworkMapProcedure, longLived(limitBody(h, maxControlRequest)))
-	mux.Handle(whalescalev1connect.ControlServiceWaitRegistrationProcedure, longLived(limitBody(h, maxControlRequest)))
+	// Calls anyone may make are rate limited per client.
+	mux.Handle(whalescalev1connect.ControlServiceRegisterProcedure, s.limiter.wrap(limitBody(h, maxControlRequest)))
+	mux.Handle(whalescalev1connect.ControlServiceWaitRegistrationProcedure, s.limiter.wrap(longLived(limitBody(h, maxControlRequest))))
 	apath, ah := whalescalev1connect.NewAdminServiceHandler(s.admin, connect.WithReadMaxBytes(maxAdminRequest))
 	mux.Handle(apath, ah)
 	mux.Handle("/relay", longLived(s.relay))
@@ -209,7 +221,7 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("/gateway", longLived(s.gateway.TunnelHandler()))
 		mux.Handle("GET /gateway/ask", s.gateway.AskHandler())
 	}
-	s.auth.routes(mux)
+	s.auth.routes(mux, s.limiter.wrap)
 	if s.psync != nil && s.psync.cfg.WebhookSecret != "" {
 		mux.HandleFunc("POST /policy/sync", s.psync.webhook)
 	}
@@ -385,6 +397,7 @@ func (s *Server) MetricsHandler() http.Handler {
 		}
 		m("whalescale_build_info", "gauge", "Build information.", 1, `version="`+version.Version+`"`, `commit="`+version.Commit+`"`)
 		m("whalescale_uptime_seconds", "gauge", "Seconds since the server started.", int64(time.Since(s.started).Seconds()))
+		m("whalescale_rate_limited_total", "counter", "Unauthenticated requests refused for exceeding the per-client rate limit.", s.limiter.limited.Load())
 		m("whalescale_users", "gauge", "Number of users.", len(users))
 		m("whalescale_nodes", "gauge", "Number of registered nodes.", len(nodes))
 		m("whalescale_nodes_online", "gauge", "Nodes holding a network map stream.", s.control.OnlineCount())

@@ -31,10 +31,14 @@ func apply(c Config) error {
 	if !c.DNSServer.IsValid() {
 		return nil
 	}
-	// Name Resolution Policy Table: send only *.suffix to our resolver.
+	// Name Resolution Policy Table: send only *.suffix to our resolver, or
+	// with DNSAll every name ("." matches them all).
 	removeNRPT()
 	ps := fmt.Sprintf("Add-DnsClientNrptRule -Namespace '.%s' -NameServers '%s' -Comment '%s'",
 		c.DNSSuffix, c.DNSServer, nrptComment)
+	if c.DNSAll {
+		ps += fmt.Sprintf("; Add-DnsClientNrptRule -Namespace '.' -NameServers '%s' -Comment '%s'", c.DNSServer, nrptComment)
+	}
 	return run("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
 }
 

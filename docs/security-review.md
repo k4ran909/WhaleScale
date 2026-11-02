@@ -69,6 +69,8 @@ This is a first pass by the project itself. It doesn't replace an independent au
   - node signatures can't be moved to another key (unit and end-to-end tests).
 - **Post-quantum exchange:** a key is applied only after both sides confirm, a mismatch falls back to plain WireGuard, and older peers never get one (tests under 40% message loss).
 - **Audit log:** hash-chained; edits and deletions are detected.
+- **Parsers:** fuzz targets cover policies, map deltas, QUIC relay frames, disco messages, packets entering the filter, DNS queries and machine proofs.
+- **Exit nodes and DNS:** a machine using an exit node resolves every name through it and fails closed when it can't, so lookups don't leak to the local network (end to end in `engine.TestExitNode`).
 
 ## Residual risks and recommendations
 
@@ -78,7 +80,7 @@ This is a first pass by the project itself. It doesn't replace an independent au
    - Machines that never upgrade keep using their tokens.
    - A machine that logged in with an older client learns the server key from its first network map (trust on first use, over TLS).
 2. **The control server is trusted for policy.** See finding 8. Use the network lock, keep the policy in Git with review, and watch the audit log.
-3. **Unauthenticated endpoints should sit behind a rate limit.** These are starting a browser login (finding 4), `Register`, `/auth/apikey` and STUN. Put Caddy or another proxy in front with per-IP limits.
+3. **Rate limits are per address.** Starting a browser login (finding 4), `Register`, `WaitRegistration` and the `/auth/*` endpoints are limited per client (`rate-limit`, 60 a minute by default; IPv6 per /64; `X-Forwarded-For` only from `trusted-proxies`; tests `server.TestLimiter` and `TestRateLimitedEndpoints`). Someone with many addresses can still spread requests across them, and STUN isn't limited. A proxy or firewall in front can add global limits.
 4. **Uploads cost disk.** Any member can upload SSH recordings (up to 32 MB each) and flow logs. There's no per-machine quota yet; monitor the recordings directory and the database size.
 5. **Self-reported data:** flow logs, path reports and posture attributes (OS and client version) come from the machines themselves. Posture checks keep honest machines up to date; they don't stop a compromised machine that lies.
 6. **The post-quantum layer is hybrid:** the exchange is authenticated with X25519 (the disco keys). It protects recorded traffic against future decryption, but not against an active quantum attacker during the exchange.

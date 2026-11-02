@@ -37,8 +37,17 @@ func apply(c Config) error {
 		return fmt.Errorf("configure DNS: %w", err)
 	}
 	// A plain domain is both a search domain (so "ping laptop" works) and a
-	// routing domain (only these names go to our resolver).
-	return run("resolvectl", "domain", c.Iface, c.DNSSuffix)
+	// routing domain (only these names go to our resolver). "~." routes
+	// every name here.
+	if !c.DNSAll {
+		return run("resolvectl", "domain", c.Iface, c.DNSSuffix)
+	}
+	if err := run("resolvectl", "domain", c.Iface, c.DNSSuffix, "~."); err != nil {
+		return err
+	}
+	// Older systemd has no default-route setting; "~." is enough there.
+	run("resolvectl", "default-route", c.Iface, "true")
+	return nil
 }
 
 func cleanup(c Config) error {

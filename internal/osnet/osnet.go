@@ -20,6 +20,10 @@ type Config struct {
 	// DNSServer answers for DNSSuffix (split DNS). Zero disables DNS setup.
 	DNSServer netip.Addr
 	DNSSuffix string
+	// DNSAll sends every name to DNSServer, not just DNSSuffix: a machine
+	// using an exit node resolves through it, so lookups don't leak to the
+	// local network.
+	DNSAll bool
 }
 
 // Apply configures the interface. Cleanup undoes what interface removal

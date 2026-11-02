@@ -53,6 +53,7 @@ helm install ws deploy/helm/whalescale \
 - **Database:** SQLite on a persistent volume by default. With `database.url` (or an existing Secret) it uses PostgreSQL.
 - **Failover:** install a second release with its own `publicURL` against the same PostgreSQL database.
 - **Other settings:** `config:` takes any other server setting (`post-quantum: true`, `flow-logs: true`, `policy-url`, ...), and `oidc:` sets up browser login.
+- **Behind the ingress:** set `config.trusted-proxies` to your ingress controller's pod range so rate limits apply per client.
 - **Hardened pod:** runs as non-root with a read-only root filesystem and no service-account token.
 - **Images:** release builds publish `ghcr.io/k4ran909/whalescale` for amd64 and arm64.
 
@@ -307,6 +308,7 @@ ws status                                 # "exit node: homelab (active)"
 ```
 
 - **Fails closed.** If the exit node goes offline, internet traffic is blocked rather than leaking out of the local network, and resumes when it returns.
+- **DNS goes through the exit node too.** The device's MagicDNS resolver sends every lookup (not just mesh names) over the tunnel to the exit node, which resolves it with its own resolvers. Neither the café's DNS server nor anyone watching that network sees which sites you look up. While the exit node can't be used, lookups fail rather than fall back to the local resolver. The OS is pointed at MagicDNS for all names on Linux (systemd-resolved) and Windows (NRPT); macOS still sends only mesh names there.
 - **Your LAN keeps working** (printers, the router's admin page), because local routes still win.
 - **The agent's own traffic stays off the tunnel** (WireGuard, discovery, the control connection, the relay):
   - Linux: socket marks and policy routing, as wg-quick does.
@@ -506,7 +508,9 @@ On the machines themselves, path discovery is lazy in networks of more than 100 
 | `whalescale apikeys create --scope read` | An API key that can look but not change anything (monitoring, AI agents) |
 | `ws mcp` | MCP server for AI agents |
 | `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
-| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots and policy compiles |
+| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots, policy compiles and rate-limited requests |
+
+Requests anyone can make (registering, browser logins, API key logins) are rate limited per client address: `rate-limit` per minute (60 by default; IPv6 counted per /64). Behind a reverse proxy on another host, list it in `trusted-proxies` so the limit applies to each client rather than to the proxy; `X-Forwarded-For` is believed only from those addresses and loopback.
 
 ## Layout
 
@@ -528,7 +532,7 @@ On the machines themselves, path discovery is lazy in networks of more than 100 
 ## Known gaps
 
 - **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
-- **Exit nodes**: the exit side (forwarding + NAT) is Linux-only; DNS queries still go to the device's own DNS servers rather than through the exit node.
+- **Exit nodes**: the exit side (forwarding + NAT) is Linux-only. On macOS, DNS lookups don't go through the exit node yet.
 - Subnet routing is Linux-only for now.
 - Machine keys live in a file (protected, but not in a TPM or secure enclave): whoever copies a machine's whole state can still act as it until it's removed. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
 
@@ -541,5 +545,7 @@ make generate test      # protobuf codegen + tests (needs buf, protoc-gen-go, pr
 make web                # rebuild web/dist after changing web/src (CI checks it is current)
 cd web && npm run dev   # console dev server, proxying to a local server on :8080
 ```
+
+Fuzz targets cover everything that parses input from the network: policies, map deltas, QUIC relay frames, disco messages, packets entering the filter, DNS queries and machine proofs. Run one with `go test ./internal/disco -run '^$' -fuzz FuzzParse`.
 
 End-to-end tests run real servers and agents in one process: direct paths, relay-only fallback, policy enforcement, subnet route approval, and OIDC console and device login against a fake identity provider (`internal/engine`, `internal/server`).

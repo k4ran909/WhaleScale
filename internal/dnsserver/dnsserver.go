@@ -1,12 +1,16 @@
 // Package dnsserver answers MagicDNS queries for names under the mesh's
-// suffix. The OS is configured to send only that suffix here (split DNS),
-// so other names are refused rather than forwarded.
+// suffix. Usually the OS sends only that suffix here (split DNS) and other
+// names are refused; with a Forwarder (a machine using an exit node, or an
+// exit node answering for its clients) they are forwarded.
 package dnsserver
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 
@@ -15,12 +19,17 @@ import (
 
 const ttl = 60
 
+// maxInFlight bounds queries being answered at once; more are dropped
+// (clients retry).
+const maxInFlight = 64
+
 type Server struct {
 	log *slog.Logger
 
 	mu      sync.RWMutex
 	suffix  string                  // "whale.internal." (lowercase, trailing dot)
 	records map[string][]netip.Addr // fqdn with trailing dot -> addrs
+	fwd     Forwarder
 }
 
 func New(log *slog.Logger) *Server {
@@ -63,20 +72,40 @@ func (s *Server) Lookup(name string) ([]netip.Addr, bool) {
 // Serve answers queries on pc until it is closed.
 func (s *Server) Serve(pc net.PacketConn) error {
 	buf := make([]byte, 1500)
+	sem := make(chan struct{}, maxInFlight)
 	for {
 		n, from, err := pc.ReadFrom(buf)
 		if err != nil {
 			return err
 		}
-		resp, ok := s.Handle(buf[:n])
-		if ok {
-			pc.WriteTo(resp, from)
+		select {
+		case sem <- struct{}{}:
+		default:
+			continue
 		}
+		query := slices.Clone(buf[:n])
+		var src netip.Addr
+		if ua, ok := from.(*net.UDPAddr); ok {
+			src = ua.AddrPort().Addr().Unmap()
+		}
+		// Forwarded queries take a round trip: answer each on its own.
+		go func() {
+			defer func() { <-sem }()
+			if resp, ok := s.HandleFrom(context.Background(), src, query); ok {
+				pc.WriteTo(resp, from)
+			}
+		}()
 	}
 }
 
 // Handle answers one DNS query message.
 func (s *Server) Handle(query []byte) ([]byte, bool) {
+	return s.HandleFrom(context.Background(), netip.Addr{}, query)
+}
+
+// HandleFrom answers one DNS query message from src, forwarding names
+// outside the mesh if there is a Forwarder.
+func (s *Server) HandleFrom(ctx context.Context, src netip.Addr, query []byte) ([]byte, bool) {
 	var p dnsmessage.Parser
 	h, err := p.Start(query)
 	if err != nil || h.Response {
@@ -92,8 +121,21 @@ func (s *Server) Handle(query []byte) ([]byte, bool) {
 	s.mu.RLock()
 	inZone := s.suffix != "" && (name == s.suffix || strings.HasSuffix(name, "."+s.suffix))
 	addrs, found := s.records[name]
+	fwd := s.fwd
 	s.mu.RUnlock()
 
+	if !inZone && fwd != nil {
+		resp, err := fwd(ctx, src, query)
+		if err == nil {
+			return resp, true
+		}
+		if !errors.Is(err, ErrRefused) {
+			s.log.Debug("forward DNS query", "name", name, "err", err)
+			rh.Authoritative, rh.RecursionAvailable = false, true
+			rh.RCode = dnsmessage.RCodeServerFailure
+			return s.empty(rh, q)
+		}
+	}
 	switch {
 	case !inZone:
 		rh.Authoritative = false
@@ -125,4 +167,15 @@ func (s *Server) Handle(query []byte) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// empty is a response with no answers.
+func (s *Server) empty(rh dnsmessage.Header, q dnsmessage.Question) ([]byte, bool) {
+	b := dnsmessage.NewBuilder(make([]byte, 0, 512), rh)
+	if err := b.StartQuestions(); err != nil {
+		return nil, false
+	}
+	b.Question(q)
+	out, err := b.Finish()
+	return out, err == nil
 }

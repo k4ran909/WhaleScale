@@ -27,6 +27,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coder/websocket"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/dns/dnsmessage"
 
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
@@ -390,10 +391,47 @@ func TestSubnetRoutes(t *testing.T) {
 	}
 }
 
+// fakeResolver answers every A question with addr: the "internet" DNS an
+// exit node forwards to.
+func fakeResolver(t *testing.T, addr netip.Addr) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pc.Close() })
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, from, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var m dnsmessage.Message
+			if m.Unpack(buf[:n]) != nil || len(m.Questions) != 1 {
+				continue
+			}
+			m.Response = true
+			if q := m.Questions[0]; q.Type == dnsmessage.TypeA {
+				m.Answers = []dnsmessage.Resource{{
+					Header: dnsmessage.ResourceHeader{Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 60},
+					Body:   &dnsmessage.AResource{A: addr.As4()},
+				}}
+			}
+			if b, err := m.Pack(); err == nil {
+				pc.WriteTo(b, from)
+			}
+		}
+	}()
+	return pc.LocalAddr().String()
+}
+
 func TestExitNode(t *testing.T) {
 	n := newTestNet(t, "")
+	internetIP := netip.MustParseAddr("203.0.113.7")
 	gw := n.nodeWith("gw", Options{AdvertiseRoutes: []netip.Prefix{
-		netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}})
+		netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
+		dnsUpstream: []string{fakeResolver(t, internetIP)}})
 	client := n.nodeWith("roamer", Options{ExitNode: "gw"})
 	lost := n.nodeWith("lost", Options{ExitNode: "nope"})
 
@@ -447,6 +485,32 @@ func TestExitNode(t *testing.T) {
 	if st := client.Status(); st.ExitNode == nil || !st.ExitNode.Active {
 		t.Fatalf("status does not report the exit node: %+v", st.ExitNode)
 	}
+	// The client's lookups go through the exit node, which resolves them
+	// with its own upstream; a client whose exit node is unusable gets
+	// errors rather than leaking queries to its local network.
+	lookup := func(e *Engine) ([]string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return e.Net().LookupContextHost(ctx, "example.com")
+	}
+	var addrs []string
+	var err error
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if addrs, err = lookup(client); err == nil {
+			break
+		}
+	}
+	if !slices.Contains(addrs, internetIP.String()) {
+		t.Fatalf("lookup through the exit node = %v, %v", addrs, err)
+	}
+	if addrs, err := lookup(lost); err == nil {
+		t.Fatalf("lookup with an unusable exit node succeeded: %v", addrs)
+	}
+	// Machines that use no exit node keep resolving only mesh names.
+	if addrs, err := lookup(gw); err == nil {
+		t.Fatalf("exit node resolved for itself through MagicDNS: %v", addrs)
+	}
+
 	// Other nodes must not pick up default routes just because one exists.
 	lost.mu.Lock()
 	other := lost.wgPeers[gw.nodeKey.Public()]
