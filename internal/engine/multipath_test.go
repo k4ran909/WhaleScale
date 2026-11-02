@@ -243,3 +243,41 @@ func TestLazyDiscovery(t *testing.T) {
 	waitPath(t, a, "lz-b", "direct")
 	t.Logf("direct path %v after traffic started", time.Since(start).Round(time.Millisecond))
 }
+
+// Closing an engine while a peer's packets are still arriving must be
+// clean. Datagrams to a port nobody listens on make the userspace stack
+// answer with ICMP, which raced the stack's own teardown when the TUN was
+// closed before the peers stopped (wireguard-go closes it first).
+func TestCloseUnderTraffic(t *testing.T) {
+	n := newTestNet(t, "")
+	a := n.node("cl-a", false)
+	for i := range 4 {
+		b := n.node("cl-b"+string(rune('0'+i)), false)
+		waitPath(t, a, b.opts.State.NodeName, "direct")
+		stop := make(chan struct{})
+		var senders sync.WaitGroup
+		for range 4 {
+			c, err := a.Net().DialUDPAddrPort(netip.AddrPort{}, netip.AddrPortFrom(selfIP(b), 9))
+			if err != nil {
+				t.Fatal(err)
+			}
+			senders.Add(1)
+			go func() {
+				defer senders.Done()
+				defer c.Close()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					c.Write([]byte("nobody listens on port 9"))
+				}
+			}()
+		}
+		time.Sleep(300 * time.Millisecond)
+		b.Close() // mid-stream
+		close(stop)
+		senders.Wait()
+	}
+}

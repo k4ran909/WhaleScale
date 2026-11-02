@@ -166,7 +166,8 @@ type Engine struct {
 	ready   chan struct{}
 	lastErr string
 
-	epCh chan []netip.AddrPort
+	epCh   chan []netip.AddrPort
+	closed bool // Close has run (guarded by mu)
 
 	// DNS forwarding (dnsForward): our mesh addresses, the exit node's
 	// (when we use one), and whether we are an approved exit node.
@@ -382,6 +383,10 @@ func (e *Engine) Close() {
 	e.wg.Wait()
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.closed {
+		return
+	}
+	e.closed = true
 	if e.exitRts != nil {
 		e.exitRts.Close()
 	}
@@ -392,6 +397,10 @@ func (e *Engine) Close() {
 		osnet.Cleanup(*e.osCfg)
 	}
 	if e.dev != nil {
+		// Stop the peers (and wait for them) before closing: Close shuts the
+		// TUN first, and a packet a peer is still delivering would make the
+		// userspace stack send on the queue it is closing (a panic).
+		e.dev.Down()
 		e.dev.Close() // also closes the TUN
 	}
 	if e.conn != nil {
