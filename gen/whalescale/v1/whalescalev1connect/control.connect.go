@@ -59,6 +59,8 @@ const (
 	// ControlServiceListAccessProcedure is the fully-qualified name of the ControlService's ListAccess
 	// RPC.
 	ControlServiceListAccessProcedure = "/whalescale.v1.ControlService/ListAccess"
+	// ControlServiceLogoutProcedure is the fully-qualified name of the ControlService's Logout RPC.
+	ControlServiceLogoutProcedure = "/whalescale.v1.ControlService/Logout"
 )
 
 // ControlServiceClient is a client for the whalescale.v1.ControlService service.
@@ -87,6 +89,8 @@ type ControlServiceClient interface {
 	RequestAccess(context.Context, *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error)
 	// This node's recent requests, and what it may request.
 	ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error)
+	// Removes the calling node from the network ('ws logout').
+	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 }
 
 // NewControlServiceClient constructs a client for the whalescale.v1.ControlService service. By
@@ -154,6 +158,12 @@ func NewControlServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(controlServiceMethods.ByName("ListAccess")),
 			connect.WithClientOptions(opts...),
 		),
+		logout: connect.NewClient[v1.LogoutRequest, v1.LogoutResponse](
+			httpClient,
+			baseURL+ControlServiceLogoutProcedure,
+			connect.WithSchema(controlServiceMethods.ByName("Logout")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -168,6 +178,7 @@ type controlServiceClient struct {
 	uploadRecording  *connect.Client[v1.UploadRecordingRequest, v1.UploadRecordingResponse]
 	requestAccess    *connect.Client[v1.RequestAccessRequest, v1.RequestAccessResponse]
 	listAccess       *connect.Client[v1.ListAccessRequest, v1.ListAccessResponse]
+	logout           *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
 }
 
 // Register calls whalescale.v1.ControlService.Register.
@@ -215,6 +226,11 @@ func (c *controlServiceClient) ListAccess(ctx context.Context, req *connect.Requ
 	return c.listAccess.CallUnary(ctx, req)
 }
 
+// Logout calls whalescale.v1.ControlService.Logout.
+func (c *controlServiceClient) Logout(ctx context.Context, req *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
+	return c.logout.CallUnary(ctx, req)
+}
+
 // ControlServiceHandler is an implementation of the whalescale.v1.ControlService service.
 type ControlServiceHandler interface {
 	// Register enrolls a new node. With an auth_key it completes at once.
@@ -241,6 +257,8 @@ type ControlServiceHandler interface {
 	RequestAccess(context.Context, *connect.Request[v1.RequestAccessRequest]) (*connect.Response[v1.RequestAccessResponse], error)
 	// This node's recent requests, and what it may request.
 	ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error)
+	// Removes the calling node from the network ('ws logout').
+	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 }
 
 // NewControlServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -304,6 +322,12 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 		connect.WithSchema(controlServiceMethods.ByName("ListAccess")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controlServiceLogoutHandler := connect.NewUnaryHandler(
+		ControlServiceLogoutProcedure,
+		svc.Logout,
+		connect.WithSchema(controlServiceMethods.ByName("Logout")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/whalescale.v1.ControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ControlServiceRegisterProcedure:
@@ -324,6 +348,8 @@ func NewControlServiceHandler(svc ControlServiceHandler, opts ...connect.Handler
 			controlServiceRequestAccessHandler.ServeHTTP(w, r)
 		case ControlServiceListAccessProcedure:
 			controlServiceListAccessHandler.ServeHTTP(w, r)
+		case ControlServiceLogoutProcedure:
+			controlServiceLogoutHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -367,4 +393,8 @@ func (UnimplementedControlServiceHandler) RequestAccess(context.Context, *connec
 
 func (UnimplementedControlServiceHandler) ListAccess(context.Context, *connect.Request[v1.ListAccessRequest]) (*connect.Response[v1.ListAccessResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.ListAccess is not implemented"))
+}
+
+func (UnimplementedControlServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.ControlService.Logout is not implemented"))
 }

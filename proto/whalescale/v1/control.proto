@@ -36,7 +36,12 @@ service ControlService {
   rpc RequestAccess(RequestAccessRequest) returns (RequestAccessResponse);
   // This node's recent requests, and what it may request.
   rpc ListAccess(ListAccessRequest) returns (ListAccessResponse);
+  // Removes the calling node from the network ('ws logout').
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
+
+message LogoutRequest {}
+message LogoutResponse {}
 
 message RequestAccessRequest {
   // "selector:ports", as a rule's dst lists it (ports may be a subset).

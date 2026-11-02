@@ -795,26 +795,38 @@ func cmdLogout(args []string) error {
 		fmt.Println("not logged in")
 		return nil
 	}
+	// Remove the node on the server first; if that fails, still forget the
+	// credentials here and say what's left to do.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req := connect.NewRequest(&v1.LogoutRequest{})
+	req.Header().Set("Authorization", "Bearer "+st.NodeToken)
+	_, serverErr := client(st.ServerURL).Logout(ctx, req)
+	if connect.CodeOf(serverErr) == connect.CodeUnauthenticated {
+		serverErr = nil // already removed there
+	}
+	lc := localapi.NewClient(localapi.SocketPath(base))
+	if _, err := lc.Prefs(); err == nil {
+		lc.Down()
+	}
 	if profName != clientstate.DefaultProfile {
 		// Other profiles go entirely; the default profile becomes active.
-		lc := localapi.NewClient(localapi.SocketPath(base))
-		if _, err := lc.Prefs(); err == nil {
-			lc.Down()
-		}
 		if err := clientstate.RemoveProfile(base, profName); err != nil {
 			return err
 		}
 		fmt.Printf("removed profile %q; now using the default profile\n", profName)
-		fmt.Println("ask an admin to run 'whalescale nodes delete' to remove the node from that network")
+	} else {
+		// Keep the machine key; forget the server credentials.
+		st.NodeToken, st.NodeID, st.NodeName = "", 0, ""
+		if err := clientstate.Save(path, st); err != nil {
+			return err
+		}
+	}
+	if serverErr != nil {
+		fmt.Printf("logged out here, but the server couldn't be told (%v);\nask an admin to run 'whalescale nodes delete %s'\n", serverErr, st.NodeName)
 		return nil
 	}
-	// Keep the machine key; forget server credentials. Server-side removal
-	// is 'whalescale nodes delete' until a Logout RPC lands in Phase 1.
-	st.NodeToken, st.NodeID, st.NodeName = "", 0, ""
-	if err := clientstate.Save(path, st); err != nil {
-		return err
-	}
-	fmt.Println("logged out locally; ask an admin to run 'whalescale nodes delete' to remove the node")
+	fmt.Printf("logged out: %s removed from %s\n", st.NodeName, st.ServerURL)
 	return nil
 }
 

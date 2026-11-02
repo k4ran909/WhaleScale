@@ -53,6 +53,9 @@ type Config struct {
 	// PostQuantum has nodes agree post-quantum PSKs with their peers.
 	PostQuantum   bool
 	FlowRetention time.Duration
+	// EphemeralTimeout: ephemeral nodes offline longer are removed
+	// (default control.DefaultEphemeralTimeout).
+	EphemeralTimeout time.Duration
 	// RelayQUICAddr (host:port) advertises a QUIC relay; the caller then
 	// runs ServeRelayQUIC on the matching UDP socket.
 	RelayQUICAddr string
@@ -376,7 +379,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	last, _ := s.store.Fingerprint(ctx)
-	var lastPrune time.Time
+	var lastPrune, lastEphemeral time.Time
 	s.clusterTick(ctx, every)
 	defer s.leaveCluster()
 	go s.syncLoop(ctx, min(every, 250*time.Millisecond))
@@ -390,6 +393,16 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 		case <-t.C:
 		}
 		s.clusterTick(ctx, every)
+		if s.leader.Load() && time.Since(lastEphemeral) > time.Minute {
+			lastEphemeral = time.Now()
+			timeout := s.cfg.EphemeralTimeout
+			if timeout <= 0 {
+				timeout = control.DefaultEphemeralTimeout
+			}
+			if _, err := s.control.RemoveStaleEphemeral(ctx, timeout); err != nil {
+				s.log.Error("remove stale ephemeral nodes", "err", err)
+			}
+		}
 		if s.leader.Load() && time.Since(lastPrune) > time.Hour {
 			lastPrune = time.Now()
 			if n, err := s.store.PruneFlows(ctx, time.Now().Add(-s.flowRetention())); err == nil && n > 0 {

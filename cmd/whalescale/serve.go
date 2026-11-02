@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/k4ran909/whalescale/internal/config"
+	"github.com/k4ran909/whalescale/internal/control"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/server"
 	"github.com/k4ran909/whalescale/internal/store"
@@ -39,7 +40,7 @@ type serveOpts struct {
 	policySyncInterval                                       time.Duration
 	relayQUICListen, udpHost                                 string
 	console, tlsACME, flowLogs, postQuantum                  bool
-	flowRetention                                            time.Duration
+	flowRetention, ephemeralTimeout                          time.Duration
 }
 
 var secretSettings = map[string]bool{"oidc-client-secret": true}
@@ -67,6 +68,7 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.BoolVar(&o.postQuantum, "post-quantum", false, "have nodes add post-quantum pre-shared keys (ML-KEM-768, rotated every 2 minutes) to WireGuard")
 	fs.BoolVar(&o.flowLogs, "flow-logs", false, "have nodes report connection activity (who talked to whom, ports, bytes, refused attempts)")
 	fs.DurationVar(&o.flowRetention, "flow-log-retention", 7*24*time.Hour, "how long flow logs are kept")
+	fs.DurationVar(&o.ephemeralTimeout, "ephemeral-timeout", control.DefaultEphemeralTimeout, "remove ephemeral machines (from --ephemeral pre-auth keys) offline this long")
 	fs.StringVar(&o.recordingsDir, "recordings-dir", "", "where recorded SSH sessions are stored (default: 'recordings' next to the database)")
 	fs.StringVar(&o.gatewayDomain, "gateway-domain", "", "publish machines' services at <name>.<this domain>; needs a wildcard DNS record pointing here")
 	fs.StringVar(&o.metricsListen, "metrics-listen", "127.0.0.1:9090", "Prometheus /metrics listen address; empty disables")
@@ -225,7 +227,7 @@ func cmdConfigtest(args []string) error {
 		"oidc-allowed-users": o.oidcUsers, "oidc-allowed-domains": o.oidcDomains,
 		"gateway-domain": o.gatewayDomain, "tls-acme": fmt.Sprint(o.tlsACME), "acme-email": o.acmeEmail,
 		"acme-cache": o.acmeCache, "recordings-dir": o.recordingsDir,
-		"post-quantum": fmt.Sprint(o.postQuantum), "flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
+		"ephemeral-timeout": o.ephemeralTimeout.String(), "post-quantum": fmt.Sprint(o.postQuantum), "flow-logs": fmt.Sprint(o.flowLogs), "flow-log-retention": o.flowRetention.String(),
 		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
 		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
 		"relay-quic-listen": o.relayQUICListen, "udp-host": o.udpHost,
@@ -305,6 +307,7 @@ func cmdServe(args []string) error {
 		PublicURL: o.publicURL, STUN: stunAdvertise, DNSSuffix: o.dnsSuffix, PolicyFile: o.policyFile,
 		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
 		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log, PostQuantum: o.postQuantum,
+		EphemeralTimeout: o.ephemeralTimeout,
 	}
 	var quicPC net.PacketConn
 	if o.relayQUICListen != "" {

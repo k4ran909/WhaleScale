@@ -669,3 +669,23 @@ const fingerprintPostgres = `SELECT
 		COALESCE((SELECT string_agg(id || ':' || relay_offered::int || relay_approved::int, ',' ORDER BY id) FROM nodes), '') ||
 		(SELECT 'L' || COUNT(*) || ':' || COALESCE(MAX(version), 0) FROM lock_chain) ||
 		COALESCE((SELECT string_agg(node_key || ':' || encode(signature, 'hex'), ',' ORDER BY node_key) FROM lock_signatures), '')`
+
+// StaleEphemeralNodes returns ephemeral nodes not seen since before cutoff.
+// Online nodes refresh last_seen with every report (every 30 s).
+func (s *Store) StaleEphemeralNodes(ctx context.Context, cutoff time.Time) ([]Node, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+nodeColumns+` FROM nodes n JOIN users u ON u.id = n.user_id
+		WHERE n.ephemeral = TRUE AND n.last_seen < ? ORDER BY n.id`, cutoff.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Node
+	for rows.Next() {
+		n, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *n)
+	}
+	return out, rows.Err()
+}

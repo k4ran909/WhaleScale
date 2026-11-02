@@ -68,6 +68,8 @@ ws status                                       # peers, direct/relay path, late
 ping laptop.whale.internal
 ```
 
+For short-lived machines (CI runners, containers), use an ephemeral key: `whalescale preauthkeys create --user ci --reusable --ephemeral`. Machines it adds are removed once they've been offline for `ephemeral-timeout` (10 minutes by default). `ws logout` removes a machine from the server right away.
+
 On Windows, unzip the release, put [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`, and in an Administrator terminal run `wsd install-service`, then `ws login --server ...` and `ws up`.
 
 ### Several networks on one machine

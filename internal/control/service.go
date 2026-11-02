@@ -797,3 +797,19 @@ func (s *Service) nodeProto(n *store.Node, online bool) *v1.Node {
 		ClientVersion:    n.ClientVersion,
 	}
 }
+
+// Logout removes the calling node: its token stops working and peers drop
+// it from their maps.
+func (s *Service) Logout(ctx context.Context, req *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
+	self, err := s.authenticate(ctx, req.Header().Get("Authorization"))
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.DeleteNode(ctx, self.ID); err != nil {
+		s.log.Error("logout", "err", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+	s.Audit(ctx, "user:"+self.User, "node logged out", "node", self.Name)
+	s.NotifyAll()
+	return connect.NewResponse(&v1.LogoutResponse{}), nil
+}
