@@ -1,0 +1,19 @@
+# Known vulnerabilities reachable from our code, in both modules. Runs on
+# changes and nightly (add a cron job named "nightly" in the repository
+# settings), so a new advisory fails a build even when nothing changed.
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: cron
+    cron: nightly
+  - event: manual
+
+steps:
+  - name: govulncheck
+    image: golang:1.27.2
+    commands:
+      - go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - govulncheck ./...
+      - cd terraform && govulncheck ./...

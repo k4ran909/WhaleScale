@@ -546,6 +546,8 @@ make web                # rebuild web/dist after changing web/src (CI checks it 
 cd web && npm run dev   # console dev server, proxying to a local server on :8080
 ```
 
+CI runs on GitHub Actions (`.github/workflows/`) or on a self-hosted Woodpecker server (`.woodpecker/`, set up as in [docs/woodpecker.md](docs/woodpecker.md), e.g. on Dokploy).
+
 Fuzz targets cover everything that parses input from the network: policies, map deltas, QUIC relay frames, disco messages, packets entering the filter, DNS queries and machine proofs. Run one with `go test ./internal/disco -run '^$' -fuzz FuzzParse`.
 
 End-to-end tests run real servers and agents in one process: direct paths, relay-only fallback, policy enforcement, subnet route approval, and OIDC console and device login against a fake identity provider (`internal/engine`, `internal/server`).

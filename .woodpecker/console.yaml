@@ -1,0 +1,17 @@
+# The web console embedded in the server binary (web/dist) must match its
+# sources.
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+steps:
+  - name: embedded console build is current
+    image: node:22
+    directory: web
+    commands:
+      - npm ci --no-audit --no-fund
+      - npm run build
+      - git diff --exit-code -- dist/ || { echo "web/dist is stale - run 'make web' and commit"; exit 1; }

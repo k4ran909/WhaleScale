@@ -1,0 +1,18 @@
+# Terraform provider acceptance tests against a real in-process server.
+# Without terraform on PATH, the test framework downloads it.
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+steps:
+  - name: provider acceptance tests
+    image: golang:1.27.2
+    directory: terraform
+    environment:
+      TF_ACC: "1"
+    commands:
+      - go vet ./...
+      - go test -count=1 ./...

@@ -1,0 +1,54 @@
+# Woodpecker CI for this repository, connected to GitHub. Deploy it as a
+# Docker Compose app (in Dokploy: Compose, from this repository's
+# deploy/woodpecker/docker-compose.yml, or pasted), set the variables below
+# in the app's environment, and give woodpecker-server a domain on port
+# 8000. See docs/woodpecker.md.
+#
+#   WOODPECKER_HOST           https://ci.example.com (no trailing slash)
+#   WOODPECKER_GITHUB_CLIENT  GitHub OAuth app client ID
+#   WOODPECKER_GITHUB_SECRET  GitHub OAuth app client secret
+#   WOODPECKER_AGENT_SECRET   random: openssl rand -hex 32
+#   WOODPECKER_ADMIN          your GitHub username
+
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:v3.19.0
+    restart: unless-stopped
+    volumes:
+      - woodpecker-server-data:/var/lib/woodpecker/
+    environment:
+      - WOODPECKER_HOST=${WOODPECKER_HOST}
+      - WOODPECKER_GITHUB=true
+      - WOODPECKER_GITHUB_CLIENT=${WOODPECKER_GITHUB_CLIENT}
+      - WOODPECKER_GITHUB_SECRET=${WOODPECKER_GITHUB_SECRET}
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      # Only the admin may sign in and add repositories.
+      - WOODPECKER_OPEN=false
+      - WOODPECKER_ADMIN=${WOODPECKER_ADMIN}
+      # The release pipeline builds multi-arch images with this plugin,
+      # which needs a privileged container. Nothing else gets one.
+      - WOODPECKER_PLUGINS_PRIVILEGED=woodpeckerci/plugin-docker-buildx:6.1.2
+    expose:
+      - "8000" # web UI and webhooks: route your domain here
+      - "9000" # agents (gRPC), inside this compose network only
+
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:v3.19.0
+    command: agent
+    restart: unless-stopped
+    depends_on:
+      - woodpecker-server
+    volumes:
+      - woodpecker-agent-config:/etc/woodpecker
+      # Steps run as containers on this host's Docker.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WOODPECKER_SERVER=woodpecker-server:9000
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      # Workflows run at once (ci, console, terraform, helm, vuln run in
+      # parallel up to this). Lower it on a small server.
+      - WOODPECKER_MAX_WORKFLOWS=3
+
+volumes:
+  woodpecker-server-data:
+  woodpecker-agent-config:

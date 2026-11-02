@@ -1,0 +1,63 @@
+# CI on Woodpecker (self-hosted)
+
+The pipelines in `.woodpecker/` do what the GitHub Actions workflows do, on a
+[Woodpecker CI](https://woodpecker-ci.org) server you run yourself, for
+example on Dokploy. The code stays on GitHub: Woodpecker gets push and pull
+request webhooks and reports a ✓/✗ check on each commit and pull request
+through GitHub's API, so it works while GitHub Actions is unavailable.
+
+| Pipeline | Runs on | What |
+|---|---|---|
+| `ci.yaml` | pushes to `main`, pull requests | generated code is current, `go vet`, race tests on SQLite and PostgreSQL, cross-compiling |
+| `console.yaml` | same | `web/dist` matches its sources |
+| `terraform.yaml` | same | provider acceptance tests |
+| `helm.yaml` | same | chart lint and render |
+| `vuln.yaml` | same, plus nightly | `govulncheck` on both modules |
+| `release.yaml` | `v*` tags | archives and checksums on GitHub Releases; images on `ghcr.io` |
+
+What GitHub Actions did that this doesn't: build artifacts aren't kept per
+run (the release pipeline publishes the real ones). Like Actions here, tests
+run on Linux only.
+
+## 1. GitHub OAuth app
+
+GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
+
+- **Homepage URL:** `https://ci.example.com` (the domain you'll give Woodpecker)
+- **Authorization callback URL:** `https://ci.example.com/authorize`
+
+Note the client ID and generate a client secret.
+
+## 2. Deploy on Dokploy
+
+1. **Create a Compose app** from [`deploy/woodpecker/docker-compose.yml`](../deploy/woodpecker/docker-compose.yml): point it at this repository and that path, or paste the file.
+2. **Environment:** set these in the app's environment.
+
+   ```
+   WOODPECKER_HOST=https://ci.example.com
+   WOODPECKER_GITHUB_CLIENT=<client ID>
+   WOODPECKER_GITHUB_SECRET=<client secret>
+   WOODPECKER_AGENT_SECRET=<output of: openssl rand -hex 32>
+   WOODPECKER_ADMIN=<your GitHub username>
+   ```
+3. **Domain:** add `ci.example.com` on service `woodpecker-server`, port `8000`, with HTTPS. Port 9000 (agents) stays inside the compose network.
+4. **Deploy**, open `https://ci.example.com` and sign in with GitHub.
+
+Without Dokploy, the same file works with `docker compose up -d` behind any reverse proxy.
+
+## 3. Turn on the repository
+
+In Woodpecker: **Add repository** → `k4ran909/WhaleScale` → enable. Then in its settings:
+
+- **Project → Require approval for:** pull requests from forks. The repository is public, and pipelines run on your server: approve fork pull requests after reading them.
+- **Project → Timeout:** 60 minutes (race tests on a small server are slow).
+- **Secrets → Add** `github_token`: a classic personal access token (GitHub → Settings → Developer settings → Tokens (classic)) with the `repo` and `write:packages` scopes. Events: **Push** and **Tag** only, never Pull Request. The release pipeline uses it for GitHub Releases and for pushing images to `ghcr.io`.
+- **Cron → Add** a job named `nightly`, branch `main`, schedule `0 3 * * *`. It runs `vuln.yaml` so a new advisory shows up even on quiet days.
+
+## Notes
+
+- **One agent, this host's Docker.** Steps run as containers through the mounted Docker socket. That's normal for Woodpecker, but it means a pipeline that gets a privileged container controls the host. Only the image-build plugin is allowed one (`WOODPECKER_PLUGINS_PRIVILEGED`), and the approval setting above keeps strangers' code from running unreviewed. Don't run other untrusted workloads on the same Docker host.
+- **Capacity.** `WOODPECKER_MAX_WORKFLOWS=3` runs three pipelines at once. The race tests want about 2 CPU cores and 3 GB of RAM; lower it on a small server.
+- **Releases if GitHub limits more than Actions.** If the account restrictions also block the API, `publish release` and the image push fail with 403. Try a test tag first.
+- **Shell variables in pipelines.** Woodpecker replaces `$VAR` in commands before running them, so scripts with variables live in `scripts/ci/` rather than inline.
+- **When GitHub Actions comes back**, both systems will run on every push. Disable the repository in Woodpecker, or delete `.github/workflows/`, to keep one.

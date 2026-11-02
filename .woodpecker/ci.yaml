@@ -1,0 +1,52 @@
+# Go checks and tests: generated code, vet, race tests on SQLite and
+# PostgreSQL, then cross-compiling the binaries. Same as the GitHub
+# Actions 'test' and 'build' jobs.
+#
+# Shell variables in commands would need '$$' (Woodpecker substitutes
+# '$VAR' itself), so anything with variables lives in scripts/ci/.
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+services:
+  - name: postgres
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+
+steps:
+  - name: generated code is current
+    image: golang:1.27.2
+    commands:
+      - go install github.com/bufbuild/buf/cmd/buf@v1.57.0
+      - go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+      - go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1
+      - buf lint
+      - buf generate
+      - git diff --exit-code -- gen/
+
+  - name: vet
+    image: golang:1.27.2
+    commands:
+      - go vet ./...
+
+  - name: test
+    image: golang:1.27.2
+    commands:
+      - go test -race -timeout 10m ./...
+
+  - name: test on postgresql
+    image: golang:1.27.2
+    environment:
+      WHALESCALE_TEST_POSTGRES: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+    commands:
+      - bash scripts/ci/wait-for.sh postgres 5432
+      - go test -race -timeout 10m ./internal/store/... ./internal/control/... ./internal/server/... ./internal/engine/...
+
+  - name: cross-compile
+    image: golang:1.27.2
+    commands:
+      - sh scripts/ci/build.sh
