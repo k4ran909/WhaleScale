@@ -10,7 +10,8 @@ steps:
   - name: build archives
     image: golang:1.27.2
     commands:
-      - apt-get update -qq && apt-get install -y -qq zip > /dev/null
+      - sh scripts/ci/retry.sh apt-get update -qq
+      - sh scripts/ci/retry.sh apt-get install -y -qq zip
       - sh scripts/ci/release-archives.sh "${CI_COMMIT_TAG}"
 
   - name: publish release
@@ -21,7 +22,7 @@ steps:
         from_secret: github_token
       GH_REPO: ${CI_REPO}
     commands:
-      - apk add --no-cache github-cli > /dev/null
+      - sh scripts/ci/retry.sh apk add --no-cache github-cli
       - gh release create "${CI_COMMIT_TAG}" dist/* --generate-notes --verify-tag
 
   - name: image

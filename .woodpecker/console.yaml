@@ -11,7 +11,9 @@ steps:
   - name: embedded console build is current
     image: node:22
     directory: web
+    volumes:
+      - woodpecker-npm:/root/.npm
     commands:
-      - npm ci --no-audit --no-fund
+      - sh ../scripts/ci/retry.sh npm ci --no-audit --no-fund
       - npm run build
       - git diff --exit-code -- dist/ || { echo "web/dist is stale - run 'make web' and commit"; exit 1; }

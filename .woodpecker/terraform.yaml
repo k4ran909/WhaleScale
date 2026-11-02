@@ -1,5 +1,6 @@
 # Terraform provider acceptance tests against a real in-process server.
-# Without terraform on PATH, the test framework downloads it.
+# Without terraform on PATH, the test framework downloads it. Go caches
+# are shared volumes, as in ci.yaml.
 
 when:
   - event: push
@@ -11,8 +12,12 @@ steps:
   - name: provider acceptance tests
     image: golang:1.27.2
     directory: terraform
+    volumes:
+      - woodpecker-go-mod:/go/pkg/mod
+      - woodpecker-go-build:/root/.cache/go-build
     environment:
       TF_ACC: "1"
     commands:
+      - sh ../scripts/ci/retry.sh go mod download
       - go vet ./...
       - go test -count=1 ./...

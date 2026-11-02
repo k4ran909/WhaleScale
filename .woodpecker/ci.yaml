@@ -4,6 +4,15 @@
 #
 # Shell variables in commands would need '$$' (Woodpecker substitutes
 # '$VAR' itself), so anything with variables lives in scripts/ci/.
+#
+# Go's module and build caches live in named volumes shared by every run
+# (the repository must be trusted for volumes; see docs/woodpecker.md).
+# Downloads happen once, in the first step, with retries.
+
+variables:
+  - &go_cache
+    - woodpecker-go-mod:/go/pkg/mod
+    - woodpecker-go-build:/root/.cache/go-build
 
 when:
   - event: push
@@ -18,9 +27,20 @@ services:
       POSTGRES_PASSWORD: postgres
 
 steps:
+  - name: download modules and tools
+    image: golang:1.27.2
+    volumes: *go_cache
+    commands:
+      - sh scripts/ci/retry.sh go mod download
+      - sh scripts/ci/retry.sh go install github.com/bufbuild/buf/cmd/buf@v1.57.0
+      - sh scripts/ci/retry.sh go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+      - sh scripts/ci/retry.sh go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1
+
   - name: generated code is current
     image: golang:1.27.2
+    volumes: *go_cache
     commands:
+      # Each step has its own /go/bin; these build from the warm caches.
       - go install github.com/bufbuild/buf/cmd/buf@v1.57.0
       - go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
       - go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1
@@ -30,16 +50,19 @@ steps:
 
   - name: vet
     image: golang:1.27.2
+    volumes: *go_cache
     commands:
       - go vet ./...
 
   - name: test
     image: golang:1.27.2
+    volumes: *go_cache
     commands:
       - go test -race -timeout 10m ./...
 
   - name: test on postgresql
     image: golang:1.27.2
+    volumes: *go_cache
     environment:
       WHALESCALE_TEST_POSTGRES: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
     commands:
@@ -48,5 +71,6 @@ steps:
 
   - name: cross-compile
     image: golang:1.27.2
+    volumes: *go_cache
     commands:
       - sh scripts/ci/build.sh
