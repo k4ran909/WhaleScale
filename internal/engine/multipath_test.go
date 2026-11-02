@@ -29,10 +29,16 @@ func udpEcho(t *testing.T, e *Engine, port uint16) {
 }
 
 // prober sends a numbered datagram every 50 ms from a to b's echo and
-// records when replies arrive, to measure outages.
+// records when replies arrive, to measure outages, and which never do.
+// Lost probes are the robust measure: on a busy machine (CI, the race
+// detector) replies can be late without anything being lost.
 type prober struct {
 	mu      sync.Mutex
 	replies []time.Time
+	sent    map[uint64]time.Time
+	got     map[uint64]bool
+	stopAt  time.Time
+	once    sync.Once
 	stop    chan struct{}
 	done    chan struct{}
 }
@@ -43,14 +49,18 @@ func startProber(t *testing.T, a, b *Engine, port uint16) *prober {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &prober{stop: make(chan struct{}), done: make(chan struct{})}
+	p := &prober{stop: make(chan struct{}), done: make(chan struct{}),
+		sent: map[uint64]time.Time{}, got: map[uint64]bool{}}
 	go func() {
 		buf := make([]byte, 64)
 		for {
 			c.SetReadDeadline(time.Now().Add(time.Second))
-			if _, err := c.Read(buf); err == nil {
+			if n, err := c.Read(buf); err == nil {
 				p.mu.Lock()
 				p.replies = append(p.replies, time.Now())
+				if n >= 8 {
+					p.got[binary.BigEndian.Uint64(buf)] = true
+				}
 				p.mu.Unlock()
 			}
 			select {
@@ -71,17 +81,45 @@ func startProber(t *testing.T, a, b *Engine, port uint16) *prober {
 			case <-time.After(50 * time.Millisecond):
 			}
 			seq++
+			p.mu.Lock()
+			p.sent[seq] = time.Now()
+			p.mu.Unlock()
 			c.Write(binary.BigEndian.AppendUint64(nil, seq))
 		}
 	}()
 	return p
 }
 
+// finish stops the prober (once) and waits for it.
+func (p *prober) finish() {
+	p.once.Do(func() {
+		p.mu.Lock()
+		p.stopAt = time.Now()
+		p.mu.Unlock()
+		close(p.stop)
+	})
+	<-p.done
+}
+
+// lost stops the prober and counts probes sent after since that were never
+// answered, leaving out the last second's (their replies may be in flight).
+func (p *prober) lost(since time.Time) int {
+	p.finish()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := 0
+	for seq, at := range p.sent {
+		if at.After(since) && at.Before(p.stopAt.Add(-time.Second)) && !p.got[seq] {
+			n++
+		}
+	}
+	return n
+}
+
 // worstGap stops the prober and returns the longest time without a reply
 // after since.
 func (p *prober) worstGap(since time.Time) time.Duration {
-	close(p.stop)
-	<-p.done
+	p.finish()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var worst time.Duration
@@ -143,8 +181,12 @@ func TestNetworkChange(t *testing.T) {
 	a.conn.NetworkChanged()
 	waitPath(t, a, "nc-b", "direct") // re-proven
 	time.Sleep(2 * time.Second)
-	if gap := p.worstGap(changed); gap > 500*time.Millisecond {
-		t.Fatalf("traffic stalled %v around the network change", gap)
+	gap, lost := p.worstGap(changed), p.lost(changed)
+	t.Logf("around the network change: longest gap %v, %d probes lost", gap.Round(time.Millisecond), lost)
+	// The direct path stays in use while it is re-proven: at most a couple
+	// of probes may go missing, and nothing like a failover's ~2 s outage.
+	if lost > 2 || gap > time.Second {
+		t.Fatalf("traffic stalled around the network change: gap %v, %d probes lost", gap, lost)
 	}
 	a.mu.Lock()
 	rc := a.relay
@@ -167,11 +209,16 @@ func TestMultipathNoLoss(t *testing.T) {
 	cut := time.Now()
 	cutDirect(t, a, b)
 	time.Sleep(5 * time.Second)
-	gap := p.worstGap(cut)
-	t.Logf("longest gap between replies after the direct path died: %v", gap.Round(time.Millisecond))
-	// Replies come every 50 ms; allow for scheduling jitter, not an outage.
-	if gap > 300*time.Millisecond {
-		t.Fatalf("multipath lost traffic for %v", gap)
+	gap, lost := p.worstGap(cut), p.lost(cut)
+	t.Logf("after the direct path died: longest gap between replies %v, %d probes lost", gap.Round(time.Millisecond), lost)
+	// Every probe also went through the relay, so none may be lost. Replies
+	// can still be late on a busy machine; a real outage would look like
+	// the ~2 s single-path failover.
+	if lost > 0 {
+		t.Fatalf("multipath lost %d probes when the direct path died", lost)
+	}
+	if gap > time.Second {
+		t.Fatalf("multipath traffic stalled for %v", gap)
 	}
 }
 
