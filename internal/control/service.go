@@ -64,6 +64,9 @@ type Config struct {
 	ServerID string
 	// PostQuantum turns on post-quantum pre-shared keys between nodes.
 	PostQuantum bool
+	// RecordingQuota caps the bytes of recordings one machine may have
+	// stored (0: DefaultRecordingQuota; negative: no cap).
+	RecordingQuota int64
 	// NodeAuthKey is the server's X25519 key for machine proofs, and
 	// NodeAuthHosts the host[:port] names clients reach this server by.
 	// Without a key, nodes authenticate with bearer tokens only.
@@ -114,6 +117,10 @@ type Service struct {
 
 	verifier  *nodeauth.Verifier
 	serverKey string
+
+	// flowBudget limits flow records per node (guarded by mu).
+	flowBudget   map[uint64]*flowBucket
+	flowsDropped atomic.Uint64
 }
 
 type pathSet struct {
@@ -150,7 +157,8 @@ func New(s *store.Store, log *slog.Logger, cfg Config) *Service {
 	allow := policy.AllowAll()
 	svc := &Service{store: s, log: log, cfg: cfg, policy: allow, base: allow, policySource: "default",
 		changed: make(chan struct{}), online: map[uint64]int{},
-		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{}}
+		paths: map[uint64]pathSet{}, pending: map[string]*pendingReg{}, taken: map[uint64][]string{},
+		flowBudget: map[uint64]*flowBucket{}}
 	svc.version.Store(1)
 	if cfg.NodeAuthKey != nil {
 		svc.verifier = nodeauth.NewVerifier(cfg.NodeAuthKey, cfg.NodeAuthHosts)
@@ -405,8 +413,16 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 	s.paths[self.ID] = pathSet{reports: reports, at: time.Now()}
 	s.mu.Unlock()
 	if s.cfg.FlowLogs && len(req.Msg.Flows) > 0 {
-		if err := s.store.InsertFlows(ctx, flowsFromReport(self.Name, req.Msg.Flows)); err != nil {
-			s.log.Error("store flow logs", "err", err)
+		flows := flowsFromReport(self.Name, req.Msg.Flows)
+		if n := s.takeFlows(self.ID, len(flows), time.Now()); n < len(flows) {
+			s.flowsDropped.Add(uint64(len(flows) - n))
+			s.log.Debug("flow records over the node's budget dropped", "node", self.Name, "dropped", len(flows)-n)
+			flows = flows[:n]
+		}
+		if len(flows) > 0 {
+			if err := s.store.InsertFlows(ctx, flows); err != nil {
+				s.log.Error("store flow logs", "err", err)
+			}
 		}
 	}
 	return connect.NewResponse(&v1.ReportStatusResponse{}), nil
@@ -414,6 +430,9 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 
 // MaxRecording caps one uploaded SSH session recording.
 const MaxRecording = 32 << 20
+
+// DefaultRecordingQuota is how much recording one machine may store.
+const DefaultRecordingQuota = 1 << 30
 
 func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.UploadRecordingRequest]) (*connect.Response[v1.UploadRecordingResponse], error) {
 	self, err := s.authenticate(ctx, req)
@@ -426,6 +445,21 @@ func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.U
 	}
 	if len(m.Data) == 0 || len(m.Data) > MaxRecording {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("recording is empty or too large"))
+	}
+	// Over its quota a machine's new recordings are refused, not its old
+	// ones deleted: a machine someone took over mustn't be able to flush
+	// the recordings of how they got in.
+	if quota := s.recordingQuota(); quota > 0 {
+		used, err := s.store.RecordingBytes(ctx, self.Name)
+		if err != nil {
+			s.log.Error("recording quota", "err", err)
+			return nil, connect.NewError(connect.CodeInternal, errors.New("internal error"))
+		}
+		if used+int64(len(m.Data)) > quota {
+			s.log.Warn("recording refused: machine over its recording quota", "node", self.Name, "stored", used, "quota", quota)
+			return nil, connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("this machine's recordings use %d of %d bytes; an admin must remove some (or raise recording-quota)", used, quota))
+		}
 	}
 	// The node name comes from the authenticated node, never the request.
 	r, err := s.store.SaveRecording(ctx, s.cfg.RecordingsDir, store.Recording{
@@ -442,6 +476,54 @@ func (s *Service) UploadRecording(ctx context.Context, req *connect.Request[v1.U
 
 // maxFlowsPerReport bounds what one node can write per report.
 const maxFlowsPerReport = 1000
+
+// A node's flow records are budgeted: flowBurst at once, refilled at
+// flowRate per second. A busy honest node reports up to maxFlowsPerReport
+// every 30 seconds; a node reporting faster has its excess dropped.
+const (
+	flowBurst = 2 * maxFlowsPerReport
+	flowRate  = maxFlowsPerReport / 30.0
+)
+
+// takeFlows spends up to n of a node's flow budget and returns how many
+// records it may store.
+func (s *Service) takeFlows(node uint64, n int, now time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.flowBudget[node]
+	if !ok {
+		if len(s.flowBudget) > 10_000 {
+			// Forget nodes whose budget has refilled (gone or idle).
+			for id, fb := range s.flowBudget {
+				if now.Sub(fb.at).Seconds()*flowRate >= flowBurst {
+					delete(s.flowBudget, id)
+				}
+			}
+		}
+		b = &flowBucket{tokens: flowBurst, at: now}
+		s.flowBudget[node] = b
+	}
+	b.tokens = min(flowBurst, b.tokens+now.Sub(b.at).Seconds()*flowRate)
+	b.at = now
+	take := min(n, int(b.tokens))
+	b.tokens -= float64(take)
+	return take
+}
+
+// FlowsDropped counts flow records refused for exceeding nodes' budgets.
+func (s *Service) FlowsDropped() uint64 { return s.flowsDropped.Load() }
+
+func (s *Service) recordingQuota() int64 {
+	if s.cfg.RecordingQuota == 0 {
+		return DefaultRecordingQuota
+	}
+	return s.cfg.RecordingQuota
+}
+
+type flowBucket struct {
+	tokens float64
+	at     time.Time
+}
 
 // flowsFromReport validates reported flows. The node name always comes
 // from the authenticated node.

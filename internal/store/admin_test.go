@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -161,5 +162,41 @@ func TestRecordings(t *testing.T) {
 	}
 	if _, _, err := s.RecordingByID(ctx, dir, 999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown recording: %v", err)
+	}
+}
+
+func TestRecordingQuotaAndRetention(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	dir := filepath.Join(t.TempDir(), "rec")
+	old := time.Now().Add(-48 * time.Hour)
+	save := func(node string, ended time.Time, size int) *Recording {
+		r, err := s.SaveRecording(ctx, dir, Recording{NodeName: node, StartedAt: ended.Add(-time.Minute), EndedAt: ended}, make([]byte, size))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	gone := save("nas", old, 10)
+	kept := save("nas", time.Now(), 20)
+	save("web", old, 5)
+	if n, err := s.RecordingBytes(ctx, "nas"); err != nil || n != 30 {
+		t.Fatalf("nas bytes = %d, %v", n, err)
+	}
+	if n, _ := s.RecordingBytes(ctx, "nobody"); n != 0 {
+		t.Fatalf("unknown node bytes = %d", n)
+	}
+	n, err := s.PruneRecordings(ctx, dir, time.Now().Add(-24*time.Hour))
+	if err != nil || n != 2 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, gone.File)); !os.IsNotExist(err) {
+		t.Fatalf("old recording's file still there: %v", err)
+	}
+	if _, _, err := s.RecordingByID(ctx, dir, kept.ID); err != nil {
+		t.Fatalf("recent recording: %v", err)
+	}
+	if n, _ := s.RecordingBytes(ctx, "nas"); n != 20 {
+		t.Fatalf("nas bytes after prune = %d", n)
 	}
 }

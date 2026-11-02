@@ -465,6 +465,36 @@ func scanRecording(sc interface{ Scan(...any) error }) (Recording, error) {
 
 const recordingColumns = `id, node_name, local_user, src_node, src_user, started_at, ended_at, size, file`
 
+// RecordingBytes is the total size of a machine's stored recordings.
+func (s *Store) RecordingBytes(ctx context.Context, node string) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size), 0) FROM recordings WHERE node_name = ?`, node).Scan(&n)
+	return n, err
+}
+
+// PruneRecordings deletes recordings that ended before cutoff, files
+// included, and returns how many it deleted.
+func (s *Store) PruneRecordings(ctx context.Context, dir string, cutoff time.Time) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `DELETE FROM recordings WHERE ended_at < ? RETURNING file`, cutoff.Unix())
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var file string
+		if err := rows.Scan(&file); err != nil {
+			return n, err
+		}
+		n++
+		// Names are generated, but never follow one out of the directory.
+		if file == filepath.Base(file) {
+			os.Remove(filepath.Join(dir, file))
+		}
+	}
+	return n, rows.Err()
+}
+
 // ListRecordings returns the newest recordings first.
 func (s *Store) ListRecordings(ctx context.Context, limit int) ([]Recording, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+recordingColumns+` FROM recordings ORDER BY started_at DESC, id DESC LIMIT ?`, limit)

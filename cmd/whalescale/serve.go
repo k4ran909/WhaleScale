@@ -41,7 +41,8 @@ type serveOpts struct {
 	relayQUICListen, udpHost, nodeAuthHosts, trustedProxies  string
 	rateLimit                                                int
 	console, tlsACME, flowLogs, postQuantum                  bool
-	flowRetention, ephemeralTimeout                          time.Duration
+	flowRetention, ephemeralTimeout, recordingRetention      time.Duration
+	recordingQuotaMB                                         int64
 }
 
 var secretSettings = map[string]bool{"oidc-client-secret": true}
@@ -70,6 +71,8 @@ func defineServeFlags(fs *flag.FlagSet) *serveOpts {
 	fs.BoolVar(&o.flowLogs, "flow-logs", false, "have nodes report connection activity (who talked to whom, ports, bytes, refused attempts)")
 	fs.DurationVar(&o.flowRetention, "flow-log-retention", 7*24*time.Hour, "how long flow logs are kept")
 	fs.DurationVar(&o.ephemeralTimeout, "ephemeral-timeout", control.DefaultEphemeralTimeout, "remove ephemeral machines (from --ephemeral pre-auth keys) offline this long")
+	fs.Int64Var(&o.recordingQuotaMB, "recording-quota-mb", control.DefaultRecordingQuota>>20, "how many MB of SSH recordings one machine may have stored; past it new recordings are refused; -1 for no limit")
+	fs.DurationVar(&o.recordingRetention, "recording-retention", 0, "delete SSH recordings older than this (e.g. 2160h for 90 days); 0 keeps them")
 	fs.StringVar(&o.recordingsDir, "recordings-dir", "", "where recorded SSH sessions are stored (default: 'recordings' next to the database)")
 	fs.IntVar(&o.rateLimit, "rate-limit", server.DefaultRateLimit, "unauthenticated requests (registrations, logins) one client address may make per minute; -1 disables")
 	fs.StringVar(&o.trustedProxies, "trusted-proxies", "", "comma-separated addresses or CIDR prefixes of reverse proxies whose X-Forwarded-For names the client (loopback is always trusted)")
@@ -235,7 +238,7 @@ func cmdConfigtest(args []string) error {
 		"policy-url": o.policyURL, "policy-url-token-file": o.policyTokenFile,
 		"policy-sync-interval": o.policySyncInterval.String(), "policy-webhook-secret-file": o.webhookSecretFile,
 		"relay-quic-listen": o.relayQUICListen, "udp-host": o.udpHost, "node-auth-hosts": o.nodeAuthHosts,
-		"rate-limit": fmt.Sprint(o.rateLimit), "trusted-proxies": o.trustedProxies,
+		"rate-limit": fmt.Sprint(o.rateLimit), "recording-quota-mb": fmt.Sprint(o.recordingQuotaMB), "recording-retention": o.recordingRetention.String(), "trusted-proxies": o.trustedProxies,
 	}
 	for _, n := range names {
 		v, ok := vals[n]
@@ -313,7 +316,7 @@ func cmdServe(args []string) error {
 		OIDC: o.oidc(), GatewayDomain: o.gatewayDomain, RecordingsDir: o.recordingsDir,
 		FlowLogs: o.flowLogs, FlowRetention: o.flowRetention, Log: log, PostQuantum: o.postQuantum,
 		EphemeralTimeout: o.ephemeralTimeout, NodeAuthHosts: splitList(o.nodeAuthHosts),
-		RateLimit: o.rateLimit,
+		RateLimit: o.rateLimit, RecordingQuota: o.recordingQuotaMB << 20, RecordingRetention: o.recordingRetention,
 	}
 	if cfg.TrustedProxies, err = server.ParsePrefixes(o.trustedProxies); err != nil {
 		return fmt.Errorf("trusted-proxies: %w", err)

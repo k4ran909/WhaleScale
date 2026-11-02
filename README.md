@@ -126,7 +126,7 @@ ws ssh karan@nas              # from any machine; or plain: ssh karan@nas.whale.
 - **Identity:** the source mesh address identifies the person. WireGuard ties every peer's addresses to its key, so they can't be spoofed (the same model Tailscale SSH uses).
 - **Local users:** `"$user"` means "your own username on the mesh". An SSH rule also opens TCP 22 from its sources, and nothing else.
 - **No host-key prompts:** each machine's SSH host key is distributed in the network map. `ws ssh` hands it to your `ssh` client.
-- **Recording:** with `"record": true`, session output (never keystrokes) is recorded in asciinema format and uploaded to the server. If the upload fails, a copy is kept on the machine. Admins can view or download recordings in the console (SSH recordings); downloads play with `asciinema play`.
+- **Recording:** with `"record": true`, session output (never keystrokes) is recorded in asciinema format and uploaded to the server. If the upload fails, a copy is kept on the machine. Admins can view or download recordings in the console (SSH recordings); downloads play with `asciinema play`. Each machine may store `recording-quota-mb` of recordings (1024 by default). Past that its new recordings are refused, never its old ones deleted, so a machine someone took over can't flush the recordings of how they got in. `recording-retention` (say `2160h` for 90 days) deletes old recordings; by default they're kept.
 - **What's supported:** shells, commands, PTYs and window resizing. Not SFTP, port forwarding, or a Windows SSH server yet.
 
 ## Flow logs
@@ -136,7 +136,7 @@ Off by default, for privacy. With `flow-logs: true` on the server, every machine
 - each connection it took part in: who opened it, to which address and port, and bytes and packets each way;
 - every inbound attempt the access policy refused.
 
-Records stay on your server for `flow-log-retention` (default `168h`) and are pruned hourly.
+Records stay on your server for `flow-log-retention` (default `168h`) and are pruned hourly. Each machine may store up to 1,000 records per 30 seconds (with bursts to 2,000); a machine reporting more has the excess dropped and counted in `whalescale_flow_records_dropped_total`.
 
 ```bash
 $ whalescale flows --since 1h --denied

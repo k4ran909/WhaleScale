@@ -57,6 +57,11 @@ type Config struct {
 	// PostQuantum has nodes agree post-quantum PSKs with their peers.
 	PostQuantum   bool
 	FlowRetention time.Duration
+	// RecordingQuota caps one machine's stored recordings in bytes (0:
+	// control.DefaultRecordingQuota; negative: no cap). Recordings that
+	// ended more than RecordingRetention ago are deleted (0 keeps them).
+	RecordingQuota     int64
+	RecordingRetention time.Duration
 	// EphemeralTimeout: ephemeral nodes offline longer are removed
 	// (default control.DefaultEphemeralTimeout).
 	EphemeralTimeout time.Duration
@@ -118,7 +123,7 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		ServerID:  id,
 		DNSSuffix: cfg.DNSSuffix, Relays: []string{relayURL}, STUN: cfg.STUN,
 		PublicURL: cfg.PublicURL, OIDC: cfg.OIDC != nil, RecordingsDir: cfg.RecordingsDir, FlowLogs: cfg.FlowLogs,
-		PostQuantum: cfg.PostQuantum,
+		PostQuantum: cfg.PostQuantum, RecordingQuota: cfg.RecordingQuota,
 	}
 	if ccfg.NodeAuthKey, err = loadNodeAuthKey(st); err != nil {
 		return nil, fmt.Errorf("node auth key: %w", err)
@@ -397,6 +402,7 @@ func (s *Server) MetricsHandler() http.Handler {
 		}
 		m("whalescale_build_info", "gauge", "Build information.", 1, `version="`+version.Version+`"`, `commit="`+version.Commit+`"`)
 		m("whalescale_uptime_seconds", "gauge", "Seconds since the server started.", int64(time.Since(s.started).Seconds()))
+		m("whalescale_flow_records_dropped_total", "counter", "Flow records dropped because a machine reported more than its budget.", s.control.FlowsDropped())
 		m("whalescale_rate_limited_total", "counter", "Unauthenticated requests refused for exceeding the per-client rate limit.", s.limiter.limited.Load())
 		m("whalescale_users", "gauge", "Number of users.", len(users))
 		m("whalescale_nodes", "gauge", "Number of registered nodes.", len(nodes))
@@ -453,6 +459,13 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 			lastPrune = time.Now()
 			if n, err := s.store.PruneFlows(ctx, time.Now().Add(-s.flowRetention())); err == nil && n > 0 {
 				s.log.Info("pruned old flow logs", "rows", n)
+			}
+			if r := s.cfg.RecordingRetention; r > 0 && s.cfg.RecordingsDir != "" {
+				if n, err := s.store.PruneRecordings(ctx, s.cfg.RecordingsDir, time.Now().Add(-r)); err != nil {
+					s.log.Error("prune old recordings", "err", err)
+				} else if n > 0 {
+					s.log.Info("deleted old SSH recordings", "count", n)
+				}
 			}
 		}
 		// Changes written straight to the database (admin commands, other
