@@ -43,10 +43,16 @@ func (s *Server) clusterTick(ctx context.Context, every time.Duration) {
 		s.log.Error("cluster heartbeat", "err", err)
 		return
 	}
+	// The lease is good until window after we asked for it, by our own
+	// (monotonic) clock: the database's expiry is computed a moment later.
+	until := time.Now().Add(window)
 	leader, err := s.store.AcquireLease(ctx, leaderLease, s.id, window)
 	if err != nil {
 		s.log.Error("leader lease", "err", err)
 		leader = false
+	}
+	if leader {
+		s.leaseUntil.Store(&until)
 	}
 	if was := s.leader.Swap(leader); was != leader {
 		s.log.Info("leader changed", "this_server_leads", leader, "server", s.id)
@@ -68,8 +74,17 @@ func (s *Server) clusterTick(ctx context.Context, every time.Duration) {
 	}
 }
 
-// Leader reports whether this server holds the leader lease.
-func (s *Server) Leader() bool { return s.leader.Load() }
+// Leader reports whether this server holds the leader lease. A server
+// that stalls (CPU starved, paused) stops leading when its lease runs out
+// even before its next tick notices: by then another server may have
+// taken the lease, and two leaders would run the leader's jobs twice.
+func (s *Server) Leader() bool {
+	if !s.leader.Load() {
+		return false
+	}
+	until := s.leaseUntil.Load()
+	return until != nil && time.Now().Before(*until)
+}
 
 // leaveCluster runs at shutdown so the others take over at once.
 func (s *Server) leaveCluster() {

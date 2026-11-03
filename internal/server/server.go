@@ -105,6 +105,8 @@ type Server struct {
 	id       string
 	relayURL string
 	leader   atomic.Bool
+	// leaseUntil is when the leader lease runs out by this server's clock.
+	leaseUntil atomic.Pointer[time.Time]
 }
 
 func New(st *store.Store, cfg Config) (*Server, error) {
@@ -467,7 +469,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 		case <-t.C:
 		}
 		s.clusterTick(ctx, every)
-		if s.leader.Load() && time.Since(lastEphemeral) > time.Minute {
+		if s.Leader() && time.Since(lastEphemeral) > time.Minute {
 			lastEphemeral = time.Now()
 			timeout := s.cfg.EphemeralTimeout
 			if timeout <= 0 {
@@ -477,7 +479,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 				s.log.Error("remove stale ephemeral nodes", "err", err)
 			}
 		}
-		if s.leader.Load() && time.Since(lastPrune) > time.Hour {
+		if s.Leader() && time.Since(lastPrune) > time.Hour {
 			lastPrune = time.Now()
 			if n, err := s.store.PruneFlows(ctx, time.Now().Add(-s.flowRetention())); err == nil && n > 0 {
 				s.log.Info("pruned old flow logs", "rows", n)
@@ -497,7 +499,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 			s.control.NotifyRemote()
 		}
 		// Expires grants on time (the leader), and picks up CLI decisions.
-		if err := s.control.RefreshGrants(ctx, s.leader.Load()); err != nil {
+		if err := s.control.RefreshGrants(ctx, s.Leader()); err != nil {
 			s.log.Error("refresh access grants", "err", err)
 		}
 		if s.cfg.PolicyFile != "" {

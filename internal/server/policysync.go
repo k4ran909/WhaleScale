@@ -184,7 +184,7 @@ func (ps *policySync) run(ctx context.Context) {
 		case <-t.C:
 			// With several servers, only the leader polls the repository;
 			// the others pick up what it stores.
-			if !ps.srv.leader.Load() {
+			if !ps.srv.Leader() {
 				continue
 			}
 		case <-ps.poke:
