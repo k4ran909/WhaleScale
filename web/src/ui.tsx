@@ -102,7 +102,6 @@ export function ConfirmButton(props: { label: string; confirm: string; onConfirm
 
 /** Shows a secret once, with a copy button. */
 export function SecretBox(props: { title: string; secret: string; hint: ReactNode; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
   return (
     <div className="secret" role="dialog" aria-label={props.title}>
       <div className="secret-head">
@@ -110,23 +109,32 @@ export function SecretBox(props: { title: string; secret: string; hint: ReactNod
         <button className="btn ghost" onClick={props.onClose}>Done</button>
       </div>
       <p className="muted">{props.hint}</p>
-      <div className="secret-row">
-        <code>{props.secret}</code>
-        <button
-          className="btn"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(props.secret);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            } catch {
-              /* clipboard can be blocked; the text is selectable */
-            }
-          }}
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
+      <CopyField text={props.secret} />
+    </div>
+  );
+}
+
+/** A selectable line of text with a copy button. */
+export function CopyField({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="secret-row">
+      <code>{text}</code>
+      <button
+        type="button"
+        className="btn"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          } catch {
+            /* clipboard can be blocked; the text is selectable */
+          }
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }

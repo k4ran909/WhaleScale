@@ -173,3 +173,16 @@ td.right { text-align: right; }
 
 .recording-view { margin-bottom: 1.25rem; }
 .recording-view pre { max-height: 28rem; overflow: auto; background: var(--hover); padding: 0.75rem; border-radius: 8px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
+
+/* add device */
+.tabs { display: flex; gap: 0.25rem; margin: 1rem 0 0.5rem; border-bottom: 1px solid var(--line); }
+.tab { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 0.45rem 0.8rem; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.steps { margin: 0.5rem 0 0.75rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.steps .secret-row { margin-top: 0.4rem; }
+.waiting { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); }
+.pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+.empty p { margin: 0 0 1rem; }
+.login-card h1 { font-size: 1.2rem; }

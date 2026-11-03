@@ -174,7 +174,7 @@ export const api = {
   deleteUser: (name: string) => call("DeleteUser", { name }),
   listPreAuthKeys: () => call<{ keys?: PreAuthKey[] }>("ListPreAuthKeys").then((r) => r.keys ?? []),
   createPreAuthKey: (user: string, reusable: boolean, ephemeral: boolean, expirationSeconds: number) =>
-    call<{ key: PreAuthKey; secret: string }>("CreatePreAuthKey", { user, reusable, ephemeral, expirationSeconds }),
+    call<{ key: PreAuthKey; secret: string; joinCode?: string }>("CreatePreAuthKey", { user, reusable, ephemeral, expirationSeconds }),
   expirePreAuthKey: (prefix: string) => call("ExpirePreAuthKey", { prefix }),
   listAPIKeys: () => call<{ keys?: APIKey[] }>("ListAPIKeys").then((r) => r.keys ?? []),
   createAPIKey: (expirationSeconds: number, scope: "admin" | "read" = "admin") =>
@@ -223,15 +223,39 @@ export const api = {
     call("SetExposureApproved", { nodeId, name, approved }),
 };
 
-export async function loginWithAPIKey(key: string) {
-  const res = await fetch("/auth/apikey", {
+// ---------- sign-in (plain HTTP endpoints, not AdminService) ----------
+
+export interface AuthStatus {
+  // No admin account yet: the console shows first-run setup.
+  setup: boolean;
+  oidc: boolean;
+  publicUrl: string;
+}
+
+export async function authStatus(): Promise<AuthStatus> {
+  const res = await fetch("/auth/status", { credentials: "same-origin", cache: "no-store" });
+  if (!res.ok) throw new ApiError(String(res.status), "The server is not answering; try again in a moment.");
+  return res.json();
+}
+
+async function postAuth(path: string, body: object) {
+  const res = await fetch(path, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new ApiError("unauthenticated", (await res.text()).trim() || "Sign-in failed");
+  if (!res.ok) {
+    const text = (await res.text()).trim();
+    throw new ApiError(res.status === 401 ? "unauthenticated" : String(res.status), text || "Request failed");
+  }
 }
+
+export const setupAdmin = (code: string, name: string, password: string) => postAuth("/auth/setup", { code, name, password });
+export const loginWithPassword = (name: string, password: string) => postAuth("/auth/password", { name, password });
+export const loginWithAPIKey = (key: string) => postAuth("/auth/apikey", { key });
+export const changePassword = (current: string, next: string) =>
+  postAuth("/auth/password/change", { current, new: next });
 
 export async function logout() {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });

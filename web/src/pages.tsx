@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AddDevice } from "./adddevice";
 import { api, Node, PathReport } from "./api";
 import { Banner, ConfirmButton, Dot, Empty, Page, SecretBox, errText, timeAgo, timeUntil, useLoad } from "./ui";
 
@@ -8,6 +9,7 @@ export function Machines() {
   const { data: nodes, error, reload } = useLoad(api.listNodes, 10000);
   const [q, setQ] = useState("");
   const [actionErr, setActionErr] = useState<string>();
+  const [adding, setAdding] = useState(false);
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
     return (nodes ?? []).filter(
@@ -20,13 +22,27 @@ export function Machines() {
     <Page
       title="Machines"
       lead={nodes ? `${nodes.length} machines, ${online} online` : undefined}
-      actions={<input className="search" placeholder="Filter by name, user or IP" value={q} onChange={(e) => setQ(e.target.value)} />}
+      actions={
+        <>
+          <input className="search" placeholder="Filter by name, user or IP" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button className="btn primary" onClick={() => setAdding(true)}>Add device</button>
+        </>
+      }
     >
       {error && <Banner kind="error">{error}</Banner>}
       {actionErr && <Banner kind="error">{actionErr}</Banner>}
-      {nodes && nodes.length === 0 && (
+      {adding && (
+        <AddDevice
+          onClose={() => {
+            setAdding(false);
+            reload();
+          }}
+        />
+      )}
+      {nodes && nodes.length === 0 && !adding && (
         <Empty>
-          No machines yet. Create a key under <a href="#/keys">Keys</a>, then run <code>ws login</code> on a device.
+          <p>No machines yet. Add your computers, phones and servers to put them on one private network.</p>
+          <button className="btn primary" onClick={() => setAdding(true)}>Add your first device</button>
         </Empty>
       )}
       {shown.length > 0 && (
@@ -286,9 +302,9 @@ export function Keys() {
           try {
             const r = await api.createPreAuthKey(user, reusable, ephemeral, ttl);
             setSecret({
-              title: `Key for ${user}`,
-              value: r.secret,
-              hint: "Shown only once. On the device run: WS_AUTHKEY=<key> ws login --server <this server's URL>",
+              title: `Join code for ${user}`,
+              value: r.joinCode || r.secret,
+              hint: "Shown only once. Paste it into the Windows installer, or on the device run: ws login <code>. (Machines → Add device walks you through it.)",
             });
             reload();
           } catch (err) {

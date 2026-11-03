@@ -60,7 +60,7 @@ func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
 
 type WhoAmIResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "api-key" or "oidc".
+	// "admin" (a password account), "api-key" or "oidc".
 	Method      string `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
 	Identity    string `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
 	OidcEnabled bool   `protobuf:"varint,3,opt,name=oidc_enabled,json=oidcEnabled,proto3" json:"oidc_enabled,omitempty"`
@@ -890,7 +890,10 @@ type CreatePreAuthKeyResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Key   *PreAuthKey            `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	// The secret, shown only once.
-	Secret        string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	Secret string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	// The server's URL and the secret in one string for 'ws login' and the
+	// Windows installer (see internal/joincode). Empty without a public URL.
+	JoinCode      string `protobuf:"bytes,3,opt,name=join_code,json=joinCode,proto3" json:"join_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -935,6 +938,13 @@ func (x *CreatePreAuthKeyResponse) GetKey() *PreAuthKey {
 func (x *CreatePreAuthKeyResponse) GetSecret() string {
 	if x != nil {
 		return x.Secret
+	}
+	return ""
+}
+
+func (x *CreatePreAuthKeyResponse) GetJoinCode() string {
+	if x != nil {
+		return x.JoinCode
 	}
 	return ""
 }
@@ -4109,10 +4119,11 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x1a\n" +
 	"\breusable\x18\x02 \x01(\bR\breusable\x12\x1c\n" +
 	"\tephemeral\x18\x03 \x01(\bR\tephemeral\x12-\n" +
-	"\x12expiration_seconds\x18\x04 \x01(\x04R\x11expirationSeconds\"_\n" +
+	"\x12expiration_seconds\x18\x04 \x01(\x04R\x11expirationSeconds\"|\n" +
 	"\x18CreatePreAuthKeyResponse\x12+\n" +
 	"\x03key\x18\x01 \x01(\v2\x19.whalescale.v1.PreAuthKeyR\x03key\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\"1\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\x12\x1b\n" +
+	"\tjoin_code\x18\x03 \x01(\tR\bjoinCode\"1\n" +
 	"\x17ExpirePreAuthKeyRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"\x1a\n" +
 	"\x18ExpirePreAuthKeyResponse\"\x12\n" +

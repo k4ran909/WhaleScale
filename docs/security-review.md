@@ -69,6 +69,11 @@ This is a first pass by the project itself. It doesn't replace an independent au
   - node signatures can't be moved to another key (unit and end-to-end tests).
 - **Post-quantum exchange:** a key is applied only after both sides confirm, a mismatch falls back to plain WireGuard, and older peers never get one (tests under 40% message loss).
 - **Audit log:** hash-chained; edits and deletions are detected.
+- **Console accounts:**
+  - Passwords are stored as argon2id hashes (19 MiB, 2 passes, OWASP's minimum), at least 10 characters.
+  - Sign-in with an unknown name takes as long as with a wrong password.
+  - Changing a password, or deleting an account, ends all its sessions.
+  - The first account can only be created with a one-time setup code that the server prints in its own log, so whoever finds a fresh server first can't claim it. Setup closes for good once the account exists; racing setups can't both succeed (`server.TestFirstRunSetup`, `store.TestAdmins`).
 - **Parsers:** fuzz targets cover policies, map deltas, QUIC relay frames, disco messages, packets entering the filter, DNS queries and machine proofs.
 - **Exit nodes and DNS:** a machine using an exit node resolves every name through it and fails closed when it can't, so lookups don't leak to the local network (end to end in `engine.TestExitNode`).
 
@@ -80,7 +85,7 @@ This is a first pass by the project itself. It doesn't replace an independent au
    - Machines that never upgrade keep using their tokens.
    - A machine that logged in with an older client learns the server key from its first network map (trust on first use, over TLS).
 2. **The control server is trusted for policy.** See finding 8. Use the network lock, keep the policy in Git with review, and watch the audit log.
-3. **Rate limits are per address.** Starting a browser login (finding 4), `Register`, `WaitRegistration` and the `/auth/*` endpoints are limited per client (`rate-limit`, 60 a minute by default; IPv6 per /64; `X-Forwarded-For` only from `trusted-proxies`; tests `server.TestLimiter` and `TestRateLimitedEndpoints`). Someone with many addresses can still spread requests across them, and STUN isn't limited. A proxy or firewall in front can add global limits.
+3. **Rate limits are per address.** Starting a browser login (finding 4), `Register`, `WaitRegistration` and the `/auth/*` endpoints are limited per client (`rate-limit`, 60 a minute by default; IPv6 per /64; `X-Forwarded-For` only from `trusted-proxies`; tests `server.TestLimiter` and `TestRateLimitedEndpoints`). Someone with many addresses can still spread requests across them, and STUN isn't limited. A proxy or firewall in front can add global limits. Password sign-in is limited the same way, per address, not per account: there's no lockout, which would let anyone lock the admin out. Use a long password, or OIDC with your provider's protections.
 4. **Uploads are budgeted per machine, not globally.** Each machine may store `recording-quota-mb` of SSH recordings (1 GiB by default; over it, new uploads are refused and old ones kept) and about 1,000 flow records per 30 seconds (`control.TestRecordingQuota`, `TestFlowBudget`). Total use still grows with the number of machines: set `recording-retention`, and watch the recordings directory and the database size.
 5. **Self-reported data:** flow logs, path reports and posture attributes (OS and client version) come from the machines themselves. Posture checks keep honest machines up to date; they don't stop a compromised machine that lies.
 6. **The post-quantum layer is hybrid:** the exchange is authenticated with X25519 (the disco keys). It protects recorded traffic against future decryption, but not against an active quantum attacker during the exchange.

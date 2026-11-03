@@ -15,6 +15,7 @@ import (
 
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
+	"github.com/k4ran909/whalescale/internal/joincode"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
 )
@@ -97,6 +98,11 @@ func (a *Admin) identify(ctx context.Context, h http.Header) (identity, error) {
 	if prefix, ok := strings.CutPrefix(who, "api-key:"); ok {
 		return identity{"api-key", who, st.APIKeyScope(ctx, prefix)}, nil
 	}
+	// Password accounts' sessions end when the account is deleted or its
+	// password changes (see store.DeleteSessionsOf).
+	if name, ok := strings.CutPrefix(who, "admin:"); ok {
+		return identity{"admin", name, store.ScopeAdmin}, nil
+	}
 	return identity{"oidc", who, store.ScopeAdmin}, nil
 }
 
@@ -112,7 +118,8 @@ func notFoundOr(a *Admin, what string, err error) error {
 	return internal(a, what, err)
 }
 
-// actor names an admin in the audit log: "oidc:EMAIL" or "api-key:PREFIX".
+// actor names an admin in the audit log: "admin:NAME", "oidc:EMAIL" or
+// "api-key:PREFIX".
 func (id identity) actor() string {
 	if id.method == "api-key" {
 		return id.name
@@ -259,7 +266,11 @@ func (a *Admin) CreatePreAuthKey(ctx context.Context, req *connect.Request[v1.Cr
 		return nil, notFoundOr(a, "create key", err)
 	}
 	a.audit(ctx, id, "pre-auth key created", "prefix", k.Prefix, "user", k.User, "reusable", k.Reusable)
-	return connect.NewResponse(&v1.CreatePreAuthKeyResponse{Key: preAuthKeyProto(k), Secret: secret}), nil
+	resp := &v1.CreatePreAuthKeyResponse{Key: preAuthKeyProto(k), Secret: secret}
+	if a.svc.cfg.PublicURL != "" {
+		resp.JoinCode = joincode.Encode(a.svc.cfg.PublicURL, secret)
+	}
+	return connect.NewResponse(resp), nil
 }
 
 func (a *Admin) ExpirePreAuthKey(ctx context.Context, req *connect.Request[v1.ExpirePreAuthKeyRequest]) (*connect.Response[v1.ExpirePreAuthKeyResponse], error) {

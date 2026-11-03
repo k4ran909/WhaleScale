@@ -62,12 +62,13 @@ func installService(f *flags) error {
 	if err := os.WriteFile(unitPath, []byte(unit), 0o644); err != nil {
 		return err
 	}
-	for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", "wsd"}} {
+	// restart, not just start: after an upgrade the old binary would keep running.
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", "wsd"}, {"restart", "wsd"}} {
 		if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
 			return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, out)
 		}
 	}
-	fmt.Println("wsd service installed and started. Next: sudo ws login --server URL, then sudo ws up")
+	fmt.Println("wsd service installed and started. Next: sudo ws login <join code from the dashboard>")
 	return nil
 }
 

@@ -25,6 +25,8 @@ Usage:
   whalescale serve       [flags]           run the server (see 'whalescale serve -h')
   whalescale configtest  [flags]           validate configuration and show where each value came from
   whalescale doctor      [flags]           check a running server end to end
+  whalescale admins      list | create NAME | reset-password NAME | delete NAME   (console accounts)
+  whalescale setup-code                    the code that creates the first admin account in the console
   whalescale users       create NAME | list | delete NAME
   whalescale preauthkeys create --user NAME [--reusable] [--ephemeral] [--expiration 24h]
   whalescale preauthkeys list | expire PREFIX
@@ -65,6 +67,10 @@ func main() {
 		err = cmdConfigtest(args)
 	case "doctor":
 		err = cmdDoctor(args)
+	case "admins":
+		err = cmdAdmins(args)
+	case "setup-code":
+		err = cmdSetupCode(args)
 	case "users":
 		err = cmdUsers(args)
 	case "preauthkeys":
@@ -126,6 +132,16 @@ func configuredDB() string {
 		os.Exit(1)
 	}
 	return opts.db
+}
+
+// configuredPublicURL reads 'public-url' the way configuredDB reads 'db':
+// join codes name the server by it.
+func configuredPublicURL() string {
+	opts, _, err := loadServeConfig(nil, true)
+	if err != nil {
+		return ""
+	}
+	return opts.publicURL
 }
 
 func openStore(fs *flag.FlagSet, db *string, args []string) (*store.Store, error) {

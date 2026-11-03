@@ -23,15 +23,18 @@ import (
 	v1 "github.com/k4ran909/whalescale/gen/whalescale/v1"
 	"github.com/k4ran909/whalescale/gen/whalescale/v1/whalescalev1connect"
 	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/joincode"
 	"github.com/k4ran909/whalescale/internal/localapi"
 	"github.com/k4ran909/whalescale/internal/netlock"
 	"github.com/k4ran909/whalescale/internal/nodeauth"
 	"github.com/k4ran909/whalescale/internal/version"
+	"github.com/k4ran909/whalescale/internal/winconsole"
 )
 
 const usage = `ws - Whalescale client
 
 Usage:
+  ws login  JOIN-CODE         join with the code from the dashboard (Machines → Add device) and connect
   ws login  --server URL [--authkey KEY] [--hostname NAME]
                               without a key, prints a link to sign in with your browser
   ws up     [--accept-routes] [--advertise-routes CIDR,...] [--advertise-exit-node]
@@ -63,8 +66,23 @@ The auth key may also come from $WS_AUTHKEY, which keeps it out of shell history
 State is kept in $WHALESCALE_STATE or the user config dir.
 `
 
+// doubleClicked is what a double-clicked ws.exe says before its window
+// closes.
+const doubleClicked = `
+This is Whalescale's command-line tool, so it doesn't open a window.
+
+  - To install Whalescale and join your network, run the installer
+    (whalescale-setup-windows-amd64.exe from the release page).
+  - Afterwards, open a terminal and use 'ws status', or the Start menu's
+    "Whalescale status".
+`
+
 func main() {
 	if len(os.Args) < 2 {
+		if winconsole.OwnWindow() {
+			winconsole.Hold(doubleClicked)
+			return
+		}
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
@@ -149,7 +167,24 @@ func cmdLogin(args []string) error {
 	authKey := fs.String("authkey", os.Getenv("WS_AUTHKEY"), "pre-auth key from 'whalescale preauthkeys create'")
 	hostname := fs.String("hostname", "", "node name (default: this machine's hostname)")
 	lockTrust := fs.String("lock-trust", "", "network lock keys (wslock:..., comma-separated) to require; without it the first lock state seen is trusted")
+	join := fs.String("join", "", "join code from the dashboard (Machines → Add device): the server and a key in one")
 	fs.Parse(args)
+	// 'ws login wsjoin-…': the join code can also come as the argument.
+	if *join == "" && fs.NArg() == 1 && joincode.Is(fs.Arg(0)) {
+		*join = fs.Arg(0)
+	} else if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %q (a join code starts with %s; flags go before it)", fs.Arg(0), joincode.Prefix)
+	}
+	if *join != "" {
+		s, k, err := joincode.Decode(*join)
+		if err != nil {
+			return err
+		}
+		if *server != "" && strings.TrimRight(*server, "/") != s {
+			return fmt.Errorf("the join code is for %s, not %s", s, *server)
+		}
+		*server, *authKey = s, k
+	}
 	var trust []string
 	for _, k := range strings.Split(*lockTrust, ",") {
 		if k = strings.TrimSpace(k); k != "" {
@@ -161,7 +196,7 @@ func cmdLogin(args []string) error {
 	}
 
 	if *server == "" {
-		return errors.New("--server is required")
+		return errors.New("give the join code from the dashboard (ws login wsjoin-…), or --server URL")
 	}
 	u, err := url.Parse(*server)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -244,12 +279,35 @@ func cmdLogin(args []string) error {
 		}
 		fmt.Printf("now using profile %q\n", profName)
 	}
-	if running == nil {
-		fmt.Println("wsd is running: start the tunnel with 'ws up'")
-	} else {
+	if running != nil && *join != "" {
+		// Usually right after installing: give the service a moment.
+		running = waitForDaemon(lc, 20*time.Second)
+	}
+	switch {
+	case running != nil:
 		fmt.Println("next: start wsd (or 'wsd install-service'), then 'ws up'")
+	case *profile == "":
+		// Joining means connecting: bring the tunnel up now.
+		if _, err := lc.Up(st.Prefs); err != nil {
+			return fmt.Errorf("logged in, but starting the tunnel failed: %w (try 'ws up')", err)
+		}
+		fmt.Println("connected: this device is on your network ('ws status' shows the others)")
+	default:
+		fmt.Println("connected ('ws status' shows the others)")
 	}
 	return nil
+}
+
+// waitForDaemon waits up to d for wsd to answer, and returns its last error.
+func waitForDaemon(lc *localapi.Client, d time.Duration) error {
+	deadline := time.Now().Add(d)
+	for {
+		_, err := lc.Prefs()
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 // waitBrowserLogin shows the sign-in link and waits until the user has

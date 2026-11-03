@@ -1,0 +1,29 @@
+# The Windows installer must build: packaging/windows/whalescale.nsi with
+# the Wintun driver. (The release pipeline builds and publishes it.)
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+steps:
+  - name: windows installer builds
+    image: golang:1.27.3
+    volumes:
+      - woodpecker-go-mod:/go/pkg/mod
+      - woodpecker-go-build:/root/.cache/go-build
+    environment:
+      CGO_ENABLED: "0"
+      GOOS: windows
+      GOARCH: amd64
+    commands:
+      - sh scripts/ci/retry.sh apt-get update -qq
+      - sh scripts/ci/retry.sh apt-get install -y -qq nsis unzip
+      - sh scripts/ci/wintun.sh build/wintun
+      - mkdir -p build/setup
+      - go build -trimpath -o build/setup/ws.exe ./cmd/ws
+      - go build -trimpath -o build/setup/wsd.exe ./cmd/wsd
+      - cp build/wintun/wintun/bin/amd64/wintun.dll build/setup/
+      - cp build/wintun/wintun/LICENSE.txt build/setup/wintun-LICENSE.txt
+      - sh scripts/ci/windows-installer.sh build/setup amd64 0.0.0-ci build/whalescale-setup-windows-amd64.exe

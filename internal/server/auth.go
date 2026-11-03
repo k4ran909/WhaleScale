@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -17,6 +19,8 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/k4ran909/whalescale/internal/control"
+	"github.com/k4ran909/whalescale/internal/passwd"
+	"github.com/k4ran909/whalescale/internal/store"
 )
 
 const sessionTTL = 12 * time.Hour
@@ -78,6 +82,10 @@ func (a *auth) enabled() bool { return a.provider != nil }
 
 // routes adds the login endpoints; limit wraps those anyone may call.
 func (a *auth) routes(mux *http.ServeMux, limit func(http.Handler) http.Handler) {
+	mux.Handle("GET /auth/status", limit(http.HandlerFunc(a.status)))
+	mux.Handle("POST /auth/setup", limit(http.HandlerFunc(a.setup)))
+	mux.Handle("POST /auth/password", limit(http.HandlerFunc(a.passwordLogin)))
+	mux.Handle("POST /auth/password/change", limit(http.HandlerFunc(a.changePassword)))
 	mux.Handle("GET /auth/login", limit(http.HandlerFunc(a.login)))
 	mux.Handle("GET /auth/node", limit(http.HandlerFunc(a.nodeLogin)))
 	mux.Handle("GET /auth/callback", limit(http.HandlerFunc(a.callback)))
@@ -229,15 +237,10 @@ func (a *auth) startSession(w http.ResponseWriter, ctx context.Context, identity
 // apiKeyLogin trades an API key for a console session, so the console
 // works without OIDC.
 func (a *auth) apiKeyLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "expected JSON", http.StatusUnsupportedMediaType)
-		return
-	}
 	var body struct {
 		Key string `json:"key"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	if !readJSON(w, r, &body) {
 		return
 	}
 	prefix, err := a.srv.store.CheckAPIKey(r.Context(), strings.TrimSpace(body.Key))
@@ -251,6 +254,203 @@ func (a *auth) apiKeyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.srv.control.Audit(r.Context(), "api-key:"+prefix, "console sign-in")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// readJSON decodes a small JSON body into v, answering the error itself.
+func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "expected JSON", http.StatusUnsupportedMediaType)
+		return false
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(v); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// status tells the console how to sign in: whether the first admin account
+// still has to be created, and whether OIDC is on.
+func (a *auth) status(w http.ResponseWriter, r *http.Request) {
+	setup, err := a.needsSetup(r.Context())
+	if err != nil {
+		a.srv.log.Error("auth status", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if setup {
+		a.srv.announceSetup(r.Context()) // the setup page is open: put the code at the end of the log
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]any{"setup": setup, "oidc": a.enabled(), "publicUrl": a.srv.cfg.PublicURL})
+}
+
+// needsSetup: no admin account yet, and no identity provider to sign in
+// with instead.
+func (a *auth) needsSetup(ctx context.Context) (bool, error) {
+	if a.enabled() {
+		return false, nil
+	}
+	n, err := a.srv.store.AdminCount(ctx)
+	return n == 0, err
+}
+
+// setup creates the first admin account. It needs the setup code from the
+// server's log, so whoever finds a fresh server first can't claim it, and
+// closes for good once the account exists.
+func (a *auth) setup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Code     string `json:"code"`
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	if a.enabled() {
+		http.Error(w, "this server signs admins in with its identity provider", http.StatusConflict)
+		return
+	}
+	code, err := a.srv.store.SetupCode(ctx)
+	if err != nil {
+		a.srv.log.Error("setup code", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if code == "" {
+		http.Error(w, "this server already has an admin account: sign in instead", http.StatusConflict)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(store.NormalizeCode(body.Code)), []byte(store.NormalizeCode(code))) != 1 {
+		a.srv.log.Warn("console setup refused: wrong setup code", "remote", r.RemoteAddr)
+		http.Error(w, "wrong setup code: copy it from the server's log (the line with setup_code)", http.StatusForbidden)
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(body.Name))
+	if !store.ValidName(name) {
+		http.Error(w, "name: use lowercase letters, digits and '-', e.g. karan", http.StatusBadRequest)
+		return
+	}
+	if err := passwd.Check(body.Password); err != nil {
+		http.Error(w, "password: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	hash, err := passwd.Hash(body.Password)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := a.srv.store.CreateFirstAdmin(ctx, name, hash); err != nil {
+		if errors.Is(err, store.ErrSetupDone) {
+			http.Error(w, "this server already has an admin account: sign in instead", http.StatusConflict)
+			return
+		}
+		a.srv.log.Error("create first admin", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	a.srv.store.ClearSetupCode(ctx)
+	// Devices need an owner: the admin gets a user of the same name.
+	if _, err := a.srv.store.CreateUser(ctx, name); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
+		a.srv.log.Warn("create the admin's user", "user", name, "err", err)
+	}
+	a.srv.control.Audit(ctx, store.AdminIdentity(name), "admin account created", "how", "first-run setup")
+	a.srv.log.Info("first admin account created; setup is closed", "admin", name)
+	if err := a.startSession(w, ctx, store.AdminIdentity(name)); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// passwordLogin signs a console account in with its password.
+func (a *auth) passwordLogin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	name := strings.ToLower(strings.TrimSpace(body.Name))
+	hash, err := a.srv.store.AdminPasswordHash(ctx, name)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		err = passwd.VerifyNone(body.Password) // as slow as a real check
+	case err == nil:
+		err = passwd.Verify(body.Password, hash)
+	}
+	if err != nil {
+		if !errors.Is(err, passwd.ErrMismatch) {
+			a.srv.log.Error("password sign-in", "admin", name, "err", err)
+		}
+		a.srv.log.Warn("console sign-in refused", "admin", name, "remote", r.RemoteAddr)
+		http.Error(w, "wrong name or password", http.StatusUnauthorized)
+		return
+	}
+	if err := a.startSession(w, ctx, store.AdminIdentity(name)); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	a.srv.control.Audit(ctx, store.AdminIdentity(name), "console sign-in")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// changePassword sets a new password for the signed-in console account. It
+// signs the account out everywhere else.
+func (a *auth) changePassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	c, err := r.Cookie(control.SessionCookie)
+	if err != nil {
+		http.Error(w, "not signed in", http.StatusUnauthorized)
+		return
+	}
+	who, err := a.srv.store.SessionIdentity(ctx, c.Value)
+	name, isAccount := strings.CutPrefix(who, "admin:")
+	switch {
+	case err != nil:
+		http.Error(w, "session expired; sign in again", http.StatusUnauthorized)
+		return
+	case !isAccount:
+		http.Error(w, "only password accounts have a password to change", http.StatusBadRequest)
+		return
+	}
+	hash, err := a.srv.store.AdminPasswordHash(ctx, name)
+	if err == nil {
+		err = passwd.Verify(body.Current, hash)
+	}
+	if err != nil {
+		http.Error(w, "the current password is wrong", http.StatusForbidden)
+		return
+	}
+	if err := passwd.Check(body.New); err != nil {
+		http.Error(w, "new password: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	newHash, err := passwd.Hash(body.New)
+	if err == nil {
+		err = a.srv.store.SetAdminPassword(ctx, name, newHash)
+	}
+	if err == nil {
+		err = a.startSession(w, ctx, store.AdminIdentity(name)) // this browser stays signed in
+	}
+	if err != nil {
+		a.srv.log.Error("change password", "admin", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	a.srv.control.Audit(ctx, store.AdminIdentity(name), "password changed")
 	w.WriteHeader(http.StatusNoContent)
 }
 

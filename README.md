@@ -4,6 +4,17 @@ A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all
 
 > **Status: Phase 4 complete.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`; plus network lock, temporary access, device posture, an audit log, and failover across servers sharing PostgreSQL. See [Known gaps](#known-gaps).
 
+## Quick start
+
+1. **Run the server** with Docker, Dokploy or Kubernetes (see [Server setup](#server-setup)).
+2. **Open its address in a browser** and create your admin account. The page asks for a one-time *setup code*: the server prints it in its log at start (the line with `setup_code`), and `whalescale setup-code` on the server shows it too. Once the account exists, that page is gone for good.
+3. **Machines → Add device** gives you a *join code* and the steps for the device:
+   - **Windows:** download `whalescale-setup-windows-amd64.exe`, run it, and paste the join code.
+   - **macOS and Linux:** one command: `curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join <join code>`
+4. The device shows up on the Machines page, and your devices can reach each other by name: `ping laptop.whale.internal`.
+
+New to how this works? [docs/architecture.md](docs/architecture.md) explains it with diagrams: the server, the agent, keys, and how devices find a direct path through routers.
+
 ## How it fits together
 
 ```
@@ -26,9 +37,10 @@ A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all
 cd deploy
 echo "WS_DOMAIN=ws.example.com" > .env       # DNS must point here; open TCP 80/443, UDP 3478-3480
 docker compose up -d
-docker compose exec whalescale whalescale users create karan
-docker compose exec whalescale whalescale apikeys create     # sign in to https://ws.example.com with this
+docker compose logs whalescale | grep setup_code   # the code that creates your admin account
 ```
+
+Then open `https://ws.example.com` and create your admin account with that code.
 
 ### Dokploy
 
@@ -65,19 +77,31 @@ Settings layer as: config file, then `conf.d/*.yaml` (upgrades never touch these
 
 ## Adding devices
 
+The dashboard's **Machines → Add device** walks you through it and shows each device appear as it joins. It makes a *join code*: the server's address and a key in one string (`wsjoin-…`), as secret as a password. A code works for one device for a day, or for several devices for a week if you choose that.
+
+- **Windows:** run `whalescale-setup-windows-amd64.exe` (`-arm64` for ARM laptops) from the [latest release](https://github.com/k4ran909/WhaleScale/releases/latest) and paste the join code. It installs the network driver and the service, puts `ws` on the PATH, and joins. Windows may warn that the publisher is unknown, because the installer isn't code-signed yet: choose **More info → Run anyway**. For scripted installs: `whalescale-setup-windows-amd64.exe /S /JOIN=wsjoin-…`.
+- **macOS and Linux:**
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join wsjoin-...
+  ```
+
+- **Already installed:** `sudo ws login wsjoin-…` (on Windows, `ws login wsjoin-…` in a terminal opened as Administrator). It joins and connects.
+
+Then:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh   # installs ws + wsd service
-sudo ws login --server https://ws.example.com   # opens a browser login (OIDC), or use WS_AUTHKEY=wskey-...
-sudo ws up
-ws status                                       # peers, direct/relay path, latency
+ws status                     # peers, direct/relay path, latency
 ping laptop.whale.internal
 ```
+
+Without the dashboard: `whalescale preauthkeys create --user NAME` on the server prints a key and its join code, and `ws login --server URL` with no key opens a browser sign-in if OIDC is set up.
 
 For short-lived machines (CI runners, containers), use an ephemeral key: `whalescale preauthkeys create --user ci --reusable --ephemeral`. Machines it adds are removed once they've been offline for `ephemeral-timeout` (10 minutes by default). `ws logout` removes a machine from the server right away.
 
 Machines prove each request with their machine key rather than sending a reusable token. The server has an X25519 key; a machine learns its public half at login (over TLS) and then signs every control, relay and gateway request. Each signature covers the method, the server, the path and the time, and the server accepts it once. Once a machine has signed a request, its login token is refused. So a header copied from a proxy log, a debugging dump or a TLS-inspecting middlebox is useless, and so is the token itself. Older clients keep using the token until they're upgraded. If machines reach the server under names other than `--public-url`'s (an internal address, say), list them with `--node-auth-hosts`.
 
-On Windows, unzip the release, put [`wintun.dll`](https://www.wintun.net/) next to `wsd.exe`, and in an Administrator terminal run `wsd install-service`, then `ws login --server ...` and `ws up`.
+Manual install on Windows, without the installer: unzip `whalescale_<version>_windows_amd64.zip` (it includes the `wintun.dll` network driver next to `wsd.exe`), and in an Administrator terminal run `wsd install-service`, then `ws login wsjoin-…`.
 
 ### Several networks on one machine
 
@@ -95,7 +119,7 @@ sudo ws switch default                                          # back to the fi
 
 ## Web console
 
-Served at the server's URL. Sign in with an API key (`whalescale apikeys create`), or with your identity provider if OIDC is configured (only emails in `oidc-admins` get in). Pages:
+Served at the server's URL. Sign in with your admin account (created on the first visit, see [Quick start](#quick-start)), with your identity provider if OIDC is configured (only emails in `oidc-admins` get in), or with an API key (`whalescale apikeys create`, under "Use an API key instead"). Forgot the password? `whalescale admins reset-password NAME` on the server prints a new one; `whalescale admins create NAME` adds another admin. Pages:
 
 - **Machines:** online state, addresses, OS and routes.
 - **Topology:** a from/to matrix showing direct or relayed paths, with latency, as the nodes report it.
@@ -535,7 +559,8 @@ Requests anyone can make (registering, browser logins, API key logins) are rate 
 
 ## Known gaps
 
-- **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and Docker image are also untested.
+- **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and installer are also untested on real PCs.
+- **The Windows installer isn't code-signed**, so Windows SmartScreen warns about an unknown publisher (More info → Run anyway). Signing needs a code-signing certificate.
 - **Exit nodes**: the exit side (forwarding + NAT) is Linux-only. On macOS, DNS lookups don't go through the exit node yet.
 - Subnet routing is Linux-only for now.
 - Machine keys live in a file (protected, but not in a TPM or secure enclave): whoever copies a machine's whole state can still act as it until it's removed. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.

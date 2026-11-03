@@ -2,7 +2,8 @@
 # Whalescale installer for Linux and macOS.
 #
 #   curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh
-#   ... | sh -s -- --server      also set up the server (Linux, systemd)
+#   ... | sh -s -- --join wsjoin-...   also join your network (code from the dashboard: Machines → Add device)
+#   ... | sh -s -- --server            also set up the server (Linux, systemd)
 #   ... | sh -s -- --version v0.2.0
 #
 # Downloads the release for this OS/arch, verifies its SHA-256 checksum,
@@ -12,9 +13,11 @@ set -eu
 REPO="k4ran909/WhaleScale"
 VERSION="latest"
 SERVER=0
+JOIN=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--server) SERVER=1 ;;
+	--join) JOIN="$2"; shift ;;
 	--version) VERSION="$2"; shift ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 	esac
@@ -83,5 +86,11 @@ if [ "$SERVER" -eq 1 ]; then
 else
 	say "installing the wsd service"
 	$SUDO /usr/local/bin/wsd install-service
+	if [ -n "$JOIN" ]; then
+		say "joining your network"
+		$SUDO /usr/local/bin/ws login "$JOIN"
+	else
+		echo "    next: sudo ws login <join code from the dashboard: Machines -> Add device>"
+	fi
 fi
 say "done"

@@ -11,7 +11,7 @@ steps:
     image: golang:1.27.3
     commands:
       - sh scripts/ci/retry.sh apt-get update -qq
-      - sh scripts/ci/retry.sh apt-get install -y -qq zip
+      - sh scripts/ci/retry.sh apt-get install -y -qq zip unzip nsis
       - sh scripts/ci/release-archives.sh "${CI_COMMIT_TAG}"
 
   - name: publish release
@@ -23,7 +23,8 @@ steps:
       GH_REPO: ${CI_REPO}
     commands:
       - sh scripts/ci/retry.sh apk add --no-cache github-cli
-      - gh release create "${CI_COMMIT_TAG}" dist/* --generate-notes --verify-tag
+      # The "which file do I need?" guide, then GitHub's list of changes.
+      - gh release create "${CI_COMMIT_TAG}" dist/* --notes-file packaging/release-notes.md --generate-notes --verify-tag
 
   - name: image
     image: woodpeckerci/plugin-docker-buildx:6.1.2

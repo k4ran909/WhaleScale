@@ -18,6 +18,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/daemon"
 	"github.com/k4ran909/whalescale/internal/engine"
 	"github.com/k4ran909/whalescale/internal/version"
+	"github.com/k4ran909/whalescale/internal/winconsole"
 )
 
 const usage = `wsd - Whalescale node agent
@@ -29,6 +30,14 @@ Usage:
   wsd version
 
 Flags:
+`
+
+// doubleClicked is what a double-clicked wsd.exe says before its window
+// closes.
+const doubleClicked = `
+This is Whalescale's background service. It starts by itself once installed:
+run the installer (whalescale-setup-windows-amd64.exe), or, as Administrator,
+'wsd install-service'.
 `
 
 type flags struct {
@@ -91,6 +100,9 @@ func main() {
 	case "":
 		if runningAsService() {
 			err = runService(args)
+		} else if len(args) == 0 && winconsole.OwnWindow() {
+			// Double-clicked in Explorer: wsd runs as a service, not like this.
+			winconsole.Hold(doubleClicked)
 		} else {
 			f, _ := parseFlags(args)
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

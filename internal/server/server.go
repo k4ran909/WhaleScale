@@ -94,10 +94,12 @@ type Server struct {
 	log     *slog.Logger
 	started time.Time
 
-	limiter   *limiter
-	policyMod time.Time
-	psync     *policySync
-	quicCert  tls.Certificate
+	limiter *limiter
+	// setupLogged is when the setup code was last logged (unix nanos).
+	setupLogged atomic.Int64
+	policyMod   time.Time
+	psync       *policySync
+	quicCert    tls.Certificate
 
 	// Cluster membership (cluster.go).
 	id       string
@@ -172,7 +174,27 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	if err := s.control.RefreshGrants(context.Background(), false); err != nil {
 		return nil, fmt.Errorf("load access grants: %w", err)
 	}
+	s.announceSetup(context.Background())
 	return s, nil
+}
+
+// announceSetup logs the setup code while the server has no admin account:
+// at start, and again (at most once a minute) when someone opens the
+// console's setup page, so the newest log line always has it.
+func (s *Server) announceSetup(ctx context.Context) {
+	if s.cfg.OIDC != nil {
+		return // admins sign in with the identity provider
+	}
+	last := s.setupLogged.Load()
+	if time.Since(time.Unix(0, last)) < time.Minute || !s.setupLogged.CompareAndSwap(last, time.Now().UnixNano()) {
+		return
+	}
+	code, err := s.store.SetupCode(ctx)
+	if err != nil || code == "" {
+		return
+	}
+	s.log.Warn("no admin account yet: open the console and create one with this setup code",
+		"url", s.cfg.PublicURL, "setup_code", code)
 }
 
 func relayURL(public string) (string, error) {

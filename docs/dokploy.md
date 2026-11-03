@@ -30,32 +30,27 @@ carry, so those ports are published on the host directly.
 4. **Domains:** add `ws.example.com` → service `whalescale`, container port **8080**, HTTPS on (Let's Encrypt).
 5. **Deploy.** The first build takes a few minutes (it compiles the server from source).
 
-Open `https://ws.example.com`: you should see the console's sign-in page.
+Open `https://ws.example.com`: on a new server you should see **Create your admin account**.
 
-## 3. The first admin
+## 3. Create your admin account
 
-The image has no shell, so Dokploy's web terminal can't open in it. Run the
-admin commands with `docker exec` on the Dokploy host, which needs no shell:
+Open `https://ws.example.com`. The first visit shows **Create your admin account**, which asks for a one-time setup code:
 
-```bash
-docker ps --filter name=whalescale --format '{{.Names}}'     # find the container
-docker exec <container> whalescale users create you
-docker exec <container> whalescale apikeys create            # sign in to the console with this
-docker exec <container> whalescale preauthkeys create --user you --reusable
-docker exec <container> whalescale doctor                    # checks HTTPS, relays, both STUN ports
-```
+- **Where to find it:** Dokploy → your app → **Logs**, the line with `setup_code=ABCD-EFGH`. The server prints it at start, and again whenever the setup page is opened, so the newest log line has it.
+- **Or on the host:** `docker exec <container> whalescale setup-code` (find the container with `docker ps --filter name=whalescale`).
 
-Without host access, use Dokploy's **Schedule Jobs** instead: a Compose job for service `whalescale`, command `whalescale users create you`. Run it once and read the output in the job's log. Keys are shown only once, so copy them from the log, then delete the job.
+Pick a name and a password, and you're signed in. The setup page is gone from then on: it only exists while the server has no admin. Your account also gets a user of the same name, which new devices belong to by default.
 
-## 4. Add machines
+Forgot the password? On the host: `docker exec <container> whalescale admins reset-password <name>` prints a new one. The image has no shell, so Dokploy's web terminal can't open in it, but `docker exec` with a command works. Without host access, a Dokploy **Schedule Job** (Compose, service `whalescale`, command `whalescale admins reset-password <name>`) does the same: run it once, read the log, delete the job.
 
-```bash
-WS_AUTHKEY=wskey-... sudo ws login --server https://ws.example.com
-sudo ws up
-ws status
-```
+## 4. Add devices
 
-On Windows, in an Administrator terminal: `wsd install-service`, then the same `ws login` and `ws up`.
+In the dashboard: **Machines → Add device**. It gives you a join code and shows the steps for Windows, macOS and Linux, then tells you when the device has joined.
+
+- **Windows:** download the installer it links to, run it, paste the code.
+- **macOS and Linux:** `curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join <code>`
+
+`docker exec <container> whalescale doctor` checks HTTPS, both STUN ports and the relays from the server's side.
 
 ## What's already set
 

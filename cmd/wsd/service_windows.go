@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
@@ -134,9 +136,50 @@ func installService(f *flags) error {
 	if err := s.Start(); err != nil {
 		return fmt.Errorf("installed, but starting failed: %w", err)
 	}
-	fmt.Println("Whalescale service installed and started. Next (as Administrator): ws login --server URL, then ws up")
+	// 'ws' from any new terminal.
+	dir := filepath.Dir(exe)
+	if err := updateSystemPath(func(p string) (string, bool) { return pathWith(p, dir) }); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: could not add", dir, "to PATH:", err)
+	}
+	fmt.Println("Whalescale service installed and started. Next (as Administrator): ws login <join code from the dashboard>")
 	return nil
 }
+
+const envKey = `SYSTEM\CurrentControlSet\Control\Session Manager\Environment`
+
+// updateSystemPath rewrites the machine-wide PATH and tells running programs
+// (Explorer, so new terminals) that it changed.
+func updateSystemPath(update func(string) (string, bool)) error {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, envKey, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	cur, typ, err := k.GetStringValue("Path") // unexpanded: %SystemRoot% stays as it is
+	if err != nil {
+		return err
+	}
+	next, changed := update(cur)
+	if !changed {
+		return nil
+	}
+	if typ == registry.EXPAND_SZ {
+		err = k.SetExpandStringValue("Path", next)
+	} else {
+		err = k.SetStringValue("Path", next)
+	}
+	if err != nil {
+		return err
+	}
+	env, _ := windows.UTF16PtrFromString("Environment")
+	const hwndBroadcast, wmSettingChange, smtoAbortIfHung = 0xffff, 0x1a, 0x2
+	var result uintptr
+	sendMessageTimeout.Call(hwndBroadcast, wmSettingChange, 0, uintptr(unsafe.Pointer(env)), smtoAbortIfHung, 5000,
+		uintptr(unsafe.Pointer(&result)))
+	return nil
+}
+
+var sendMessageTimeout = windows.NewLazySystemDLL("user32.dll").NewProc("SendMessageTimeoutW")
 
 func uninstallService() error {
 	m, err := connect()
@@ -159,6 +202,10 @@ func uninstallService() error {
 	}
 	if err := s.Delete(); err != nil {
 		return err
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		updateSystemPath(func(p string) (string, bool) { return pathWithout(p, dir) })
 	}
 	fmt.Printf("Whalescale service removed. State is kept in %s.\n", clientstate.SystemDir())
 	return nil

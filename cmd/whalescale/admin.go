@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/k4ran909/whalescale/internal/control"
+	"github.com/k4ran909/whalescale/internal/joincode"
+	"github.com/k4ran909/whalescale/internal/passwd"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
 )
@@ -32,6 +34,104 @@ func table(header string) *tabwriter.Writer {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, header)
 	return tw
+}
+
+// cmdAdmins manages console accounts. New passwords are generated and
+// shown once (nothing to type into a 'docker exec' without a terminal);
+// change them in the console.
+func cmdAdmins(args []string) error {
+	usage := errors.New("usage: whalescale admins list | create NAME | reset-password NAME | delete NAME")
+	if len(args) == 0 {
+		return usage
+	}
+	fs, db := adminFlags("admins " + args[0])
+	st, err := openStore(fs, db, args[1:])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	ctx := context.Background()
+	newPassword := func() (string, string, error) {
+		pw := store.RandomCode(20)
+		h, err := passwd.Hash(pw)
+		return pw, h, err
+	}
+	switch args[0] {
+	case "list":
+		admins, err := st.ListAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		tw := table("NAME\tCREATED")
+		for _, a := range admins {
+			fmt.Fprintf(tw, "%s\t%s\n", a.Name, a.CreatedAt.Format(time.DateTime))
+		}
+		tw.Flush()
+	case "create", "reset-password":
+		if fs.NArg() != 1 {
+			return usage
+		}
+		name := strings.ToLower(fs.Arg(0))
+		pw, h, err := newPassword()
+		if err != nil {
+			return err
+		}
+		if args[0] == "create" {
+			if _, err := st.CreateAdmin(ctx, name, h); err != nil {
+				return err
+			}
+			st.ClearSetupCode(ctx)
+			if _, err := st.CreateUser(ctx, name); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
+				return err
+			}
+			cliAudit(ctx, st, "admin account created", "admin", name)
+		} else {
+			if err := st.SetAdminPassword(ctx, name, h); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("no admin account %q; see 'whalescale admins list'", name)
+				}
+				return err
+			}
+			cliAudit(ctx, st, "admin password reset", "admin", name)
+		}
+		fmt.Fprintf(os.Stderr, "sign in to the console as %s with this password (shown only once; change it there):\n", name)
+		fmt.Println(pw)
+	case "delete":
+		if fs.NArg() != 1 {
+			return usage
+		}
+		if err := st.DeleteAdmin(ctx, fs.Arg(0)); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("no admin account %q", fs.Arg(0))
+			}
+			return err
+		}
+		cliAudit(ctx, st, "admin account deleted", "admin", fs.Arg(0))
+		fmt.Println("deleted admin account", fs.Arg(0))
+	default:
+		return usage
+	}
+	return nil
+}
+
+// cmdSetupCode prints the code that creates the first admin account.
+func cmdSetupCode(args []string) error {
+	fs, db := adminFlags("setup-code")
+	st, err := openStore(fs, db, args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	code, err := st.SetupCode(context.Background())
+	if err != nil {
+		return err
+	}
+	if code == "" {
+		return errors.New("this server already has an admin account; 'whalescale admins reset-password NAME' if you lost the password")
+	}
+	fmt.Fprintln(os.Stderr, "open the console and create the first admin account with this setup code:")
+	fmt.Println(code)
+	return nil
 }
 
 func cmdUsers(args []string) error {
@@ -112,6 +212,10 @@ func cmdPreAuthKeys(args []string) error {
 		fmt.Fprintf(os.Stderr, "pre-auth key for %s (expires %s, reusable=%v). It is shown only once:\n",
 			k.User, k.ExpiresAt.Format(time.DateTime), k.Reusable)
 		fmt.Println(plain)
+		if pu := configuredPublicURL(); pu != "" {
+			fmt.Fprintf(os.Stderr, "\njoin code (the key and this server in one; paste it into the Windows installer or 'ws login'):\n")
+			fmt.Fprintln(os.Stderr, joincode.Encode(pu, plain))
+		}
 	case "list":
 		keys, err := st.ListPreAuthKeys(ctx)
 		if err != nil {
