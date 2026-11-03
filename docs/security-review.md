@@ -61,6 +61,7 @@ This is a first pass by the project itself. It doesn't replace an independent au
 - **Gateway:**
   - public requests reach only live (advertised and approved) exposures;
   - incoming `X-Forwarded-*` headers are replaced, not trusted.
+- **Windows Firewall:** the agent allows inbound traffic on the Whalescale adapter only (rule `WhalescaleIn`), because Windows would otherwise drop everything peers send. Whalescale's stateful filter is then what enforces the access policy there; other adapters keep their firewall settings.
 - **Machine-local services:** MagicDNS and the mesh SSH server bind to the machine's mesh address only, never the LAN.
 - **WireGuard routing:** each peer's allowed IPs are its mesh addresses plus approved routes, so packets can't claim another source; the stateful filter then applies the policy.
 - **Input bounds on node reports:** endpoints, routes, exposures, path reports, flow records, OS strings and recording size are all bounded.

@@ -3,6 +3,7 @@ package osnet
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strconv"
 )
@@ -27,6 +28,11 @@ func apply(c Config) error {
 		if err := run(s[0], s[1:]...); err != nil {
 			return err
 		}
+	}
+	// Without this, Windows Firewall drops what peers send (see
+	// firewallScript). Not fatal: outgoing connections work either way.
+	if err := run("powershell", "-NoProfile", "-NonInteractive", "-Command", firewallScript(c.Iface)); err != nil {
+		slog.Warn("could not let Whalescale traffic through Windows Firewall: other devices may not reach this PC", "err", err)
 	}
 	if !c.DNSServer.IsValid() {
 		return nil

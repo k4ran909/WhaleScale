@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 
 	"github.com/k4ran909/whalescale/internal/clientstate"
+	"github.com/k4ran909/whalescale/internal/osnet"
 )
 
 const serviceName = "Whalescale"
@@ -207,6 +208,7 @@ func uninstallService() error {
 		dir := filepath.Dir(exe)
 		updateSystemPath(func(p string) (string, bool) { return pathWithout(p, dir) })
 	}
+	osnet.RemoveFirewallRule()
 	fmt.Printf("Whalescale service removed. State is kept in %s.\n", clientstate.SystemDir())
 	return nil
 }
