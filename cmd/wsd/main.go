@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"github.com/k4ran909/whalescale/internal/clientstate"
@@ -132,9 +133,13 @@ func run(ctx context.Context, f *flags, logOut io.Writer) error {
 	if f.tunMode == "userspace" {
 		log.Info("userspace mode: the tunnel is only reachable from inside wsd; use 'ws ping' and 'ws status' to check paths")
 	}
-	d := daemon.New(daemon.Options{
+	opts := daemon.Options{
 		StatePath: f.statePath, Userspace: f.tunMode == "userspace", TUNName: f.tunName,
 		Port: uint16(f.port), PortMap: f.portmap, Log: log,
-	})
+	}
+	if runtime.GOOS == "windows" {
+		opts.StatusFile = clientstate.PublicStatusPath() // for the tray icon
+	}
+	d := daemon.New(opts)
 	return d.Run(ctx)
 }

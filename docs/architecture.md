@@ -106,7 +106,7 @@ sequenceDiagram
 
 ## Names, rules and the rest
 
-- **MagicDNS.** `wsd` answers `name.whale.internal` itself, from the map, so names work with no DNS setup. When you use an exit node, every lookup goes through it so nothing leaks to the local network (on Windows and Linux; macOS doesn't do this yet).
+- **MagicDNS.** `wsd` answers `name.whale.internal` itself, from the map, so names work with no DNS setup. The OS asks `100.100.100.100`, an address inside the tunnel that `wsd` answers directly, so nothing on the machine needs port 53 (which WSL2, Docker Desktop or a local resolver often hold already). When you use an exit node, every lookup goes through it so nothing leaks to the local network (on Windows and Linux; macOS doesn't do this yet).
 - **Access policy.** By default every device can reach every other. A policy (dashboard → Access policy) says who may reach what, for example "only admins reach the NAS on port 445". The server compiles it into rules for each device, and each device's `wsd` drops incoming packets the rules don't allow. A device that disobeys can't reach others, because they enforce the rules, not it.
 - **Subnet routers and exit nodes.** A device can share a whole network behind it (your home LAN) or act as the way out to the internet for others. You approve this in the dashboard.
 

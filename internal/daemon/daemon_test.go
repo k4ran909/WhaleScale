@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,11 +36,14 @@ func TestLocalAPIWhenLoggedOut(t *testing.T) {
 	dir := t.TempDir()
 	state := filepath.Join(dir, "state.json")
 	t.Setenv("WHALESCALE_SOCKET", filepath.Join(os.TempDir(), "ws-test-"+filepath.Base(dir)+".sock"))
-	d := New(Options{StatePath: state, Userspace: true, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	statusFile := filepath.Join(dir, "public", "status.json")
+	d := New(Options{StatePath: state, Userspace: true, StatusFile: statusFile, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
-	defer func() { cancel(); <-done }()
+	var stopOnce sync.Once
+	stop := func() { stopOnce.Do(func() { cancel(); <-done }) }
+	defer stop()
 
 	lc := localapi.NewClient(localapi.SocketPath(state))
 	var err error
@@ -61,5 +65,13 @@ func TestLocalAPIWhenLoggedOut(t *testing.T) {
 	}
 	if _, err := lc.Up(clientstate.Prefs{AdvertiseRoutes: []string{"10.0.0.1/8"}}); err == nil || !strings.Contains(err.Error(), "10.0.0.0/8") {
 		t.Fatalf("bad route not rejected: %v", err)
+	}
+	// The tray icon's view: not logged in, then wsd stopped.
+	if ps, err := clientstate.ReadPublicStatus(statusFile); err != nil || ps.State != "logged-out" {
+		t.Fatalf("public status before login = %+v, %v", ps, err)
+	}
+	stop()
+	if ps, err := clientstate.ReadPublicStatus(statusFile); err != nil || ps.State != "stopped" {
+		t.Fatalf("public status after wsd stopped = %+v, %v", ps, err)
 	}
 }

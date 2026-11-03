@@ -26,6 +26,9 @@ type Options struct {
 	Port      uint16
 	PortMap   bool
 	Log       *slog.Logger
+	// StatusFile, if set, gets a PublicStatus every couple of seconds for
+	// local users (the tray icon) to read.
+	StatusFile string
 }
 
 type Daemon struct {
@@ -58,6 +61,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 	srv := &http.Server{Handler: localapi.Handler(d)}
 	go srv.Serve(ln)
 	defer srv.Close()
+	if d.opts.StatusFile != "" {
+		done := make(chan struct{})
+		sctx, stop := context.WithCancel(ctx)
+		go func() { defer close(done); d.publishStatus(sctx) }()
+		defer func() { stop(); <-done }() // the final "stopped" lands before we return
+	}
 
 	st, err := clientstate.Load(d.statePath())
 	if err != nil {

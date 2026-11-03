@@ -24,6 +24,7 @@ steps:
       - mkdir -p build/setup
       - go build -trimpath -o build/setup/ws.exe ./cmd/ws
       - go build -trimpath -o build/setup/wsd.exe ./cmd/wsd
+      - go build -trimpath -ldflags "-H windowsgui" -o build/setup/whalescale-tray.exe ./cmd/whalescale-tray
       - cp build/wintun/wintun/bin/amd64/wintun.dll build/setup/
       - cp build/wintun/wintun/LICENSE.txt build/setup/wintun-LICENSE.txt
       - sh scripts/ci/windows-installer.sh build/setup amd64 0.0.0-ci build/whalescale-setup-windows-amd64.exe

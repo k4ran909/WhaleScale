@@ -6,6 +6,7 @@ toolchain go1.27.3
 
 require (
 	connectrpc.com/connect v1.18.1
+	fyne.io/systray v1.12.2
 	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/creack/pty v1.1.24
@@ -25,6 +26,7 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

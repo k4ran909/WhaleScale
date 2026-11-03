@@ -67,7 +67,8 @@ func TestProfileSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d := New(Options{StatePath: base, Userspace: true, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	statusFile := filepath.Join(dir, "public", "status.json")
+	d := New(Options{StatePath: base, Userspace: true, StatusFile: statusFile, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
@@ -96,6 +97,17 @@ func TestProfileSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitSelf("home-pc")
+	// What the tray icon reads: connected, as which machine, at which address.
+	var ps clientstate.PublicStatus
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if ps, _ = clientstate.ReadPublicStatus(statusFile); ps.State == "connected" && ps.Name == "home-pc" {
+			break
+		}
+	}
+	if ps.State != "connected" || ps.Name != "home-pc" || !strings.HasPrefix(ps.Address, "100.64.") ||
+		ps.Server == "" || time.Since(ps.Updated) > time.Minute {
+		t.Fatalf("public status = %+v", ps)
+	}
 
 	if err := lc.Switch("work"); err != nil {
 		t.Fatal(err)

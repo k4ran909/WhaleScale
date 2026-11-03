@@ -12,12 +12,20 @@ import (
 type filteredTUN struct {
 	tun.Device
 	f *filter.Filter
+	// intercept takes packets this node answers itself (MagicDNS), which
+	// then don't go to WireGuard.
+	intercept func(pkt []byte) bool
 }
 
 func (t *filteredTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	n, err := t.Device.Read(bufs, sizes, offset)
 	for i := 0; i < n; i++ {
-		t.f.Outbound(bufs[i][offset : offset+sizes[i]])
+		pkt := bufs[i][offset : offset+sizes[i]]
+		if t.intercept != nil && t.intercept(pkt) {
+			sizes[i] = 0 // WireGuard skips empty packets
+			continue
+		}
+		t.f.Outbound(pkt)
 	}
 	return n, err
 }

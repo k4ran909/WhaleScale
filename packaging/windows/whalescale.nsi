@@ -4,10 +4,11 @@
 ;   makensis -DVERSION=0.1.1 -DARCH=amd64 -DSRCDIR=build/windows_amd64 \
 ;            -DOUTFILE=dist/whalescale-setup-windows-amd64.exe packaging/windows/whalescale.nsi
 ;
-; SRCDIR holds ws.exe, wsd.exe, wintun.dll and wintun-LICENSE.txt. The
-; installer copies them to Program Files, sets up the Whalescale service
-; ('wsd install-service', which also puts ws on PATH) and, given the join
-; code from the dashboard, joins the network ('ws login').
+; SRCDIR holds ws.exe, wsd.exe, whalescale-tray.exe, wintun.dll and
+; wintun-LICENSE.txt. The installer copies them to Program Files, sets up
+; the Whalescale service ('wsd install-service', which also puts ws on
+; PATH), starts the tray icon at every sign-in and, given the join code
+; from the dashboard, joins the network ('ws login').
 ;
 ; Silent install: whalescale-setup-windows-amd64.exe /S /JOIN=wsjoin-...
 ;
@@ -35,6 +36,7 @@ ManifestDPIAware true
 
 !define APP "Whalescale"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Whalescale"
+!define RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -140,15 +142,18 @@ FunctionEnd
 Section "Install"
   SetShellVarContext all ; Start menu entries for every user
   SetOutPath "$INSTDIR"
-  ; Upgrading: the running service holds the files.
+  ; Upgrading: the running service and tray icons hold the files.
   ${If} ${FileExists} "$INSTDIR\wsd.exe"
     DetailPrint "Stopping the running Whalescale service..."
     nsExec::ExecToLog '"$INSTDIR\wsd.exe" uninstall-service'
     Pop $0
   ${EndIf}
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /f /im whalescale-tray.exe'
+  Pop $0
   ; Forward slashes: makensis runs on Linux in CI, and accepts them on Windows.
   File "${SRCDIR}/ws.exe"
   File "${SRCDIR}/wsd.exe"
+  File "${SRCDIR}/whalescale-tray.exe"
   File "${SRCDIR}/wintun.dll"
   File "${SRCDIR}/wintun-LICENSE.txt"
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -179,6 +184,14 @@ Section "Install"
   CreateShortcut "$SMPROGRAMS\Whalescale\Whalescale status.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" \
     "-NoProfile -WindowStyle Hidden -Command Start-Process -Verb RunAs cmd.exe -ArgumentList '/k ws status'" "$INSTDIR\wsd.exe" 0
   CreateShortcut "$SMPROGRAMS\Whalescale\Uninstall Whalescale.lnk" "$INSTDIR\uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\Whalescale\Whalescale.lnk" "$INSTDIR\whalescale-tray.exe"
+
+  ; The tray icon starts at every sign-in, and now. Explorer starts it as the
+  ; signed-in user, not as this elevated installer.
+  WriteRegStr HKLM "${RUNKEY}" "Whalescale" '"$INSTDIR\whalescale-tray.exe"'
+  ${IfNot} ${Silent}
+    Exec '"$WINDIR\explorer.exe" "$INSTDIR\whalescale-tray.exe"'
+  ${EndIf}
 
   StrCpy $FinishText "To put this PC on your network, get a join code in the dashboard (Machines -> Add device) and run in a terminal opened as Administrator:$\r$\n$\r$\n    ws login <join code>"
   ${If} $JoinCode != ""
@@ -186,7 +199,7 @@ Section "Install"
     nsExec::ExecToLog '"$INSTDIR\ws.exe" login "$JoinCode"'
     Pop $0
     ${If} $0 == 0
-      StrCpy $FinishText "This PC is now on your network: it shows up in your dashboard under Machines.$\r$\n$\r$\nTo see your other devices: Start menu -> Whalescale -> Whalescale status."
+      StrCpy $FinishText "This PC is now on your network: it shows up in your dashboard under Machines.$\r$\n$\r$\nThe Whalescale icon next to the clock is green while you're connected; click it to see your other devices. (Windows may tuck it under the ^ arrow.)"
     ${Else}
       StrCpy $FinishText "Whalescale is installed, but joining your network failed: the code may be used up or expired (see 'Show details' on the previous page).$\r$\n$\r$\nGet a new code in the dashboard and run, in a terminal opened as Administrator:$\r$\n$\r$\n    ws login <join code>"
       SetErrorLevel 2
@@ -196,8 +209,12 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext all
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /f /im whalescale-tray.exe'
+  Pop $0
   nsExec::ExecToLog '"$INSTDIR\wsd.exe" uninstall-service'
   Pop $0
+  DeleteRegValue HKLM "${RUNKEY}" "Whalescale"
+  Delete "$INSTDIR\whalescale-tray.exe"
   Delete "$INSTDIR\ws.exe"
   Delete "$INSTDIR\wsd.exe"
   Delete "$INSTDIR\wintun.dll"
@@ -206,6 +223,7 @@ Section "Uninstall"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\Whalescale\Whalescale status.lnk"
   Delete "$SMPROGRAMS\Whalescale\Uninstall Whalescale.lnk"
+  Delete "$SMPROGRAMS\Whalescale\Whalescale.lnk"
   RMDir "$SMPROGRAMS\Whalescale"
   DeleteRegKey HKLM "${UNINSTKEY}"
 SectionEnd

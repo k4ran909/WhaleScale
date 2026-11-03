@@ -175,6 +175,10 @@ type Engine struct {
 	exitDNS     netip.Addr
 	isExit      bool
 	dnsUpstream func(ctx context.Context, query []byte) ([]byte, error)
+	// dnsSem bounds lookups being answered for this machine (interceptDNS);
+	// dnsID numbers the reply packets.
+	dnsSem chan struct{}
+	dnsID  atomic.Uint32
 }
 
 // New prepares an engine. Start runs it.
@@ -238,6 +242,7 @@ func New(opts Options) (*Engine, error) {
 		dns:     dnsserver.New(opts.Log),
 		wgPeers: map[key.Public]string{},
 		ready:   make(chan struct{}),
+		dnsSem:  make(chan struct{}, 64),
 		epCh:    make(chan []netip.AddrPort, 1),
 	}
 	if st.ServerKey != "" {
@@ -858,7 +863,11 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		Verbosef: func(string, ...any) {},
 		Errorf:   func(f string, a ...any) { e.log.Debug("wireguard: " + fmt.Sprintf(f, a...)) },
 	}
-	dev := device.NewDevice(&filteredTUN{Device: tdev, f: e.filter}, e.conn.Bind(), wglog)
+	ft := &filteredTUN{Device: tdev, f: e.filter}
+	if !e.opts.Userspace {
+		ft.intercept = e.interceptDNS
+	}
+	dev := device.NewDevice(ft, e.conn.Bind(), wglog)
 	if err := dev.IpcSet("private_key=" + e.nodeKey.Hex() + "\n"); err != nil {
 		dev.Close()
 		return err
@@ -888,19 +897,23 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		if err := osnet.Apply(cfg); err != nil {
 			return fmt.Errorf("configure %s: %w", ifname, err)
 		}
-		// Serve MagicDNS on our own mesh address, now that the OS owns it.
-		pc, err := net.ListenPacket("udp4", netip.AddrPortFrom(self.v4, 53).String())
-		if err != nil {
-			e.log.Warn("MagicDNS disabled: cannot listen on port 53", "err", err)
+		// Peers using this machine as their exit node send lookups to its
+		// mesh address. Only that needs a socket on port 53, which other
+		// software (Windows' Internet Connection Sharing, local resolvers)
+		// may hold.
+		if pc, err := net.ListenPacket("udp4", netip.AddrPortFrom(self.v4, 53).String()); err != nil {
+			e.log.Debug("not answering peers' DNS on port 53 (needed only as an exit node)", "err", err)
 		} else {
 			e.wg.Add(1)
 			go func() { defer e.wg.Done(); e.dns.Serve(pc) }()
 			go func() { <-e.ctx.Done(); pc.Close() }()
-			cfg.DNSServer = self.v4
-			if err := osnet.Apply(cfg); err != nil {
-				e.log.Warn("split DNS setup failed; use IPs or 'ws ping'", "err", err)
-				cfg.DNSServer = netip.Addr{}
-			}
+		}
+		// This machine's own lookups go to MagicDNSAddr, answered inside the
+		// tunnel (interceptDNS).
+		cfg.DNSServer = MagicDNSAddr
+		if err := osnet.Apply(cfg); err != nil {
+			e.log.Warn("split DNS setup failed; use IPs or 'ws ping'", "err", err)
+			cfg.DNSServer = netip.Addr{}
 		}
 		e.osCfg = &cfg
 		e.log.Info("tun up", "iface", ifname, "ipv4", self.v4, "ipv6", self.v6)

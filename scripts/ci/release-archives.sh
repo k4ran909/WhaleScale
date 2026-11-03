@@ -19,6 +19,12 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 wi
       -ldflags "-s -w -X github.com/k4ran909/whalescale/internal/version.Version=$version -X github.com/k4ran909/whalescale/internal/version.Commit=$commit" \
       -o "$out/$cmd$ext" "./cmd/$cmd"
   done
+  if [ "$os" = windows ]; then
+    # The tray icon: a GUI program, so no console window opens with it.
+    CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+      -ldflags "-s -w -H windowsgui -X github.com/k4ran909/whalescale/internal/version.Version=$version" \
+      -o "$out/whalescale-tray.exe" ./cmd/whalescale-tray
+  fi
   cp README.md "$out/"
   name="whalescale_${v}_${os}_${arch}"
   if [ "$os" = windows ]; then

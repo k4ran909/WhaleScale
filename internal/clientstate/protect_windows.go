@@ -40,3 +40,31 @@ func protect(dir string) error {
 	return windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
 }
+
+// publicSDDL: SYSTEM and Administrators may change the public directory,
+// local users may read it (the tray icon reads wsd's status there). It
+// sits inside the locked-down state directory; users reach it because
+// Windows lets everyone traverse directories they can't list.
+const publicSDDL = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FR;;;BU)"
+
+func protectPublic(dir string) error {
+	// Only the service's own directory: elsewhere (a test's temporary
+	// directory) the writer may be neither SYSTEM nor an Administrator.
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(strings.ToLower(abs), strings.ToLower(filepath.Clean(SystemDir()))+`\`) {
+		return nil
+	}
+	sd, err := windows.SecurityDescriptorFromString(publicSDDL)
+	if err != nil {
+		return err
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	return windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
+}
