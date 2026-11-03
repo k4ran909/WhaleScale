@@ -12,7 +12,7 @@ when:
 
 steps:
   - name: govulncheck
-    image: golang:1.27.2
+    image: golang:1.27.3
     volumes:
       - woodpecker-go-mod:/go/pkg/mod
       - woodpecker-go-build:/root/.cache/go-build
