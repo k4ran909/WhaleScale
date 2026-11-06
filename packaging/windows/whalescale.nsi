@@ -11,6 +11,9 @@
 ; from the dashboard, joins the network ('ws login').
 ;
 ; Silent install: whalescale-setup-windows-amd64.exe /S /JOIN=wsjoin-...
+; The tray icon's "Update" runs it with /S /UPDATE: silent, but it starts
+; the new tray icon afterwards. Installing over an older version keeps the
+; machine's login and settings (they live in ProgramData).
 ;
 ; Keep this file ASCII: makensis reads files without a byte order mark in
 ; the system code page.
@@ -63,6 +66,7 @@ VIAddVersionKey "LegalCopyright" "Whalescale contributors"
 Var JoinCode
 Var JoinField
 Var FinishText
+Var UpdateMode
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Install Whalescale"
@@ -96,6 +100,11 @@ Function .onInit
   SetRegView 64
   ${GetParameters} $R0
   ${GetOptions} $R0 "/JOIN=" $JoinCode
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  ${IfNot} ${Errors}
+    StrCpy $UpdateMode 1
+  ${EndIf}
 FunctionEnd
 
 Function un.onInit
@@ -189,7 +198,8 @@ Section "Install"
   ; The tray icon starts at every sign-in, and now. Explorer starts it as the
   ; signed-in user, not as this elevated installer.
   WriteRegStr HKLM "${RUNKEY}" "Whalescale" '"$INSTDIR\whalescale-tray.exe"'
-  ${IfNot} ${Silent}
+  ${If} $UpdateMode == 1
+  ${OrIfNot} ${Silent}
     Exec '"$WINDIR\explorer.exe" "$INSTDIR\whalescale-tray.exe"'
   ${EndIf}
 
