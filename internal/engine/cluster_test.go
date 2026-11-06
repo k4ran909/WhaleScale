@@ -181,9 +181,12 @@ func testClusterFailover(t *testing.T, crash bool) {
 	t.Logf("%d round trips across the failover, none failed", sent.Load())
 }
 
+// waitFor waits until ok, for up to a minute: generous, because CI runs
+// these tests under the race detector next to other builds, and a starved
+// server can miss several of its 2 s lease renewals in a row.
 func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(20 * time.Second); !ok(); time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(time.Minute); !ok(); time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting: %s", what)
 		}
