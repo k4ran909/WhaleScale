@@ -78,15 +78,16 @@ func TestAccessRequestLifecycle(t *testing.T) {
 		t.Fatal("access after revocation")
 	}
 
-	// Auto-approved, short grants expire by themselves.
-	r, err = ask(db, "node:ops-0:22", time.Second)
+	// Auto-approved, short grants expire by themselves. (Expiry is stored
+	// in whole seconds, so a 1 s grant can lapse before it's checked.)
+	r, err = ask(db, "node:ops-0:22", 3*time.Second)
 	if err != nil || r.Status != store.AccessApproved {
 		t.Fatalf("break-glass request = %v, %v", r, err)
 	}
 	if g, _ := st.ActiveGrants(ctx); len(g) != 1 {
 		t.Fatalf("active grants = %+v", g)
 	}
-	time.Sleep(2100 * time.Millisecond)
+	time.Sleep(4100 * time.Millisecond)
 	s.RefreshGrants(ctx, true)
 	if g, _ := st.ActiveGrants(ctx); len(g) != 0 || len(s.CurrentPolicy().ACLs) != 0 {
 		t.Fatalf("grant outlived its time: %+v", g)
