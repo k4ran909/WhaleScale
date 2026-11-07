@@ -1,6 +1,6 @@
 # Running the server on Dokploy
 
-[`deploy/dokploy/docker-compose.yml`](../deploy/dokploy/docker-compose.yml) runs the Whalescale server
+[`deploy/dokploy/docker-compose.yml`](../../deploy/dokploy/docker-compose.yml) runs the Whalescale server
 behind Dokploy's Traefik. Traefik handles HTTPS for the console, the API and
 the WebSocket relay. STUN and the QUIC relay use UDP, which Traefik doesn't
 carry, so those ports are published on the host directly.
@@ -57,7 +57,7 @@ In the dashboard: **Machines → Add device**. It gives you a join code and show
 - **Rate limits per client:** `trusted-proxies` covers Docker's private networks, so Traefik's `X-Forwarded-For` names each client. The server's port 8080 isn't published, so only containers on those networks can reach it.
 - **Data:** the database, SSH recordings and keys live in the `whalescale-data` volume. Back it up, or switch to PostgreSQL with `WHALESCALE_DB=postgres://...`.
 - **Metrics:** on `127.0.0.1:9090` of the host only.
-- **Not covered here:** the gateway (`gateway-domain`). It needs a wildcard certificate, which Caddy in [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) gets on demand. With Traefik you'd set up a DNS-challenge wildcard yourself.
+- **Not covered here:** the gateway (`gateway-domain`). It needs a wildcard certificate, which Caddy in [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) gets on demand. With Traefik you'd set up a DNS-challenge wildcard yourself.
 
 ## If something's off
 

@@ -1,6 +1,6 @@
 # On a v* tag: release archives on GitHub Releases and multi-arch images on
 # ghcr.io. Both use the 'github_token' secret: a classic personal access
-# token with the 'repo' and 'write:packages' scopes (see docs/woodpecker.md).
+# token with the 'repo' and 'write:packages' scopes (see docs/development/ci.md).
 
 when:
   - event: tag

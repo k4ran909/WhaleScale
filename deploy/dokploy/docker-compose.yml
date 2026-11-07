@@ -7,7 +7,7 @@
 #   Environment:  WS_DOMAIN=ws.example.com
 #   Domains:      ws.example.com -> service "whalescale", port 8080, HTTPS on
 #   Firewall:     allow UDP 3478, 3479 and 3480 on this host
-# See docs/dokploy.md for the first admin, keys and checks.
+# See docs/install/dokploy.md for the first admin, keys and checks.
 services:
   whalescale:
     build:

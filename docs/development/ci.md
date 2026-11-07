@@ -30,7 +30,7 @@ Note the client ID and generate a client secret.
 
 ## 2. Deploy on Dokploy
 
-1. **Create a Compose app** from [`deploy/woodpecker/docker-compose.yml`](../deploy/woodpecker/docker-compose.yml): point it at this repository and that path, or paste the file.
+1. **Create a Compose app** from [`deploy/woodpecker/docker-compose.yml`](../../deploy/woodpecker/docker-compose.yml): point it at this repository and that path, or paste the file.
 2. **Environment:** set these in the app's environment.
 
    ```

@@ -2,7 +2,7 @@
 # Docker Compose app (in Dokploy: Compose, from this repository's
 # deploy/woodpecker/docker-compose.yml, or pasted), set the variables below
 # in the app's environment, and give woodpecker-server a domain on port
-# 8000. See docs/woodpecker.md.
+# 8000. See docs/development/ci.md.
 #
 #   WOODPECKER_HOST           https://ci.example.com (no trailing slash)
 #   WOODPECKER_GITHUB_CLIENT  GitHub OAuth app client ID

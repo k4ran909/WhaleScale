@@ -16,7 +16,7 @@ tls-key: /etc/whalescale/tls/privkey.pem
 # post-quantum: true
 
 # Several servers on different hosts share a PostgreSQL database instead
-# of an SQLite file (see "Several servers" in the README):
+# of an SQLite file (see docs/guides/high-availability.md):
 # db: postgres://whalescale:PASSWORD@db.internal:5432/whalescale?sslmode=require
 
 # Two ports let nodes detect symmetric NAT.

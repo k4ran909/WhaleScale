@@ -1,604 +1,98 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo.svg">
-    <img src="assets/brand/logo-blue.svg" alt="Whalescale" width="200">
+    <img src="assets/brand/logo-blue.svg" alt="Whalescale" width="180">
   </picture>
 </p>
 
-# Whalescale
+<h1 align="center">Whalescale</h1>
 
-A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite, or PostgreSQL for several servers. See [plan.md](plan.md) for the vision and roadmap.
+<p align="center">
+  <strong>Your own private network, self-hosted.</strong><br>
+  A WireGuard mesh VPN with its control server, relay, web console and clients, all yours.
+</p>
 
-> **Status: Phase 4 complete.** WireGuard mesh with NAT traversal and relay fallback, MagicDNS, ACLs, a web console, OIDC login, subnet routers, exit nodes, a gateway for publishing services on the internet, a system service and `ws up/down`; plus network lock, temporary access, device posture, an audit log, and failover across servers sharing PostgreSQL. See [Known gaps](#known-gaps).
+<p align="center">
+  <a href="https://github.com/k4ran909/WhaleScale/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/k4ran909/WhaleScale?label=release&color=1F2EA5"></a>
+  <a href="https://ci.fluxnat.dev/repos/1"><img alt="CI" src="https://ci.fluxnat.dev/api/badges/1/status.svg"></a>
+  <img alt="Go" src="https://img.shields.io/badge/go-1.27-6989FA">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-6989FA">
+</p>
+
+<p align="center">
+  <a href="docs/getting-started.md">Getting started</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="https://github.com/k4ran909/WhaleScale/releases/latest">Download</a> ·
+  <a href="plan.md">Roadmap</a>
+</p>
+
+---
+
+Whalescale connects your computers, servers and phones into one private network, wherever they are. Devices talk to each other directly over WireGuard, find their way through routers and NATs on their own, and fall back to a relay only when they must. One server binary runs everything, with SQLite, or PostgreSQL for several servers.
+
+## Features
+
+- **Mesh networking:** direct WireGuard paths with NAT traversal; relay fallback over WebSocket or QUIC; peer relays; roaming and multipath.
+- **Names, not addresses:** MagicDNS gives every device a name, like `laptop.whale.internal`.
+- **Access control:** a policy with tests and "why can't A reach B?" explanations, temporary access, device posture and network lock.
+- **Reach more:** subnet routers into whole LANs, exit nodes, and a gateway that publishes a service on the internet with HTTPS.
+- **SSH by identity:** no keys to manage, with recorded sessions.
+- **Web console:** setup in the browser, two-factor sign-in, an audit log and flow logs.
+- **Easy clients:** a Windows installer and tray icon, one command on macOS and Linux, and signed updates.
+- **Runs anywhere:** one command on Linux, Docker, Dokploy or Kubernetes, with failover across servers.
+- **Automation:** an admin API, a Terraform provider and an MCP server for AI agents.
 
 ## Quick start
 
-1. **Run the server** with Docker, Dokploy or Kubernetes (see [Server setup](#server-setup)).
-2. **Open its address in a browser** and create your admin account. The page asks for a one-time *setup code*: the server prints it in its log at start (the line with `setup_code`), and `whalescale setup-code` on the server shows it too. Once the account exists, that page is gone for good.
-3. **Machines → Add device** gives you a *join code* and the steps for the device:
-   - **Windows:** download `whalescale-setup-windows-amd64.exe`, run it, and paste the join code.
-   - **macOS and Linux:** one command: `curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join <join code>`
-4. The device shows up on the Machines page, and your devices can reach each other by name: `ping laptop.whale.internal`.
-
-New to how this works? [docs/architecture.md](docs/architecture.md) explains it with diagrams: the server, the agent, keys, and how devices find a direct path through routers.
-
-## How it fits together
-
-```
- browser ──► web console ─┐
- ws login ───────────────►│ whalescale serve  (control API, admin API, relay, STUN, OIDC, metrics)
-                          └──────────────┬──────────────────────────────┐
-                                  wsd (node A)  ◄── WireGuard ──►  wsd (node B)
-                                                 direct UDP, or via relay
-```
-
-- **`whalescale`** (server): registration, the network map stream, the policy engine, the admin API and web console, browser login (OIDC), an embedded relay (`/relay`, WebSocket), STUN (UDP) and Prometheus metrics.
-- **`wsd`** (agent): wireguard-go plus a socket layer that finds direct paths (sealed disco pings, STUN, call-me-maybe hole punching) and falls back to the relay. It also runs the packet filter, the MagicDNS resolver and subnet routing.
-- **`ws`** (CLI): `login`, `up`, `down`, `status`, `ping`, `netcheck`, `logout`.
-
-## Server setup
-
-### Docker (automatic HTTPS)
+**1. Run the server.** On a Linux machine whose domain points at it:
 
 ```bash
-cd deploy
-echo "WS_DOMAIN=ws.example.com" > .env       # DNS must point here; open TCP 80/443, UDP 3478-3480
-docker compose up -d
-docker compose logs whalescale | grep setup_code   # the code that creates your admin account
+curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --server --domain ws.example.com
 ```
 
-Then open `https://ws.example.com` and create your admin account with that code.
+It prints a setup code. Open `https://ws.example.com` and create your admin account with it.
 
-### Dokploy
+**2. Add devices.** In the dashboard, **Machines → Add device** gives a join code:
 
-[`deploy/dokploy/docker-compose.yml`](deploy/dokploy/docker-compose.yml) runs behind Dokploy's Traefik with the UDP ports published directly; [docs/dokploy.md](docs/dokploy.md) has the steps.
-
-### Bare metal (Linux)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --server
-sudoedit /etc/whalescale/config.yaml          # public-url, TLS; see deploy/config.example.yaml
-sudo whalescale configtest                    # shows every value and where it came from
-sudo systemctl enable --now whalescale
-sudo whalescale doctor                        # checks health, TLS expiry, relays (WebSocket and QUIC), both STUN ports, OIDC
-```
-
-### Kubernetes (Helm)
-
-```bash
-helm install ws deploy/helm/whalescale \
-  --set publicURL=https://ws.example.com \
-  --set ingress.enabled=true --set ingress.className=nginx --set ingress.tlsSecretName=ws-tls
-```
-
-- **Two services:** HTTPS (console, API, WebSocket relay) goes through your ingress. STUN and the QUIC relay are UDP, so they get a `LoadBalancer` service (`ws-whalescale-udp`, ports 3478–3480) with `externalTrafficPolicy: Local`, which keeps machines' real addresses visible to STUN.
-- **DNS:** point the public hostname at the ingress. If the UDP load balancer has a different address, set `udp.host` to it.
-- **Database:** SQLite on a persistent volume by default. With `database.url` (or an existing Secret) it uses PostgreSQL.
-- **Failover:** install a second release with its own `publicURL` against the same PostgreSQL database.
-- **Other settings:** `config:` takes any other server setting (`post-quantum: true`, `flow-logs: true`, `policy-url`, ...), and `oidc:` sets up browser login.
-- **Behind the ingress:** set `config.trusted-proxies` to your ingress controller's pod range so rate limits apply per client.
-- **Hardened pod:** runs as non-root with a read-only root filesystem and no service-account token.
-- **Images:** release builds publish `ghcr.io/k4ran909/whalescale` for amd64 and arm64.
-
-Settings layer as: config file, then `conf.d/*.yaml` (upgrades never touch these), then `WHALESCALE_*` environment variables, then flags. Unknown keys are errors.
-
-## Adding devices
-
-The dashboard's **Machines → Add device** walks you through it and shows each device appear as it joins. It makes a *join code*: the server's address and a key in one string (`wsjoin-…`), as secret as a password. A code works for one device for a day, or for several devices for a week if you choose that.
-
-- **Windows:** run `whalescale-setup-windows-amd64.exe` (`-arm64` for ARM laptops) from the [latest release](https://github.com/k4ran909/WhaleScale/releases/latest) and paste the join code. It installs the network driver and the service, puts `ws` on the PATH, joins, and adds a **tray icon** next to the clock: the whale on blue while connected, on grey when not (amber while connecting). Its menu shows this PC's address and your devices (click one to copy its address), and has Connect, Disconnect, Open dashboard, Open terminal and the installed version. It checks for new releases twice a day and offers **Update to vX.Y.Z**: that downloads the installer, checks that the release's checksums are signed with the Whalescale release key and that the installer matches them, and installs it over the old version, keeping this PC on its network. Connect, Disconnect, Open terminal and Update ask for administrator rights. **Exit** closes only the icon: Whalescale keeps the PC connected in the background, and the icon comes back at the next sign-in (or from the Start menu). To upgrade by hand, just run the new installer over the old one; there's no need to uninstall first. Windows may tuck the icon under the **^** arrow. Whalescale also adds a Windows Firewall rule (`WhalescaleIn`) that lets traffic in on its own adapter only, where its packet filter already enforces your access policy; without it Windows treats the adapter as a public network and drops everything, ping included. Windows may warn that the publisher is unknown, because the installer isn't code-signed yet: choose **More info → Run anyway**. For scripted installs: `whalescale-setup-windows-amd64.exe /S /JOIN=wsjoin-…`.
-- **macOS and Linux:**
-
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join wsjoin-...
-  ```
-
-- **Already installed:** `sudo ws login wsjoin-…` (on Windows, `ws login wsjoin-…` in a terminal opened as Administrator). It joins and connects.
-
-Then:
-
-```bash
-ws status                     # peers, direct/relay path, latency
-ping laptop.whale.internal
-```
-
-Without the dashboard: `whalescale preauthkeys create --user NAME` on the server prints a key and its join code, and `ws login --server URL` with no key opens a browser sign-in if OIDC is set up.
-
-For short-lived machines (CI runners, containers), use an ephemeral key: `whalescale preauthkeys create --user ci --reusable --ephemeral`. Machines it adds are removed once they've been offline for `ephemeral-timeout` (10 minutes by default). `ws logout` removes a machine from the server right away.
-
-Machines prove each request with their machine key rather than sending a reusable token. The server has an X25519 key; a machine learns its public half at login (over TLS) and then signs every control, relay and gateway request. Each signature covers the method, the server, the path and the time, and the server accepts it once. Once a machine has signed a request, its login token is refused. So a header copied from a proxy log, a debugging dump or a TLS-inspecting middlebox is useless, and so is the token itself. Older clients keep using the token until they're upgraded. If machines reach the server under names other than `--public-url`'s (an internal address, say), list them with `--node-auth-hosts`.
-
-Manual install on Windows, without the installer: unzip `whalescale_<version>_windows_amd64.zip` (it includes the `wintun.dll` network driver next to `wsd.exe`), and in an Administrator terminal run `wsd install-service`, then `ws login wsjoin-…`.
-
-### Verifying downloads
-
-Every release from v0.1.8 on signs its `checksums.txt` with the Whalescale release key ([packaging/release-key.pub](packaging/release-key.pub)), in [minisign](https://jedisct1.github.io/minisign/)'s format, and lists what went into the programs in `sbom.cdx.json` (CycloneDX). To check a download by hand:
-
-```bash
-minisign -Vm checksums.txt -P RWQTDZ8OU3crgX88ZlDbLDwo0k+eu+ZQJMQ/DF3FsOwAoYXbEWqs6Jz5
-sha256sum -c --ignore-missing checksums.txt
-```
-
-The tray icon's Update does both before it installs anything, and the install script checks the signature when `minisign` is installed.
-
-### Several networks on one machine
-
-A machine can belong to more than one network (work, home, a customer's) and switch between them:
-
-```bash
-sudo ws login --profile work --server https://ws.work.example   # adds a profile and switches to it
-sudo ws profiles                                                # * marks the active one
-sudo ws switch default                                          # back to the first network
-```
-
-- **Separate identities:** each profile has its own machine identity, keys and settings.
-- **One at a time:** networks all use 100.64.0.0/10, so having two up at once would mix their routes and DNS. Switching takes a second or two.
-- **Logging out:** `ws logout` on an added profile removes it and returns to the default profile.
-
-## Web console
-
-Served at the server's URL. Sign in with your admin account (created on the first visit, see [Quick start](#quick-start)), with your identity provider if OIDC is configured (only emails in `oidc-admins` get in), or with an API key (`whalescale apikeys create`, under "Use an API key instead"). Forgot the password? `whalescale admins reset-password NAME` on the server prints a new one; `whalescale admins create NAME` adds another admin.
-
-**Two-factor sign-in:** in the sidebar's **Two-factor sign-in**, confirm your password, scan the QR code with an authenticator app (Google or Microsoft Authenticator, 1Password, Authy…) and type the code it shows. From then on, signing in takes the password and a current code; each code works once, and turning it on signs your account out of other browsers. Turning it off needs the password and a code. Lost the phone? `whalescale admins reset-2fa NAME` on the server turns it off for that account; `whalescale admins list` shows who has it on. (With OIDC, your identity provider handles two-factor.)
-
-Pages:
-
-- **Machines:** online state, addresses, OS and routes.
-- **Topology:** a from/to matrix showing direct or relayed paths, with latency, as the nodes report it.
-- **Users**, **Keys** (pre-auth and API keys) and **Routes** (approve subnets and exit nodes).
-- **Access policy:** an editor with live validation and lint warnings.
-
-## Subnet routers
-
-On a Linux machine in your LAN (OS TUN mode):
-
-```bash
-sudo ws up --advertise-routes 192.168.1.0/24
-```
-
-Approve the route in the console (Routes), or with `whalescale routes approve <machine> 192.168.1.0/24`. Other machines use it once they opt in with `ws up --accept-routes`. The router enables forwarding and masquerades mesh traffic, and undoes both on shutdown.
-
-## SSH over the mesh
-
-Log in to your machines without managing SSH keys: your mesh identity is the credential, and the access policy decides who may log in where, and as which local user.
-
-```json
-"ssh": [
-  { "action": "accept", "src": ["group:admins"], "dst": ["node:nas"], "users": ["root", "$user"], "record": true }
-]
-```
-
-```bash
-sudo ws up --ssh              # on the server machine (Linux or macOS)
-ws ssh karan@nas              # from any machine; or plain: ssh karan@nas.whale.internal
-```
-
-- **Identity:** the source mesh address identifies the person. WireGuard ties every peer's addresses to its key, so they can't be spoofed (the same model Tailscale SSH uses).
-- **Local users:** `"$user"` means "your own username on the mesh". An SSH rule also opens TCP 22 from its sources, and nothing else.
-- **No host-key prompts:** each machine's SSH host key is distributed in the network map. `ws ssh` hands it to your `ssh` client.
-- **Recording:** with `"record": true`, session output (never keystrokes) is recorded in asciinema format and uploaded to the server. If the upload fails, a copy is kept on the machine. Admins can view, download or delete recordings in the console (SSH recordings) or with `whalescale recordings list | delete ID`; downloads play with `asciinema play`. Deleting one is recorded in the audit log. Each machine may store `recording-quota-mb` of recordings (1024 by default). Past that its new recordings are refused, never its old ones deleted, so a machine someone took over can't flush the recordings of how they got in. `recording-retention` (say `2160h` for 90 days) deletes old recordings; by default they're kept.
-- **What's supported:** shells, commands, PTYs and window resizing. Not SFTP, port forwarding, or a Windows SSH server yet.
-
-## Flow logs
-
-Off by default, for privacy. With `flow-logs: true` on the server, every machine reports, every 30 seconds:
-
-- each connection it took part in: who opened it, to which address and port, and bytes and packets each way;
-- every inbound attempt the access policy refused.
-
-Records stay on your server for `flow-log-retention` (default `168h`) and are pruned hourly. Each machine may store up to 1,000 records per 30 seconds (with bursts to 2,000); a machine reporting more has the excess dropped and counted in `whalescale_flow_records_dropped_total`.
-
-```bash
-$ whalescale flows --since 1h --denied
-TIME      REPORTED BY  CLIENT  SERVER    PROTO  VERDICT  SENT  RECEIVED
-14:02:31  nas          guest   nas:22    tcp    DENY     0 B   180 B
-```
-
-The console's Flows page shows the same, filterable by machine, time range and verdict. Logging never changes enforcement: it uses its own table, so policy changes still apply immediately, even to open connections.
-
-## Post-quantum protection
-
-```yaml
-post-quantum: true
-```
-
-WireGuard's handshake uses X25519, which a future quantum computer could break. Someone recording your traffic today could then decrypt it later ("harvest now, decrypt later"). With `post-quantum` on, every pair of machines also agrees on a WireGuard pre-shared key through an ML-KEM-768 key exchange (the NIST post-quantum standard) and replaces it every two minutes. WireGuard mixes that key into each handshake, so recorded traffic stays secret unless both X25519 and ML-KEM are broken. This is the approach Rosenpass pioneered, built in.
-
-- **Hidden and authenticated:** the exchange runs inside the encrypted discovery messages, so it's authenticated and its contents are hidden.
-- **Never out of step:** keys change only after both sides confirm they have the new one. Peers compare key fingerprints in their regular pings and start over if they ever disagree (after a restart, say), so the feature can't strand a connection.
-- **Older clients are unaffected:** they don't answer the exchange and simply keep using plain WireGuard.
-- **Visible in status:** `ws status` marks protected peers with `(pq)`.
-
-## Network lock
-
-By default, every machine trusts the control server to say who its peers are. With the network lock on, a machine accepts a peer only if one of *your* lock keys signed that peer's WireGuard key. The keys live on admins' own machines, never on the server, so even a compromised server can't add a machine to your network or change which keys are trusted.
-
-```bash
-ws lock keygen --out ~/wslock.key                 # on your laptop; prints wslock:...
-export WS_API_KEY=wsapi-...                        # from 'whalescale apikeys create'
-ws lock init --key ~/wslock.key --trust wslock:<a colleague's key>   # turn it on, sign every machine
-ws lock sign --key ~/wslock.key                    # later: sign machines added since
-ws lock status                                     # on any machine
-```
-
-- **New machines start out refused.** Until someone runs `ws lock sign`, other machines refuse a new one, and its `ws lock status` says so.
-- **Changing the trusted keys:** `add-key` / `remove-key` change who's trusted. Each change must be signed by a currently trusted key, and every machine checks that itself.
-- **No rollback.** A machine remembers the newest key list it has verified and never goes back to an older one or a different history. If the server sends lock data that doesn't verify, the machine keeps enforcing what it knows and reports the problem in `ws lock status`.
-- **Turning it off:** `ws lock disable` stops filtering (signed like any change); `enable` turns it back on.
-- **First contact:** a machine trusts the first key list it sees. To rule out a malicious server at that moment, log in with `ws login --lock-trust wslock:...`.
-- **What it doesn't cover:** the lock controls *membership*. The access policy, SSH rules, DNS and routes still come from the server, so a compromised server can't add machines but can change what existing members may do. Watch the audit log, and keep the policy in Git (`policy-url`) so changes are reviewed.
-
-## AI agents (MCP)
-
-`ws mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so AI assistants can look after the network. Agents can:
-- list machines, users and routes;
-- read and check the access policy, and explain why one machine can or can't reach another;
-- read connection and audit logs;
-- with an admin key, apply policies, approve routes and access requests, and remove machines.
-
-Give it a **read-only** key unless the agent should make changes:
-
-```bash
-whalescale apikeys create --scope read     # or "Create read-only key" in the console
-```
-
-Claude Desktop (or any client that reads an `mcpServers` config):
-
-```json
-{
-  "mcpServers": {
-    "whalescale": {
-      "command": "ws",
-      "args": ["mcp", "--server", "https://ws.example.com"],
-      "env": { "WS_API_KEY": "wsapi-..." }
-    }
-  }
-}
-```
-
-Claude Code:
-
-```bash
-claude mcp add whalescale --env WS_API_KEY=wsapi-... -- ws mcp --server https://ws.example.com
-```
-
-The key's scope is enforced by the server, not just by the tool list. A read-only key doesn't see the change tools, and calls to them are refused anyway. Everything an agent changes is recorded in the audit log under its key.
-
-## Terraform / OpenTofu
-
-The provider in `terraform/` manages the network as code:
-- **Resources:** `whalescale_policy`, `whalescale_user`, `whalescale_preauth_key` (its secret is a sensitive attribute) and `whalescale_route_approval`.
-- **Data source:** `whalescale_machines`.
-- **Example:** see [terraform/examples/main.tf](terraform/examples/main.tf).
-
-```hcl
-resource "whalescale_policy" "main" {
-  policy = jsonencode({
-    groups = { "group:ops" = ["ops"] }
-    acls   = [{ action = "accept", src = ["group:ops"], dst = ["*:*"] }]
-  })
-}
-```
-
-- **Credentials:** an admin API key (`WS_API_KEY`) and the server URL (`WHALESCALE_SERVER`), or `server_url` / `api_key` in the provider block.
-- **Validation:** the server refuses a policy that's invalid or fails its own `tests`, so a bad change fails at `apply`.
-- **No formatting noise:** formatting differences never show up as changes.
-- **Destroy keeps the policy:** destroying `whalescale_policy` leaves the policy in force, because falling back to allow-all would open the network.
-- **Install:** until the provider is published to a registry, build it with `make terraform` (or `cd terraform && go build`) and point Terraform at it with a `dev_overrides` block in `~/.terraformrc`.
-- **Tested both ways:** the acceptance tests run real Terraform in CI and OpenTofu locally, against an in-process server.
-
-## Audit log
-
-Every change to users, machines, keys, route/relay/gateway approvals and the access policy is recorded with who made it. That covers the console, the admin API, `whalescale` commands on the server host, node registrations, console sign-ins, and policy updates from Git or the policy file. Actors look like `oidc:you@example.com`, `api-key:ab12cd`, `cli:root`, `user:alice` or `git`.
-
-```bash
-whalescale audit --since 24h            # or the console's "Audit log" page
-whalescale audit --actor cli: --action policy
-whalescale audit --verify               # check the hash chain
-```
-
-Each entry's hash covers the previous one, so editing or deleting an entry in the database breaks the chain at that point. The chain can't show that the *newest* entries were cut off, so `--verify` prints the head hash: note it somewhere else now and then.
-
-## Router port mapping
-
-`wsd` asks your home router to forward its WireGuard UDP port, trying PCP, then NAT-PMP, then UPnP. When that works, peers connect directly with no manual port forward. The mapping is renewed at half its lifetime and removed when `wsd` stops. Turn it off with `wsd --portmap=false`.
-
-`ws netcheck` shows what the router supports. It also warns about double NAT, where the router's own "public" address is private or CGNAT (common with Jio and Airtel home connections): a mapping can't help there, and a peer relay is the answer.
-
-For UPnP, the agent only uses the router's answer, and only follows a description URL that points back at the router, so another device on the LAN can't redirect it.
-
-## Relays and hard NATs
-
-When two machines can't connect directly, Whalescale tries, in order:
-
-1. **Hole punching:** STUN, simultaneous pings, and router port mapping.
-2. **Symmetric-NAT port prediction:** when a peer's NAT gives every destination its own port (it reports two STUN ports on one IP), nodes probe the ports that NAT will likely hand out next. That breaks the hardest common case, symmetric NAT against a restrictive NAT, whenever the NAT allocates ports in sequence.
-3. **A peer relay:** see below.
-4. **The server relay, preferably over QUIC:** UDP datagrams on `relay-quic-listen` (default `:3480`). This avoids the slowdown of tunneling TCP inside the TCP-based WebSocket relay. The relay's self-signed certificate is pinned through the network map, so it needs no public CA and works behind Caddy. Where UDP is blocked, nodes fall back to the WebSocket relay over HTTPS and retry QUIC every 10 minutes. `ws status` shows which one is in use.
-
-## Roaming and multipath
-
-Connections survive the network changing under them:
-
-- **Dead paths are noticed in about 2 seconds.**
-  - While traffic flows over a direct path that has gone quiet, the machine probes it, and an unanswered probe moves traffic to a relay at once.
-  - Seeing a peer's traffic arrive through a relay is treated as a sign its direct path just died.
-  - Before this, a dead path was only dropped after its 6.5-second trust window.
-- **Network changes trigger an immediate recheck.** When the machine's addresses change (Wi-Fi off, onto cellular), it does four things right away:
-  - reconnects the relay, whose old connection may be silently dead;
-  - re-runs STUN;
-  - advertises its new addresses;
-  - re-proves every direct path, keeping traffic on the relay meanwhile.
-- **`ws up --multipath`** sends every packet over the direct path *and* a relay. WireGuard drops whichever copy arrives second, so a dying link loses nothing; in tests, cutting the direct path left no gap beyond the normal packet spacing. It uses twice the bandwidth while a direct path is up, so it's for links where a two-second blip matters (calls, SSH over flaky Wi-Fi).
-
-## Peer relays
-
-When two machines can't connect directly (both behind strict or carrier-grade NAT, as on Jio and Airtel mobile data), their traffic goes through the server's WebSocket relay. A peer relay is a faster UDP path. Any well-connected machine, such as a VPS or a home server with a port forward, can offer to forward for the others:
-
-```bash
-sudo ws up --relay                  # on the well-connected machine
-whalescale relays approve vps       # on the server, or approve it under Routes in the console
-ws status                           # peers now show "peer-relay via vps"
-```
-
-- **Path order:** direct first, then a peer relay (only after a ping through it succeeds), then the server relay.
-- **No new port:** it uses the machine's existing WireGuard UDP socket, so a port forward or NAT mapping it already has keeps working.
-- **What it sees:** only WireGuard ciphertext and sealed discovery messages.
-- **Who it serves:** only nodes the server lists. Registrations are sealed with each node's discovery key, and forwarding is accepted only from the address a node registered from, so nobody can register or send as another node.
-- **Withdrawal is safe:** taking approval away falls back to the server relay without dropping connections.
-
-## Exit nodes
-
-Send all of a device's internet traffic through another machine, such as your home server when you're on café Wi-Fi.
-
-```bash
-sudo ws up --advertise-exit-node          # on the exit machine (Linux); approve it under Routes
-sudo ws up --exit-node homelab            # on the device; --exit-node= (empty) stops
-ws status                                 # "exit node: homelab (active)"
-```
-
-- **Fails closed.** If the exit node goes offline, internet traffic is blocked rather than leaking out of the local network, and resumes when it returns.
-- **DNS goes through the exit node too.** The device's MagicDNS resolver sends every lookup (not just mesh names) over the tunnel to the exit node, which resolves it with its own resolvers. Neither the café's DNS server nor anyone watching that network sees which sites you look up. While the exit node can't be used, lookups fail rather than fall back to the local resolver. The OS is pointed at MagicDNS for all names on Linux (systemd-resolved) and Windows (NRPT); macOS still sends only mesh names there.
-- **Your LAN keeps working** (printers, the router's admin page), because local routes still win.
-- **The agent's own traffic stays off the tunnel** (WireGuard, discovery, the control connection, the relay):
-  - Linux: socket marks and policy routing, as wg-quick does.
-  - Windows: sockets pinned to the physical adapter (`IP_UNICAST_IF`).
-  - macOS: sockets pinned with `IP_BOUND_IF`.
-  - Switching networks (say, Wi-Fi to Ethernet) is picked up within 10 s.
-- **Policy:** exit traffic must be allowed by the policy. Allow-all covers it; otherwise grant `0.0.0.0/0:*` and `::/0:*` to the users who may use exit nodes.
-
-## Gateway: publish a service on the internet
-
-A self-hosted counterpart to Tailscale Funnel. A machine publishes a local web app at `https://<name>.<gateway domain>`, even from behind CGNAT. No port forwarding is needed.
-
-1. **On the server:** set `gateway-domain: apps.example.com` and add a wildcard DNS record `*.apps.example.com` pointing at the server. For HTTPS, either:
-   - set `tls-acme: true`: the server gets Let's Encrypt certificates itself, and port 443 must be reachable; or
-   - use the Docker Compose setup with `WS_GATEWAY_DOMAIN`: Caddy gets certificates on demand.
-2. **On the machine:**
-
-   ```bash
-   ws expose 8123 --name ha        # publishes http://localhost:8123
-   ws expose                       # shows the public URL and whether it is live
-   ws expose --remove ha
-   ```
-
-3. **Approve it:** in the console (Gateway) or with `whalescale exposures approve ha`. Until then nothing is reachable.
-
-How it works and what keeps it safe:
-
-- The machine keeps one WebSocket to the server and multiplexes requests over it (yamux).
-- Each request names the service, and the machine only ever connects to its own localhost ports that it chose to expose.
-- Certificates are only requested for live names, so strangers can't make the server request certificates for arbitrary hosts.
-- Names are first come, first served across all machines, and changing a published port needs approval again.
-- WebSockets and streaming responses pass through.
-- Apps see the visitor's address in `X-Forwarded-For`. The header is trusted from a reverse proxy on a private network, such as Caddy.
-
-## Access policy
-
-Without one, every node can reach every other node. Edit it in the console, or point `policy:` at a JSON file (the server reloads it within 5 s; an invalid file keeps the previous policy). Receiving nodes drop anything not allowed. Replies to a node's own connections are always let back in.
-
-```json
-{
-  "groups": { "group:admins": ["karan"] },
-  "acls": [
-    { "action": "accept", "src": ["group:admins"], "dst": ["*:*"] },
-    { "action": "accept", "src": ["guest"], "dst": ["node:nas:445,8000-8100"] },
-    { "action": "accept", "src": ["karan"], "dst": ["192.168.1.0/24:*"] }
-  ]
-}
-```
-
-Selectors are `*`, a user, `group:NAME`, `node:NAME` or a CIDR. A CIDR destination grants access through subnet routers that serve it. A user or node selector grants that device only, not the networks behind it.
-
-
-### Temporary access
-
-Instead of standing access to sensitive machines, let people ask for it when they need it:
-
-```json
-"access_requests": [
-  { "src": ["group:eng"], "dst": ["node:prod-db:5432"], "max_duration": "4h" },
-  { "src": ["group:oncall"], "dst": ["node:prod-db:22"], "max_duration": "1h", "auto_approve": true }
-]
-```
-
-```bash
-ws access list                                             # what you may request, your requests
-ws access request node:prod-db:5432 --for 2h --reason "migrating orders table" --wait
-```
-
-An admin approves or denies it on the console's **Access requests** page, or with `whalescale access list | approve ID | deny ID`. Access starts at approval and ends by itself when the time is up (`revoke` ends it early). `auto_approve` rules are for break-glass access: granted at once, still audited. The grant covers only the machine that asked and only the requested ports (a subset of the rule's ports is fine). Requests left undecided expire after 24 hours. Every step is in the audit log, and `explain` names the grant when one is what allows a connection.
-
-### Device posture
-
-Require machines to meet conditions before a rule lets them in:
-
-```json
-"postures": {
-  "posture:current": ["client_version >= 0.4.0", "os in [linux, macos, windows]"],
-  "posture:win11":   ["os == windows", "os_version >= 10.0.22000"]
-},
-"acls": [
-  { "action": "accept", "src": ["group:eng"], "dst": ["node:prod-db:5432"], "src_posture": ["posture:current"] }
-]
-```
-
-- **Attributes:** machines report `os`, `os_version` (Windows build, macOS version, or the Linux distribution's `VERSION_ID`) and `client_version`. The console's Machines page shows them.
-- **Operators:** `==`, `!=`, `in [..]`, `not in [..]`, and `>=` `>` `<=` `<`. The last four compare versions numerically, part by part.
-- **Effect:** a machine that fails a posture is left out of that rule, including peer visibility. A machine that doesn't report an attribute fails every condition on it.
-- **Applies to** ACLs and SSH rules. Network (CIDR) sources aren't machines and aren't checked.
-- **Explain** names the failing condition, e.g. "old-laptop fails posture:current: its client_version is 0.3.9, not >= 0.4.0".
-
-### Device limits
-
-Cap how many machines each person can add:
-
-```json
-"device_limits": { "*": 5, "group:eng": 10, "ann": 20 }
-```
-
-A user's own entry wins (even if it's lower than a group's); otherwise the most generous of their groups applies, then `"*"`. Without a matching entry there is no limit. Registrations over the limit are refused with a message saying why, and recorded in the audit log. Machines already registered are never removed. The console's Users page shows each person's count against their limit.
-
-### Policy from a Git repository
-
-Keep the policy in Git and review changes like code. Point the server at the file's raw URL on a branch:
-
-```yaml
-policy-url: https://raw.githubusercontent.com/you/infra/main/whalescale/policy.json
-policy-url-token-file: /etc/whalescale/repo-token       # private repositories
-policy-webhook-secret-file: /etc/whalescale/hook-secret # optional push webhook
-```
-
-- **How updates arrive:** the server polls with ETags every `policy-sync-interval` (default 1 minute). A push webhook to `POST /policy/sync` applies changes at once; it verifies GitHub and Gitea HMAC signatures and the GitLab token.
-- **Bad versions are refused:** a version that doesn't parse, or fails its own `tests`, is refused, and the previous policy stays in force.
-- **Outages:** the last good copy is cached, so a restart while the repository is unreachable still enforces it. With no copy at all, the server refuses to start rather than run without your policy.
-- **Read-only elsewhere:** the console shows the policy as read-only, with the revision, last sync time and any sync error.
-
-### Policy tests
-
-Pin down intent with `tests`. A policy that fails its own tests is refused when saved in the console, when a policy file is reloaded, and by `whalescale policy check`. At server startup failures are only logged, so an outdated test can't lock anyone out.
-
-```json
-"tests": [
-  { "src": "guest", "accept": ["node:nas:445"], "deny": ["karan:22"] },
-  { "src": "karan", "accept": ["192.168.1.10:443"] }
-]
-```
-
-`src` is a user, `node:NAME` or an IP. `accept` and `deny` entries are `<user|node:NAME|IP>:<port>`.
-
-### Why can't A reach B?
-
-```bash
-$ whalescale policy explain guest karan:22
-guest → karan port 22: DENIED  (using the policy saved in the console)
-  - acls[1]: guest → karan:80,443 covers guest → karan but only ports 80,443
-  - acls[0]: group:admins → *:* would allow it for sources group:admins
-  - replies to connections karan opens to guest are still allowed
-```
-
-The console's Access policy page has the same "Explain access" panel, and it evaluates your unsaved edits. For subnet addresses, explain also warns when the policy allows something that no approved router serves.
-
-## Several servers (failover)
-
-Run two or more servers against one PostgreSQL database, on different hosts, and a server can fail without taking the network with it:
-
-```yaml
-# on every server: the same database, its own public URL
-db: postgres://whalescale:PASSWORD@db.internal:5432/whalescale?sslmode=require
-public-url: https://ws1.example.com     # ws2.example.com on the second, ...
-```
-
-```bash
-whalescale cluster      # who's up, and who leads
-```
-
-- **Machines keep working through a server failure.** Every machine learns every running server's address. When its server stops or crashes, it moves to another within about a second.
-- **Direct connections don't notice.** WireGuard traffic between machines never goes through a server; the failover test sends traffic continuously while a server dies and loses none.
-- **Relayed connections pause briefly.** All machines use the oldest running server's relay, so they meet on the same one. If that server goes away they move to the next: at once on a clean shutdown, or within the heartbeat timeout (3× the watch interval, 15 s by default) after a crash.
-- **Changes reach every server.** A change made on one server (a policy save, an approval, a machine joining) reaches machines on the others within a quarter of a second. Who is online is shared too.
-- **One leader for periodic jobs.** One server at a time holds the leader lease and runs grant expiry, log pruning and Git policy sync. Another takes over when it stops (`whalescale_leader` in `/metrics`).
-- **The database is the one shared piece.** Make PostgreSQL itself highly available (a managed service, or Patroni) to remove the last single point of failure. Back it up with `pg_dump`.
-- **On a single host,** servers can instead share an SQLite file (each with its own `listen`, `public-url`, `stun-listen` and `relay-quic-listen`). That covers crashes and zero-downtime upgrades without running PostgreSQL.
-
-Some things still belong to one server:
-- a browser login must finish on the server that started it;
-- a gateway tunnel serves public requests only on its own server;
-- SSH recordings are saved on the server that received them (point `recordings-dir` at shared storage to view them from any server);
-- the console's topology view shows the paths of that server's machines.
-
-## Scale
-
-Each change to the network (a node coming online, an endpoint moving, a policy push) is turned into one shared snapshot. Every node then gets only the part that concerns it: changed peers, a new packet filter, or nothing at all. The policy compiler works on groups of nodes with identical access rather than on node pairs, and merges source addresses into CIDRs, so `"*"` over 10,000 machines costs a few prefixes rather than 20,000.
-
-`make loadtest` connects 10,010 simulated nodes (100 teams, shared servers) to one control server and times policy pushes. On a laptop (i5-10200H):
-
-| | Time to reach all 10,010 nodes | Sent |
-|---|---|---|
-| Policy push changing ports | 0.1–0.25 s | 4 MB |
-| Policy push giving every node 100 more peers | 0.4–1.3 s, depending on machine load | 390 MB |
-| All nodes connecting at once | ~0.5 s | 240 MB |
-
-Older clients that don't ask for deltas still get complete maps, now only when something relevant to them changed.
-
-On the machines themselves, path discovery is lazy in networks of more than 100 peers. Only peers with WireGuard traffic in the last two minutes are kept probed, and `ws status` shows the rest as `idle`. The first packets to an idle peer go through the relay at once while a direct path is found, usually within a round trip or two. Smaller networks keep every path warm.
-
-## Operations
-
-| Command | What |
+| Device | Install |
 |---|---|
-| `whalescale configtest` | Validate config; show each value and its source |
-| `whalescale doctor` | End-to-end checks of a running server |
-| `whalescale users / preauthkeys / apikeys / nodes / routes / exposures` | Admin from the server host |
-| `whalescale policy check FILE` | Validate, lint and run a policy file's tests |
-| `whalescale policy explain SRC DST:PORT` | Why a connection is allowed or denied |
-| `whalescale flows [--node N] [--since 1h] [--denied]` | Connection logs (with `flow-logs: true`) |
-| `whalescale audit [--since 24h] [--actor X] [--action X] / --verify` | Audit log; check its hash chain |
-| `whalescale access list [--all] / approve ID / deny ID / revoke ID` | Temporary access requests |
-| `whalescale apikeys create --scope read` | An API key that can look but not change anything (monitoring, AI agents) |
-| `ws mcp` | MCP server for AI agents |
-| `wsd install-service / uninstall-service` | systemd, a Windows service or launchd |
-| `GET /metrics` on `metrics-listen` (default `127.0.0.1:9090`) | Nodes, online count, direct/relay paths, relay traffic, map updates, snapshots, policy compiles and rate-limited requests |
+| Windows | [`whalescale-setup-windows-amd64.exe`](https://github.com/k4ran909/WhaleScale/releases/latest), then paste the join code |
+| macOS, Linux | `curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh \| sh -s -- --join <code>` |
 
-Requests anyone can make (registering, browser logins, API key logins) are rate limited per client address: `rate-limit` per minute (60 by default; IPv6 counted per /64). Behind a reverse proxy on another host, list it in `trusted-proxies` so the limit applies to each client rather than to the proxy; `X-Forwarded-For` is believed only from those addresses and loopback.
+**3. Connect.** `ping laptop.whale.internal`
 
-## Layout
+The full walkthrough is in **[Getting started](docs/getting-started.md)**. Other ways to install: [Docker](docs/install/docker.md), [Dokploy](docs/install/dokploy.md), [Kubernetes](docs/install/kubernetes.md).
 
-| Path | What |
+## Documentation
+
+| | |
 |---|---|
-| `cmd/whalescale`, `cmd/wsd`, `cmd/ws` | Server, agent, CLI |
-| `proto/`, `gen/` | APIs (protobuf / Connect-RPC) and generated code |
-| `web/` | Console source (React + TS); `web/dist` is the committed build embedded in the server |
-| `deploy/` | Docker Compose, Helm chart, install script, systemd unit, example config |
-| `terraform/` | Terraform / OpenTofu provider (its own Go module) |
-| `internal/store`, `internal/config` | SQLite + migrations; config layering |
-| `internal/control`, `internal/server` | Control and admin APIs, network snapshots and deltas, OIDC, console, metrics |
-| `internal/netmap` | Client side of map deltas |
-| `internal/policy`, `internal/filter` | ACL compiler; stateful packet filter |
-| `internal/meshconn`, `internal/disco`, `internal/stun`, `internal/relay` | Paths: direct vs relay |
-| `internal/engine`, `internal/daemon`, `internal/localapi` | Agent core, lifecycle, `ws` ↔ `wsd` API |
-| `internal/dnsserver`, `internal/osnet` | MagicDNS; per-OS addresses, routes, split DNS, forwarding |
+| **Install** | [Linux, one command](docs/install/linux.md) · [Docker](docs/install/docker.md) · [Dokploy](docs/install/dokploy.md) · [Kubernetes](docs/install/kubernetes.md) |
+| **Use** | [Devices](docs/guides/devices.md) · [Web console](docs/guides/console.md) · [Access policy](docs/guides/access-policy.md) · [Networking](docs/guides/networking.md) · [SSH](docs/guides/ssh.md) · [Gateway](docs/guides/gateway.md) |
+| **Operate** | [Security features](docs/guides/security.md) · [Monitoring](docs/guides/monitoring.md) · [High availability](docs/guides/high-availability.md) · [Automation](docs/guides/automation.md) |
+| **Understand** | [Architecture](docs/reference/architecture.md) · [Security review](docs/reference/security-review.md) · [Known gaps](docs/reference/known-gaps.md) |
+| **Contribute** | [Contributing](docs/development/contributing.md) · [CI](docs/development/ci.md) · [Roadmap](plan.md) |
 
-## Known gaps
+## Repository
 
-- **OS TUN mode and the Linux subnet router have not been run on real machines.** Userspace mode is covered by end-to-end tests. The Windows service and installer are also untested on real PCs.
-- **The Windows installer isn't code-signed**, so Windows SmartScreen warns about an unknown publisher (More info → Run anyway). Signing needs a code-signing certificate.
-- **Exit nodes**: the exit side (forwarding + NAT) is Linux-only. On macOS, DNS lookups don't go through the exit node yet.
-- Subnet routing is Linux-only for now.
-- Machine keys live in a file (protected, but not in a TPM or secure enclave): whoever copies a machine's whole state can still act as it until it's removed. See [docs/security-review.md](docs/security-review.md) for the threat model and other residual risks.
-
-## Development
-
-Requires Go 1.27+ and Node 22 (only to rebuild the console).
-
-```bash
-make generate test      # protobuf codegen + tests (needs buf, protoc-gen-go, protoc-gen-connect-go)
-make web                # rebuild web/dist after changing web/src (CI checks it is current)
-cd web && npm run dev   # console dev server, proxying to a local server on :8080
+```
+cmd/          whalescale (server) · wsd (agent) · ws (CLI) · whalescale-tray (Windows)
+internal/     server, control plane, policy, data path, DNS, store
+web/          the web console (React + TypeScript), embedded in the server
+deploy/       install script, Docker Compose, Helm chart, systemd unit, example config
+packaging/    Windows installer, release notes, release signing key
+terraform/    Terraform / OpenTofu provider
+docs/         the documentation
 ```
 
-CI runs on GitHub Actions (`.github/workflows/`) or on a self-hosted Woodpecker server (`.woodpecker/`, set up as in [docs/woodpecker.md](docs/woodpecker.md), e.g. on Dokploy).
+## Security
 
-Fuzz targets cover everything that parses input from the network: policies, map deltas, QUIC relay frames, disco messages, packets entering the filter, DNS queries and machine proofs. Run one with `go test ./internal/disco -run '^$' -fuzz FuzzParse`.
+Releases are signed: `checksums.txt.minisig` proves the checksums came from the [Whalescale release key](packaging/release-key.pub), and the tray icon's updater checks it before installing anything ([how to verify a download](docs/guides/devices.md#verifying-downloads)). The [security review](docs/reference/security-review.md) covers the threat model and what the server can and can't see.
 
-End-to-end tests run real servers and agents in one process: direct paths, relay-only fallback, policy enforcement, subnet route approval, and OIDC console and device login against a fake identity provider (`internal/engine`, `internal/server`).
+## Status
+
+Whalescale is in active development, toward a 1.0 release ([roadmap](plan.md)). It's feature-complete for a self-hosted mesh, but parts haven't run on real networks yet: see [known gaps](docs/reference/known-gaps.md).
+
+## License
+
+No license has been chosen yet ([plan.md, open question 1](plan.md#9-open-questions)). Until one is, all rights are reserved.

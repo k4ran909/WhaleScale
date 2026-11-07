@@ -112,6 +112,6 @@ sequenceDiagram
 
 ## Where to go next
 
-- [README](../README.md): installing the server and devices, and every feature.
-- [docs/dokploy.md](dokploy.md): running the server on Dokploy.
-- [docs/security-review.md](security-review.md): the threat model and what the server can and can't see.
+- [Getting started](../getting-started.md): a server and your first devices in ten minutes; the [documentation index](../README.md) lists every guide.
+- [Installing the server](../install/linux.md): one command on Linux, or [Docker](../install/docker.md), [Dokploy](../install/dokploy.md) and [Kubernetes](../install/kubernetes.md).
+- [Security review](security-review.md): the threat model and what the server can and can't see.

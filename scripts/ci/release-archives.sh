@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the release downloads for tag $1 (e.g. v1.2.3) into dist/: an
 # archive per OS/arch, Windows installers, an SBOM, and checksums signed
-# with the release key ($RELEASE_SIGNING_KEY, see docs/woodpecker.md).
+# with the release key ($RELEASE_SIGNING_KEY, see docs/development/ci.md).
 # Needs zip, unzip, curl, makensis (NSIS) and minisign.
 set -eu
 version=$1

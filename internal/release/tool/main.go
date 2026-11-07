@@ -81,7 +81,7 @@ func sign(args []string) error {
 	}
 	secret := os.Getenv("RELEASE_SIGNING_KEY")
 	if secret == "" {
-		return errors.New("RELEASE_SIGNING_KEY is empty: add the release_signing_key secret in Woodpecker (docs/woodpecker.md)")
+		return errors.New("RELEASE_SIGNING_KEY is empty: add the release_signing_key secret in Woodpecker (docs/development/ci.md)")
 	}
 	k, err := release.ParseKey(secret)
 	if err != nil {

@@ -6,7 +6,7 @@
 # '$VAR' itself), so anything with variables lives in scripts/ci/.
 #
 # Go's module and build caches live in named volumes shared by every run
-# (the repository must be trusted for volumes; see docs/woodpecker.md).
+# (the repository must be trusted for volumes; see docs/development/ci.md).
 # Downloads happen once, in the first step, with retries.
 
 variables:

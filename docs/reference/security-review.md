@@ -37,7 +37,7 @@ This is a first pass by the project itself. It doesn't replace an independent au
 | 5 | High (dependency) | 13 vulnerabilities in the Go 1.27.0 standard library reachable from our code: HTTP/2 and `net/http` request handling, TLS, `net/textproto`, `html/template`, x509. | **Fixed:** the toolchain is pinned to go1.27.3 in both modules (go1.27.2 fixed 12 of the 13; go1.27.3 fixed GO-2026-6809, distrusting compromised intermediate CAs in `crypto/x509`, once it passed the project's two-week rule). `govulncheck` now reports no vulnerabilities affecting our code in either module. |
 | 6 | Medium (dependency) | `go-jose` v4.1.0 (OIDC token verification): panic in JWE decryption (GO-2026-4945). | **Fixed:** v4.1.6. |
 | 7 | Low (dependency) | The Terraform provider pulled in `grpc` v1.79.3 with three advisories (panic on a missing authority header, HTTP/2 memory exhaustion, xDS RBAC). The plugin's gRPC server only talks to the local Terraform process. | **Fixed:** grpc v1.84.0. |
-| 8 | Info | The README could be read as saying the network lock protects everything. It protects membership only; policy, SSH rules, DNS and routes still come from the server. | **Documented** in the README's network lock section. |
+| 8 | Info | The README could be read as saying the network lock protects everything. It protects membership only; policy, SSH rules, DNS and routes still come from the server. | **Documented** in the network lock section of [Security features](../guides/security.md#network-lock). |
 
 ## Controls verified (no change needed)
 
