@@ -55,12 +55,29 @@ func (k *Key) Encode() string {
 	return keyPrefix + base64.StdEncoding.EncodeToString(append(k.ID[:], k.Priv.Seed()...))
 }
 
-// ParseKey reads Encode's form.
+// ParseKey reads Encode's form. It forgives what pasting into a secrets
+// form tends to add (surrounding quotes, spaces, line breaks), and its
+// errors say what's wrong without repeating the value: only lengths and
+// which kind of text it looks like.
 func ParseKey(s string) (*Key, error) {
-	s = strings.TrimSpace(s)
-	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(s, keyPrefix))
-	if !strings.HasPrefix(s, keyPrefix) || err != nil || len(b) != 8+ed25519.SeedSize {
-		return nil, errors.New("not a whalescale release key")
+	s = strings.Join(strings.Fields(s), "")
+	s = strings.Trim(s, `"'`)
+	rest, ok := strings.CutPrefix(s, keyPrefix)
+	switch {
+	case s == "":
+		return nil, errors.New("the release key is empty")
+	case strings.HasPrefix(s, "untrustedcomment:"):
+		return nil, errors.New("that's the contents of the .pub file (the public key), not the private key: use the one line of the file without .pub")
+	case strings.HasPrefix(s, "RW") && len(s) == 56:
+		return nil, errors.New("that's the public key (56 characters starting with RW), not the private key: use the line starting with " + keyPrefix)
+	case !ok:
+		return nil, fmt.Errorf("not a whalescale release key: it should start with %q and be %d characters long, and this one is %d characters and starts differently",
+			keyPrefix, len(keyPrefix)+56, len(s))
+	}
+	b, err := base64.StdEncoding.DecodeString(rest)
+	if err != nil || len(b) != 8+ed25519.SeedSize {
+		return nil, fmt.Errorf("not a whalescale release key: after %q there should be 56 characters of base64, and there are %d (decodes: %v)",
+			keyPrefix, len(rest), err == nil)
 	}
 	k := &Key{Priv: ed25519.NewKeyFromSeed(b[8:])}
 	copy(k.ID[:], b[:8])

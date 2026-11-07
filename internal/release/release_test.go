@@ -19,6 +19,26 @@ func TestSignVerify(t *testing.T) {
 	if err != nil || k2.PublicKey() != k.PublicKey() {
 		t.Fatalf("ParseKey round trip: %v", err)
 	}
+	// What pasting into a secrets form adds is forgiven.
+	enc := k.Encode()
+	for _, pasted := range []string{"\"" + enc + "\"", " " + enc + "\r\n", enc[:30] + "\n" + enc[30:]} {
+		if k3, err := ParseKey(pasted); err != nil || k3.PublicKey() != k.PublicKey() {
+			t.Errorf("ParseKey(pasted form): %v", err)
+		}
+	}
+	// Wrong values are explained without being repeated.
+	for in, want := range map[string]string{
+		"":                 "empty",
+		k.PublicKey():      "that's the public key",
+		k.PublicKeyFile():  ".pub file",
+		"hello":            "5 characters",
+		keyPrefix + "AAAA": "there are 4",
+	} {
+		_, err := ParseKey(in)
+		if err == nil || !strings.Contains(err.Error(), want) || (len(in) > 8 && strings.Contains(err.Error(), in)) {
+			t.Errorf("ParseKey(%.20q) = %v, want it to mention %q", in, err, want)
+		}
+	}
 	msg := []byte("abc123  whalescale-setup-windows-amd64.exe\n")
 	sig := k.Sign(msg, "checksums.txt", time.Unix(1700000000, 0))
 	if err := Verify(k.PublicKey(), msg, sig); err != nil {
