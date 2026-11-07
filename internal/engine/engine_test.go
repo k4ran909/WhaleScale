@@ -377,17 +377,25 @@ func TestSubnetRoutes(t *testing.T) {
 	if strings.Contains(allowed(plain, router), "10.99.0.0/24") {
 		t.Fatal("node without --accept-routes installed the route")
 	}
-	// The router's filter must now accept traffic into the subnet.
-	router.mu.Lock()
-	var covered bool
-	for _, fr := range router.netmap.PacketFilter {
-		for _, d := range fr.DstPrefixes {
-			covered = covered || d == lan.String()
+	// The router's filter must now accept traffic into the subnet. Its map
+	// comes on its own stream, so it may land a moment after the client's.
+	covered := func() bool {
+		router.mu.Lock()
+		defer router.mu.Unlock()
+		for _, fr := range router.netmap.PacketFilter {
+			for _, d := range fr.DstPrefixes {
+				if d == lan.String() {
+					return true
+				}
+			}
 		}
+		return false
 	}
-	router.mu.Unlock()
-	if !covered {
-		t.Fatal("router's packet filter does not cover the approved subnet")
+	for !covered() {
+		if time.Now().After(deadline) {
+			t.Fatal("router's packet filter does not cover the approved subnet")
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
