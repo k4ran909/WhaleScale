@@ -44,7 +44,10 @@ done
 programs=$(find build -mindepth 2 -maxdepth 2 -type f \( -name whalescale -o -name 'whalescale.exe' -o -name 'whalescale-tray.exe' -o -name 'ws' -o -name 'ws.exe' -o -name 'wsd' -o -name 'wsd.exe' \) | sort)
 # shellcheck disable=SC2086 # one path per word
 go run ./internal/release/tool sbom -version "$version" -time "$(git log -1 --format=%cI)" $programs > dist/sbom.cdx.json
-(cd dist && sha256sum ./* | sed 's# \./# #' > checksums.txt)
+# Written outside dist/ first: with the redirect inside, the shell may
+# create checksums.txt before ./* is expanded, and list it in itself.
+(cd dist && sha256sum ./* | sed 's# \./# #') > build/checksums.txt
+mv build/checksums.txt dist/checksums.txt
 # Sign the checksums (which cover every file), then check the signature
 # with the real minisign, as users will.
 go run ./internal/release/tool sign dist/checksums.txt
