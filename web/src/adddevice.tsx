@@ -1,3 +1,4 @@
+import { toast } from "./toast";
 import { useEffect, useRef, useState } from "react";
 import { api, Node } from "./api";
 import { Banner, CopyField, errText, useLoad } from "./ui";
@@ -24,7 +25,6 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
   const [several, setSeveral] = useState(false);
   const [code, setCode] = useState<string>();
   const [os, setOS] = useState<OS>(guessOS);
-  const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [joined, setJoined] = useState<Node[]>([]);
   const known = useRef<Set<string> | undefined>(undefined);
@@ -57,7 +57,6 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
 
   const create = async () => {
     setBusy(true);
-    setErr(undefined);
     try {
       let owner = user;
       if (!users?.length) {
@@ -70,7 +69,7 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
       setCode(r.joinCode || r.secret);
       setJoined([]);
     } catch (e) {
-      setErr(errText(e));
+      toast.error(errText(e));
     } finally {
       setBusy(false);
     }
@@ -82,7 +81,6 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
         <strong>Add a device</strong>
         <button className="btn ghost" onClick={onClose}>Close</button>
       </div>
-      {err && <Banner kind="error">{err}</Banner>}
 
       {!code ? (
         <form

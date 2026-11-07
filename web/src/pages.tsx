@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AddDevice } from "./adddevice";
 import { api, Node, PathReport } from "./api";
-import { Banner, ConfirmButton, Dot, Empty, Page, SecretBox, errText, timeAgo, timeUntil, useLoad } from "./ui";
+import { toast } from "./toast";
+import { Banner, ConfirmButton, Dot, Empty, Page, SecretBox, errText, timeAgo, timeUntil, useErrorToast, useLoad } from "./ui";
 
 // ---------- Machines ----------
 
 export function Machines() {
-  const { data: nodes, error, reload } = useLoad(api.listNodes, 10000);
+  const { data: nodes, reload } = useLoad(api.listNodes, 10000);
   const [q, setQ] = useState("");
-  const [actionErr, setActionErr] = useState<string>();
   const [adding, setAdding] = useState(false);
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -29,8 +29,6 @@ export function Machines() {
         </>
       }
     >
-      {error && <Banner kind="error">{error}</Banner>}
-      {actionErr && <Banner kind="error">{actionErr}</Banner>}
       {adding && (
         <AddDevice
           onClose={() => {
@@ -85,7 +83,7 @@ export function Machines() {
                     <ConfirmButton
                       label="Remove"
                       confirm="Remove machine?"
-                      onConfirm={() => api.deleteNode(n.id).then(reload, (e) => setActionErr(errText(e)))}
+                      onConfirm={() => api.deleteNode(n.id).then(() => (toast.success(`Removed ${n.name}.`), reload()), (e) => toast.error(errText(e)))}
                     />
                   </td>
                 </tr>
@@ -121,7 +119,7 @@ function RouteBadges({ n }: { n: Node }) {
 // ---------- Topology ----------
 
 export function Topology() {
-  const { data: paths, error } = useLoad(api.topology, 10000);
+  const { data: paths } = useLoad(api.topology, 10000);
   const { data: nodes } = useLoad(api.listNodes, 10000);
   const names = useMemo(() => (nodes ?? []).filter((n) => n.online).map((n) => n.name).sort(), [nodes]);
   const byPair = useMemo(() => {
@@ -137,7 +135,6 @@ export function Topology() {
       title="Topology"
       lead="How each online machine reaches each peer, as the machines report it (updated every 30 s)."
     >
-      {error && <Banner kind="error">{error}</Banner>}
       <div className="stats">
         <Stat label="Direct paths" value={counts.direct} tone="ok" />
         <Stat label="Peer relay" value={counts["peer-relay"]} tone="ok" />
@@ -200,24 +197,21 @@ function Stat(props: { label: string; value: number; tone: "ok" | "warn" | "bad"
 // ---------- Users ----------
 
 export function Users() {
-  const { data: users, error, reload } = useLoad(api.listUsers);
+  const { data: users, reload } = useLoad(api.listUsers);
   const [name, setName] = useState("");
-  const [msg, setMsg] = useState<{ kind: "error" | "ok"; text: string }>();
   return (
     <Page title="Users" lead="Machines belong to users. Users signing in through OIDC are created automatically.">
-      {error && <Banner kind="error">{error}</Banner>}
-      {msg && <Banner kind={msg.kind}>{msg.text}</Banner>}
       <form
         className="inline-form"
         onSubmit={async (e) => {
           e.preventDefault();
           try {
             await api.createUser(name.trim());
-            setMsg({ kind: "ok", text: `Created user ${name.trim()}.` });
+            toast.success(`Created user ${name.trim()}.`);
             setName("");
             reload();
           } catch (err) {
-            setMsg({ kind: "error", text: errText(err) });
+            toast.error(errText(err));
           }
         }}
       >
@@ -252,7 +246,7 @@ export function Users() {
                     label="Delete"
                     confirm="Delete user?"
                     onConfirm={() =>
-                      api.deleteUser(u.name).then(reload, (err) => setMsg({ kind: "error", text: errText(err) }))
+                      api.deleteUser(u.name).then(() => (toast.success(`Deleted user ${u.name}.`), reload()), (err) => toast.error(errText(err)))
                     }
                   />
                 </td>
@@ -275,7 +269,7 @@ const durations: [string, number][] = [
 ];
 
 export function Keys() {
-  const { data: keys, error, reload } = useLoad(api.listPreAuthKeys);
+  const { data: keys, reload } = useLoad(api.listPreAuthKeys);
   const { data: users } = useLoad(api.listUsers);
   const apiKeys = useLoad(api.listAPIKeys);
   const [user, setUser] = useState("");
@@ -283,15 +277,12 @@ export function Keys() {
   const [ephemeral, setEphemeral] = useState(false);
   const [ttl, setTtl] = useState(86400);
   const [secret, setSecret] = useState<{ title: string; value: string; hint: string }>();
-  const [msg, setMsg] = useState<string>();
   useEffect(() => {
     if (!user && users?.length) setUser(users[0].name);
   }, [users, user]);
 
   return (
     <Page title="Keys" lead="Pre-auth keys enroll machines without a browser. API keys sign in to this console and the admin API.">
-      {error && <Banner kind="error">{error}</Banner>}
-      {msg && <Banner kind="error">{msg}</Banner>}
       {secret && <SecretBox title={secret.title} secret={secret.value} hint={secret.hint} onClose={() => setSecret(undefined)} />}
 
       <h2>Pre-auth keys</h2>
@@ -308,7 +299,7 @@ export function Keys() {
             });
             reload();
           } catch (err) {
-            setMsg(errText(err));
+            toast.error(errText(err));
           }
         }}
       >
@@ -389,7 +380,7 @@ export function Keys() {
                 });
                 apiKeys.reload();
               } catch (err) {
-                setMsg(errText(err));
+                toast.error(errText(err));
               }
             }}
           >
@@ -434,17 +425,14 @@ export function Keys() {
 // ---------- Routes ----------
 
 export function Routes() {
-  const { data: routes, error, reload } = useLoad(api.listRoutes, 10000);
+  const { data: routes, reload } = useLoad(api.listRoutes, 10000);
   const relays = useLoad(api.listPeerRelays, 10000);
-  const [msg, setMsg] = useState<string>();
   const pending = (routes ?? []).filter((r) => !r.approved).length;
   return (
     <Page
       title="Routes"
       lead="Subnet routers and exit nodes advertise routes; nothing is routed until you approve it."
     >
-      {error && <Banner kind="error">{error}</Banner>}
-      {msg && <Banner kind="error">{msg}</Banner>}
       {pending > 0 && <Banner kind="warn">{pending} route(s) waiting for approval.</Banner>}
       {routes && routes.length === 0 ? (
         <Empty>
@@ -474,7 +462,7 @@ export function Routes() {
                     <button
                       className={r.approved ? "btn ghost" : "btn primary"}
                       onClick={() =>
-                        api.setRouteApproved(r.nodeId, r.prefix, !r.approved).then(reload, (e) => setMsg(errText(e)))
+                        api.setRouteApproved(r.nodeId, r.prefix, !r.approved).then(reload, (e) => toast.error(errText(e)))
                       }
                     >
                       {r.approved ? "Disable" : "Approve"}
@@ -514,7 +502,7 @@ export function Routes() {
                   <td className="right">
                     <button
                       className={r.approved ? "btn ghost" : "btn primary"}
-                      onClick={() => api.setPeerRelayApproved(r.nodeId, !r.approved).then(relays.reload, (e) => setMsg(errText(e)))}
+                      onClick={() => api.setPeerRelayApproved(r.nodeId, !r.approved).then(relays.reload, (e) => toast.error(errText(e)))}
                     >
                       {r.approved ? "Stop" : "Approve"}
                     </button>
@@ -535,8 +523,6 @@ export function Policy() {
   const loaded = useLoad(api.getPolicy);
   const [text, setText] = useState<string>();
   const [check, setCheck] = useState<{ errors?: string[]; warnings?: string[] }>();
-  const [saved, setSaved] = useState<string>();
-  const [saveErr, setSaveErr] = useState<string>();
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -572,14 +558,12 @@ export function Policy() {
             className="btn primary"
             disabled={!dirty || hasErrors}
             onClick={async () => {
-              setSaveErr(undefined);
               try {
                 const r = await api.setPolicy(text!);
-                setSaved(r.warnings?.length ? `Saved with ${r.warnings.length} warning(s).` : "Saved and pushed to all machines.");
+                toast.success(r.warnings?.length ? `Saved with ${r.warnings.length} warning(s).` : "Saved and pushed to all machines.");
                 loaded.reload();
-                setTimeout(() => setSaved(undefined), 4000);
               } catch (e) {
-                setSaveErr(errText(e));
+                toast.error(errText(e));
               }
             }}
           >
@@ -588,7 +572,6 @@ export function Policy() {
         )
       }
     >
-      {loaded.error && <Banner kind="error">{loaded.error}</Banner>}
       {loaded.data?.source === "file" && (
         <Banner kind="warn">This policy comes from a file given with --policy. Edit that file; the server reloads it within 5 s.</Banner>
       )}
@@ -601,8 +584,6 @@ export function Policy() {
         </Banner>
       )}
       {loaded.data?.source === "default" && <Banner kind="ok">No policy saved yet: every machine can reach every other machine.</Banner>}
-      {saved && <Banner kind="ok">{saved}</Banner>}
-      {saveErr && <Banner kind="error">{saveErr}</Banner>}
       <textarea
         className="editor"
         spellCheck={false}
@@ -677,8 +658,7 @@ function Explain({ draft }: { draft?: string }) {
 // ---------- Gateway ----------
 
 export function Gateway() {
-  const { data, error, reload } = useLoad(api.listExposures, 10000);
-  const [msg, setMsg] = useState<string>();
+  const { data, reload } = useLoad(api.listExposures, 10000);
   const exposures = data?.exposures ?? [];
   const pending = exposures.filter((e) => !e.approved).length;
   return (
@@ -686,8 +666,6 @@ export function Gateway() {
       title="Gateway"
       lead="Machines can publish a local web service on the internet with automatic HTTPS. Nothing goes live until you approve it."
     >
-      {error && <Banner kind="error">{error}</Banner>}
-      {msg && <Banner kind="error">{msg}</Banner>}
       {data && !data.domain && (
         <Banner kind="warn">
           The gateway is off. Set <code>gateway-domain</code> (e.g. <code>apps.example.com</code>) in the server config and add a
@@ -746,7 +724,7 @@ export function Gateway() {
                   <td className="right">
                     <button
                       className={e.approved ? "btn ghost" : "btn primary"}
-                      onClick={() => api.setExposureApproved(e.nodeId, e.name, !e.approved).then(reload, (err) => setMsg(errText(err)))}
+                      onClick={() => api.setExposureApproved(e.nodeId, e.name, !e.approved).then(reload, (err) => toast.error(errText(err)))}
                     >
                       {e.approved ? "Take offline" : "Approve"}
                     </button>
@@ -799,9 +777,8 @@ function sizeText(s?: string): string {
 }
 
 export function Recordings() {
-  const { data: recs, error, reload } = useLoad(api.listRecordings, 15000);
+  const { data: recs, reload } = useLoad(api.listRecordings, 15000);
   const [view, setView] = useState<{ id: string; title: string; text: string }>();
-  const [msg, setMsg] = useState<string>();
 
   const open = async (r: { id: string; nodeName: string; localUser: string }, download: boolean) => {
     try {
@@ -818,7 +795,7 @@ export function Recordings() {
         setView({ id: r.id, title: `${r.localUser}@${r.nodeName}`, text: castToText(cast) });
       }
     } catch (e) {
-      setMsg(errText(e));
+      toast.error(errText(e));
     }
   };
 
@@ -832,8 +809,6 @@ export function Recordings() {
         </>
       }
     >
-      {error && <Banner kind="error">{error}</Banner>}
-      {msg && <Banner kind="error">{msg}</Banner>}
       {view && (
         <div className="card recording-view">
           <div className="secret-head">
@@ -881,8 +856,9 @@ export function Recordings() {
                         onConfirm={() =>
                           api.deleteRecording(r.id).then(() => {
                             if (view?.id === r.id) setView(undefined);
+                            toast.success("Recording deleted.");
                             reload();
-                          }, (e) => setMsg(errText(e)))
+                          }, (e) => toast.error(errText(e)))
                         }
                       />
                     </td>
@@ -915,6 +891,7 @@ export function Flows() {
   const [node, setNode] = useState("");
   const [data, setData] = useState<{ flows: import("./api").Flow[]; enabled: boolean }>();
   const [error, setError] = useState<string>();
+  useErrorToast(error);
   const { data: nodes } = useLoad(api.listNodes);
 
   useEffect(() => {
@@ -956,7 +933,6 @@ export function Flows() {
         </div>
       }
     >
-      {error && <Banner kind="error">{error}</Banner>}
       {data && !data.enabled && (
         <Banner kind="warn">
           Flow logs are off. Start the server with <code>flow-logs: true</code> to collect them (kept for{" "}
@@ -1009,6 +985,7 @@ export function Audit() {
   const [data, setData] = useState<{ events: import("./api").AuditEvent[] }>();
   const [check, setCheck] = useState<import("./api").AuditVerification>();
   const [error, setError] = useState<string>();
+  useErrorToast(error);
 
   useEffect(() => {
     let live = true;
@@ -1023,7 +1000,11 @@ export function Audit() {
 
   const verify = () =>
     api.listAuditEvents({ limit: 1, verify: true }).then(
-      (d) => setCheck(d.verification),
+      (d) => {
+        setCheck(d.verification);
+        if (d.verification?.ok) toast.success(`Audit log intact: ${d.verification.checked ?? 0} entries checked.`);
+        else toast.error("The audit log has been tampered with: see the details on the page.");
+      },
       (e) => setError(errText(e)),
     );
   const q = filter.trim().toLowerCase();
@@ -1048,7 +1029,6 @@ export function Audit() {
         </div>
       }
     >
-      {error && <Banner kind="error">{error}</Banner>}
       {check &&
         (check.ok ? (
           <Banner kind="ok">
@@ -1101,6 +1081,7 @@ export function Access() {
   const [closed, setClosed] = useState(false);
   const [list, setList] = useState<import("./api").AccessRequest[]>();
   const [error, setError] = useState<string>();
+  useErrorToast(error);
   const load = () =>
     api.listAccessRequests(closed).then(
       (l) => (setList(l), setError(undefined)),
@@ -1129,7 +1110,6 @@ export function Access() {
         </label>
       }
     >
-      {error && <Banner kind="error">{error}</Banner>}
       {pending.length > 0 && <Banner kind="warn">{pending.length} waiting for a decision.</Banner>}
       {list && list.length === 0 ? (
         <Empty>{closed ? "No requests yet." : "Nothing pending and no active grants."}</Empty>

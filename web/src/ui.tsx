@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
+import { toast } from "./toast";
 import { ApiError } from "./api";
 
 export function timeAgo(iso?: string): string {
@@ -21,7 +22,16 @@ function duration(s: number): string {
   return `${Math.round(s / 86400)} d`;
 }
 
-/** useLoad fetches data, re-fetching every `refreshMs` and on reload(). */
+/** useErrorToast shows an error as a toast when it appears or changes, so
+ * a page that keeps failing on refresh doesn't repeat it. */
+export function useErrorToast(error: string | undefined) {
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+}
+
+/** useLoad fetches data, re-fetching every `refreshMs` and on reload().
+ * Errors show as toasts. */
 export function useLoad<T>(fn: () => Promise<T>, refreshMs = 0) {
   const [data, setData] = useState<T | undefined>();
   const [error, setError] = useState<string>();
@@ -40,6 +50,7 @@ export function useLoad<T>(fn: () => Promise<T>, refreshMs = 0) {
     const t = setInterval(reload, refreshMs);
     return () => clearInterval(t);
   }, [reload, refreshMs]);
+  useErrorToast(error);
   return { data, error, reload };
 }
 

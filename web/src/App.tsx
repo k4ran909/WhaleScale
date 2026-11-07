@@ -35,6 +35,7 @@ import {
   AnimatedSidebarRail,
   AnimatedSidebarTrigger,
 } from "@/components/ui/animated-sidebar";
+import { toast } from "./toast";
 import { AsciiAquarium } from "@/components/aquarium/ascii-aquarium";
 import {
   api,
@@ -266,23 +267,22 @@ function Card({ children, onSubmit }: { children: ReactNode; onSubmit?: (e: Form
   );
 }
 
-/** useSubmit runs an async form action with busy and error state. */
+/** useSubmit runs an async form action with busy state; errors show as
+ * toasts. */
 function useSubmit(action: () => Promise<void>) {
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string>();
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setErr(undefined);
     try {
       await action();
     } catch (e2) {
-      setErr(errText(e2));
+      toast.error(errText(e2));
     } finally {
       setBusy(false);
     }
   };
-  return { busy, err, setErr, onSubmit };
+  return { busy, onSubmit };
 }
 
 function Setup({ onDone, onTaken }: { onDone: () => void; onTaken: () => void }) {
@@ -290,9 +290,9 @@ function Setup({ onDone, onTaken }: { onDone: () => void; onTaken: () => void })
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
-  const { busy, err, setErr, onSubmit } = useSubmit(async () => {
+  const { busy, onSubmit } = useSubmit(async () => {
     if (pw !== pw2) {
-      setErr("The passwords don't match.");
+      toast.error("The passwords don't match.");
       return;
     }
     try {
@@ -331,7 +331,6 @@ function Setup({ onDone, onTaken }: { onDone: () => void; onTaken: () => void })
         <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={10} autoComplete="new-password" required />
       </label>
       <p className="muted small">At least 10 characters.</p>
-      {err && <div className="err-line">{err}</div>}
       <button className="btn primary block" disabled={busy}>
         {busy ? "Creating…" : "Create account and sign in"}
       </button>
@@ -346,7 +345,7 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
   const [useKey, setUseKey] = useState(false);
   const [code, setCode] = useState("");
   const [needCode, setNeedCode] = useState(false);
-  const { busy, err, onSubmit } = useSubmit(async () => {
+  const { busy, onSubmit } = useSubmit(async () => {
     if (useKey) await loginWithAPIKey(key);
     else {
       try {
@@ -403,7 +402,6 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
           )}
         </>
       )}
-      {err && <div className="err-line">{err}</div>}
       <button className={oidc ? "btn block" : "btn primary block"} disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
@@ -428,10 +426,10 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
 function ChangePassword({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
-  const [done, setDone] = useState(false);
-  const { busy, err, onSubmit } = useSubmit(async () => {
+  const { busy, onSubmit } = useSubmit(async () => {
     await changePassword(current, next);
-    setDone(true);
+    toast.success("Password changed. Other browsers signed in as you were signed out.");
+    onClose();
   });
   return (
     <form className="secret" onSubmit={onSubmit}>
@@ -439,10 +437,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
         <strong>Change password</strong>
         <button type="button" className="btn ghost" onClick={onClose}>Close</button>
       </div>
-      {done ? (
-        <p className="ok-line">Password changed. Other browsers signed in as you were signed out.</p>
-      ) : (
-        <div className="form-grid">
+      <div className="form-grid">
           <label>
             Current password
             <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
@@ -453,8 +448,6 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
           </label>
           <button className="btn primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button>
         </div>
-      )}
-      {err && <div className="err-line">{err}</div>}
     </form>
   );
 }
@@ -463,23 +456,28 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
  * password account. */
 function TwoFactor({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<{ available: boolean; enabled: boolean }>();
-  const [loadErr, setLoadErr] = useState<string>();
   const [pw, setPw] = useState("");
   const [code, setCode] = useState("");
   const [setup, setSetup] = useState<{ secret: string; uri: string; qr: string }>();
-  const [done, setDone] = useState<string>();
   useEffect(() => {
-    twoFactorStatus().then(setStatus, (e) => setLoadErr(errText(e)));
+    twoFactorStatus().then(setStatus, (e) => {
+      toast.error(errText(e));
+      onClose();
+    });
   }, []);
-  const { busy, err, onSubmit } = useSubmit(async () => {
+  const { busy, onSubmit } = useSubmit(async () => {
     if (status?.enabled) {
       await twoFactorDisable(pw, code);
-      setDone("Two-factor sign-in is off. You sign in with your password alone.");
+      toast.success("Two-factor sign-in is off. You sign in with your password alone.");
+      onClose();
+      return;
     } else if (!setup) {
       setSetup(await twoFactorSetup(pw));
     } else {
       await twoFactorEnable(code);
-      setDone("Two-factor sign-in is on. Other browsers signed in as you were signed out.");
+      toast.success("Two-factor sign-in is on. Other browsers signed in as you were signed out.");
+      onClose();
+      return;
     }
     setPw("");
     setCode("");
@@ -496,11 +494,8 @@ function TwoFactor({ onClose }: { onClose: () => void }) {
         <strong>Two-factor sign-in</strong>
         <button type="button" className="btn ghost" onClick={onClose}>Close</button>
       </div>
-      {loadErr && <div className="err-line">{loadErr}</div>}
-      {done ? (
-        <p className="ok-line">{done}</p>
-      ) : !status ? (
-        !loadErr && <p className="muted">Loading…</p>
+      {!status ? (
+        <p className="muted">Loading…</p>
       ) : status.enabled ? (
         <>
           <p>
@@ -545,7 +540,6 @@ function TwoFactor({ onClose }: { onClose: () => void }) {
           </div>
         </>
       )}
-      {err && <div className="err-line">{err}</div>}
     </form>
   );
 }
