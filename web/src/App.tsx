@@ -34,6 +34,7 @@ import {
   AnimatedSidebarRail,
   AnimatedSidebarTrigger,
 } from "@/components/ui/animated-sidebar";
+import { AsciiAquarium } from "@/components/aquarium/ascii-aquarium";
 import { api, ApiError, authStatus, AuthStatus, changePassword, loginWithAPIKey, loginWithPassword, logout, setupAdmin } from "./api";
 import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
 import { errText } from "./ui";
@@ -226,7 +227,8 @@ function SignIn({ onDone }: { onDone: () => void }) {
 
 function Card({ children, onSubmit }: { children: ReactNode; onSubmit?: (e: FormEvent) => void }) {
   return (
-    <div className="login">
+    <div className="login login-scene">
+      <AsciiAquarium />
       <form className="login-card" onSubmit={onSubmit}>
         <div className="brand big">
           <Logo /> Whalescale

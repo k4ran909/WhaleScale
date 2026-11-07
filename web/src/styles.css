@@ -161,7 +161,26 @@ td.right { text-align: right; }
 
 /* login */
 .login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
-.login-card { width: min(26rem, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 1px 2px #0000000d, 0 12px 32px -16px #00000033; padding: 1.75rem; display: flex; flex-direction: column; gap: 0.9rem; }
+/* Sign-in sits on the ASCII aquarium (components/aquarium), which is
+   porcelain whatever the system theme: the screen keeps light colours, and
+   the card is frosted glass over the water. */
+.login-scene {
+  --background: #f6f6f3;
+  --foreground: #1b1b1a;
+  --muted: #ebebe7;
+  --muted-foreground: #6f6f6a;
+  --border: rgba(20, 20, 15, 0.1);
+  --ring: #9c9c98;
+  --accent: #1b1b1a;
+  --accent-text: #f6f6f3;
+  --ok: #12805c; --ok-bg: #e6f5ee; --warn: #a65f00; --warn-bg: #fff4e0; --bad: #c0362c; --bad-bg: #fdecea;
+  color-scheme: light;
+  position: relative;
+  background: var(--background);
+  color: var(--foreground);
+}
+.login-card { position: relative; z-index: 1; width: min(26rem, 100%); background: rgba(250, 250, 247, 0.62); -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 1px 2px #0000000d, 0 18px 48px -20px #0000004d; padding: 1.75rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.login-card input, .login-card select { background: rgba(255, 255, 255, 0.75); }
 .login-card p { margin: 0; }
 .or { display: flex; align-items: center; gap: 0.6rem; color: var(--muted-foreground); font-size: 0.85em; }
 .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
