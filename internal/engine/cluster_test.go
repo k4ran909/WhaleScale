@@ -142,12 +142,17 @@ func testClusterFailover(t *testing.T, crash bool) {
 	if _, err := admin.SetPolicy(ctx, req); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "a gets the policy saved on s2", func() bool {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		f := a.netmap.PacketFilter
-		return len(f) == 1 && len(f[0].Ports) == 1 && f[0].Ports[0].First == 7400
-	})
+	// Both ends need it: b filters what a sends it, so a probe sent before
+	// b has the policy is dropped there and would count as a failover loss.
+	for _, e := range []*Engine{a, b} {
+		waitFor(t, e.opts.State.NodeName+" gets the policy saved on s2", func() bool {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			f := e.netmap.PacketFilter
+			return len(f) == 1 && len(f[0].Ports) == 1 && f[0].Ports[0].First == 7400
+		})
+	}
+	waitFor(t, "a reaches b before the failover", func() bool { return roundTrip(a, b, 7400, 2*time.Second) == nil })
 
 	// Steady traffic a -> b while the leader goes away.
 	var sent, failed atomic.Int64
