@@ -27,7 +27,7 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [joined, setJoined] = useState<Node[]>([]);
-  const known = useRef<Set<string>>();
+  const known = useRef<Set<string> | undefined>(undefined);
 
   // Default owner: the signed-in admin's own user, else the first one.
   useEffect(() => {

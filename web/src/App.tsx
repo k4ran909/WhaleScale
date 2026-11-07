@@ -1,21 +1,74 @@
+import {
+  Activity,
+  ChevronRight,
+  Globe,
+  Hourglass,
+  KeyRound,
+  LockKeyhole,
+  LogOut,
+  Monitor,
+  Network,
+  PanelLeft,
+  Route,
+  ScrollText,
+  ShieldCheck,
+  SquareTerminal,
+  Users,
+  X,
+} from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
+import {
+  AnimatedSidebar,
+  AnimatedSidebarClose,
+  AnimatedSidebarContent,
+  AnimatedSidebarFooter,
+  AnimatedSidebarGroup,
+  AnimatedSidebarGroupContent,
+  AnimatedSidebarGroupLabel,
+  AnimatedSidebarHeader,
+  AnimatedSidebarInset,
+  AnimatedSidebarMenu,
+  AnimatedSidebarMenuButton,
+  AnimatedSidebarMenuItem,
+  AnimatedSidebarProvider,
+  AnimatedSidebarRail,
+  AnimatedSidebarTrigger,
+} from "@/components/ui/animated-sidebar";
 import { api, ApiError, authStatus, AuthStatus, changePassword, loginWithAPIKey, loginWithPassword, logout, setupAdmin } from "./api";
-import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users } from "./pages";
+import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
 import { errText } from "./ui";
 
-const tabs = [
-  { id: "machines", label: "Machines", view: Machines },
-  { id: "topology", label: "Topology", view: Topology },
-  { id: "flows", label: "Flows", view: Flows },
-  { id: "users", label: "Users", view: Users },
-  { id: "keys", label: "Keys", view: Keys },
-  { id: "routes", label: "Routes", view: Routes },
-  { id: "gateway", label: "Gateway", view: Gateway },
-  { id: "policy", label: "Access policy", view: Policy },
-  { id: "access", label: "Access requests", view: Access },
-  { id: "recordings", label: "SSH recordings", view: Recordings },
-  { id: "audit", label: "Audit log", view: Audit },
-] as const;
+// The console's pages, grouped as the sidebar shows them.
+const groups = [
+  {
+    label: "Network",
+    items: [
+      { id: "machines", label: "Machines", icon: Monitor, view: Machines },
+      { id: "topology", label: "Topology", icon: Network, view: Topology },
+      { id: "flows", label: "Flows", icon: Activity, view: Flows },
+    ],
+  },
+  {
+    label: "Access",
+    items: [
+      { id: "users", label: "Users", icon: Users, view: UsersPage },
+      { id: "keys", label: "Keys", icon: KeyRound, view: Keys },
+      { id: "routes", label: "Routes", icon: Route, view: Routes },
+      { id: "gateway", label: "Gateway", icon: Globe, view: Gateway },
+      { id: "policy", label: "Access policy", icon: ShieldCheck, view: Policy },
+      { id: "access", label: "Access requests", icon: Hourglass, view: Access },
+    ],
+  },
+  {
+    label: "Records",
+    items: [
+      { id: "recordings", label: "SSH recordings", icon: SquareTerminal, view: Recordings },
+      { id: "audit", label: "Audit log", icon: ScrollText, view: Audit },
+    ],
+  },
+];
+
+const tabs = groups.flatMap((g) => g.items.map((item) => ({ ...item, group: g.label })));
 
 function currentTab() {
   const id = location.hash.replace(/^#\/?/, "");
@@ -23,6 +76,14 @@ function currentTab() {
 }
 
 type Me = { method: string; identity: string; oidcEnabled?: boolean };
+
+/** initials for the avatar: "karan" -> "KA", "ann@example.com" -> "AN". */
+function initials(identity: string) {
+  const name = identity.replace(/^api-key:/, "").split("@")[0];
+  return (name.slice(0, 2) || "?").toUpperCase();
+}
+
+const methodLabel: Record<string, string> = { admin: "Admin account", oidc: "Signed in with OIDC", "api-key": "API key" };
 
 export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -49,41 +110,98 @@ export function App() {
 
   const View = tab.view;
   return (
-    <div className="shell">
-      <aside className="nav">
-        <div className="brand">
-          <Logo /> Whalescale
-        </div>
-        <nav>
-          {tabs.map((t) => (
-            <a key={t.id} href={`#/${t.id}`} className={t.id === tab.id ? "active" : ""} aria-current={t.id === tab.id ? "page" : undefined}>
-              {t.label}
-            </a>
+    <AnimatedSidebarProvider>
+      <AnimatedSidebar ariaLabel="Whalescale" collapsible="icon">
+        <AnimatedSidebarHeader className="p-3 pb-2">
+          <div className="flex min-h-11 items-center gap-3 overflow-hidden px-2">
+            <span className="grid size-7 shrink-0 place-items-center">
+              <Logo size={28} />
+            </span>
+            <div className="min-w-0 flex-1 group-data-[state=collapsed]/sidebar:hidden">
+              <div className="truncate text-sm font-semibold text-foreground">Whalescale</div>
+              <div className="truncate text-xs text-muted-foreground">{location.host}</div>
+            </div>
+            <AnimatedSidebarClose className="ml-auto text-muted-foreground hover:bg-muted md:hidden">
+              <X aria-hidden="true" className="size-4" />
+            </AnimatedSidebarClose>
+          </div>
+        </AnimatedSidebarHeader>
+
+        <AnimatedSidebarContent className="px-2 pt-1">
+          {groups.map((g) => (
+            <AnimatedSidebarGroup key={g.label}>
+              <AnimatedSidebarGroupLabel>{g.label}</AnimatedSidebarGroupLabel>
+              <AnimatedSidebarGroupContent>
+                <AnimatedSidebarMenu>
+                  {g.items.map(({ id, label, icon: Icon }) => (
+                    <AnimatedSidebarMenuItem key={id}>
+                      <AnimatedSidebarMenuButton href={`#/${id}`} isActive={id === tab.id} icon={<Icon className="size-4" />}>
+                        {label}
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                  ))}
+                </AnimatedSidebarMenu>
+              </AnimatedSidebarGroupContent>
+            </AnimatedSidebarGroup>
           ))}
-        </nav>
-        <div className="me">
-          <div className="me-id" title={`${me.method}: ${me.identity}`}>{me.identity}</div>
-          {me.method === "admin" && (
-            <button className="btn ghost small" onClick={() => setPwOpen(true)}>
-              Change password
-            </button>
-          )}
-          <button
-            className="btn ghost small"
-            onClick={async () => {
-              await logout();
-              setMe(null);
-            }}
-          >
-            Sign out
-          </button>
+        </AnimatedSidebarContent>
+
+        <AnimatedSidebarFooter className="gap-1 p-3">
+          <div className="flex min-h-11 items-center gap-3 overflow-hidden rounded-xl p-1" title={`${me.method}: ${me.identity}`}>
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#d5ff66] text-xs font-semibold text-[#172000]">
+              {initials(me.identity)}
+            </span>
+            <span className="min-w-0 flex-1 group-data-[state=collapsed]/sidebar:hidden">
+              <span className="block truncate text-sm font-medium text-foreground">{me.identity}</span>
+              <span className="block truncate text-xs text-muted-foreground">{methodLabel[me.method] ?? me.method}</span>
+            </span>
+          </div>
+          <AnimatedSidebarMenu>
+            {me.method === "admin" && (
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton icon={<LockKeyhole className="size-4" />} onSelect={() => setPwOpen(true)}>
+                  Change password
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+            )}
+            <AnimatedSidebarMenuItem>
+              <AnimatedSidebarMenuButton
+                icon={<LogOut className="size-4" />}
+                onSelect={async () => {
+                  await logout();
+                  setMe(null);
+                }}
+              >
+                Sign out
+              </AnimatedSidebarMenuButton>
+            </AnimatedSidebarMenuItem>
+          </AnimatedSidebarMenu>
+        </AnimatedSidebarFooter>
+
+        <AnimatedSidebarRail />
+      </AnimatedSidebar>
+
+      <AnimatedSidebarInset>
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur">
+          <AnimatedSidebarTrigger className="text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            <PanelLeft aria-hidden="true" className="size-4" />
+          </AnimatedSidebarTrigger>
+          <div className="h-5 w-px bg-border" />
+          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">{tab.group}</span>
+            <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate font-medium text-foreground">{tab.label}</span>
+          </nav>
+          <kbd className="ml-auto hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground sm:block">
+            Ctrl B
+          </kbd>
+        </header>
+        <div className="main">
+          {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
+          <View />
         </div>
-      </aside>
-      <main className="main">
-        {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
-        <View />
-      </main>
-    </div>
+      </AnimatedSidebarInset>
+    </AnimatedSidebarProvider>
   );
 }
 
@@ -278,11 +396,11 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Logo() {
+function Logo({ size = 22 }: { size?: number }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
       <rect width="32" height="32" rx="8" fill="var(--accent)" />
-      <path d="M6 19c3 0 4-3 7-3s4 3 7 3 4-3 6-3" stroke="white" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M6 19c3 0 4-3 7-3s4 3 7 3 4-3 6-3" stroke="var(--accent-text)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
     </svg>
   );
 }

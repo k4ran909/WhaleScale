@@ -1,0 +1,18 @@
+/* Tailwind (shadcn's setup) plus the console's own styles. Layer order:
+   Tailwind's reset, then styles.css, then Tailwind's utilities, so a
+   utility class on a component always wins over the console's CSS. */
+@layer theme, base, app, components, utilities;
+@import "tailwindcss";
+@import "./styles.css" layer(app);
+
+/* shadcn colour tokens as Tailwind colours: bg-background, text-foreground,
+   bg-muted, text-muted-foreground, border-border, ring-ring. The values
+   live in styles.css, light and dark. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+}

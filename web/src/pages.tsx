@@ -537,7 +537,7 @@ export function Policy() {
   const [check, setCheck] = useState<{ errors?: string[]; warnings?: string[] }>();
   const [saved, setSaved] = useState<string>();
   const [saveErr, setSaveErr] = useState<string>();
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (loaded.data && text === undefined) setText(loaded.data.policy);
