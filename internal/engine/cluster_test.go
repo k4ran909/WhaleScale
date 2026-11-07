@@ -93,7 +93,10 @@ func testClusterFailover(t *testing.T, crash bool) {
 	dir := tempDir(t)
 	dbPath := storetest.DSN(t, dir)
 	s1 := startClusterServer(t, dbPath)
-	time.Sleep(50 * time.Millisecond) // s1 is the older member
+	// The lease goes to whichever server takes it first, so let s1 take it
+	// before s2 starts: the test then moves leadership from s1 to s2. (A
+	// head start of a few milliseconds isn't enough on a busy CI machine.)
+	waitFor(t, "s1 leads", s1.srv.Leader)
 	s2 := startClusterServer(t, dbPath)
 	ctx := context.Background()
 	s1.store.CreateUser(ctx, "alice")
