@@ -41,7 +41,7 @@ func table(header string) *tabwriter.Writer {
 // shown once (nothing to type into a 'docker exec' without a terminal);
 // change them in the console.
 func cmdAdmins(args []string) error {
-	usage := errors.New("usage: whalescale admins list | create NAME | reset-password NAME | delete NAME")
+	usage := errors.New("usage: whalescale admins list | create NAME | reset-password NAME | reset-2fa NAME | delete NAME")
 	if len(args) == 0 {
 		return usage
 	}
@@ -63,11 +63,33 @@ func cmdAdmins(args []string) error {
 		if err != nil {
 			return err
 		}
-		tw := table("NAME\tCREATED")
+		tw := table("NAME\tCREATED\tTWO-FACTOR")
 		for _, a := range admins {
-			fmt.Fprintf(tw, "%s\t%s\n", a.Name, a.CreatedAt.Format(time.DateTime))
+			twoFactor := "off"
+			if a.TwoFactor {
+				twoFactor = "on"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", a.Name, a.CreatedAt.Format(time.DateTime), twoFactor)
 		}
 		tw.Flush()
+	case "reset-2fa":
+		// For a lost phone: the account signs in with its password alone
+		// until it turns two-factor sign-in on again.
+		if fs.NArg() != 1 {
+			return usage
+		}
+		name := strings.ToLower(fs.Arg(0))
+		if err := st.DisableAdminTOTP(ctx, name); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("no admin account %q; see 'whalescale admins list'", name)
+			}
+			return err
+		}
+		if err := st.DeleteSessionsOf(ctx, store.AdminIdentity(name)); err != nil {
+			return err
+		}
+		cliAudit(ctx, st, "two-factor sign-in reset", "admin", name)
+		fmt.Printf("two-factor sign-in is off for %s: they sign in with the password, then can turn it on again in the console\n", name)
 	case "create", "reset-password":
 		if fs.NArg() != 1 {
 			return usage

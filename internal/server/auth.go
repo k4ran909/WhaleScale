@@ -21,6 +21,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/control"
 	"github.com/k4ran909/whalescale/internal/passwd"
 	"github.com/k4ran909/whalescale/internal/store"
+	"github.com/k4ran909/whalescale/internal/totp"
 )
 
 const sessionTTL = 12 * time.Hour
@@ -86,6 +87,10 @@ func (a *auth) routes(mux *http.ServeMux, limit func(http.Handler) http.Handler)
 	mux.Handle("POST /auth/setup", limit(http.HandlerFunc(a.setup)))
 	mux.Handle("POST /auth/password", limit(http.HandlerFunc(a.passwordLogin)))
 	mux.Handle("POST /auth/password/change", limit(http.HandlerFunc(a.changePassword)))
+	mux.Handle("GET /auth/2fa", limit(http.HandlerFunc(a.twoFactorStatus)))
+	mux.Handle("POST /auth/2fa/setup", limit(http.HandlerFunc(a.twoFactorSetup)))
+	mux.Handle("POST /auth/2fa/enable", limit(http.HandlerFunc(a.twoFactorEnable)))
+	mux.Handle("POST /auth/2fa/disable", limit(http.HandlerFunc(a.twoFactorDisable)))
 	mux.Handle("GET /auth/login", limit(http.HandlerFunc(a.login)))
 	mux.Handle("GET /auth/node", limit(http.HandlerFunc(a.nodeLogin)))
 	mux.Handle("GET /auth/callback", limit(http.HandlerFunc(a.callback)))
@@ -366,11 +371,22 @@ func (a *auth) setup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// passwordLogin signs a console account in with its password.
+// twoFactorHeader on a 401 from /auth/password tells the console that the
+// password was right and the account needs a code from its authenticator
+// app too. It's only sent after the password checks out, so it says
+// nothing about accounts to someone guessing.
+const twoFactorHeader = "X-Whalescale-Two-Factor"
+
+// clock is the time two-factor codes are checked against (tests move it).
+var clock = time.Now
+
+// passwordLogin signs a console account in with its password, and its
+// TOTP code when two-factor sign-in is on.
 func (a *auth) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
+		Code     string `json:"code"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -392,6 +408,25 @@ func (a *auth) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "wrong name or password", http.StatusUnauthorized)
 		return
 	}
+	secret, _, err := a.srv.store.AdminTOTP(ctx, name)
+	if err != nil {
+		a.srv.log.Error("password sign-in", "admin", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if secret != "" {
+		if strings.TrimSpace(body.Code) == "" {
+			w.Header().Set(twoFactorHeader, "required")
+			http.Error(w, "enter the code from your authenticator app", http.StatusUnauthorized)
+			return
+		}
+		if !a.useCode(ctx, name, secret, body.Code) {
+			a.srv.log.Warn("console sign-in refused: wrong two-factor code", "admin", name, "remote", r.RemoteAddr)
+			w.Header().Set(twoFactorHeader, "required")
+			http.Error(w, "that code is wrong or was already used: wait for the next one", http.StatusUnauthorized)
+			return
+		}
+	}
 	if err := a.startSession(w, ctx, store.AdminIdentity(name)); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -411,27 +446,8 @@ func (a *auth) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	c, err := r.Cookie(control.SessionCookie)
-	if err != nil {
-		http.Error(w, "not signed in", http.StatusUnauthorized)
-		return
-	}
-	who, err := a.srv.store.SessionIdentity(ctx, c.Value)
-	name, isAccount := strings.CutPrefix(who, "admin:")
-	switch {
-	case err != nil:
-		http.Error(w, "session expired; sign in again", http.StatusUnauthorized)
-		return
-	case !isAccount:
-		http.Error(w, "only password accounts have a password to change", http.StatusBadRequest)
-		return
-	}
-	hash, err := a.srv.store.AdminPasswordHash(ctx, name)
-	if err == nil {
-		err = passwd.Verify(body.Current, hash)
-	}
-	if err != nil {
-		http.Error(w, "the current password is wrong", http.StatusForbidden)
+	name, ok := a.account(w, r, "only password accounts have a password to change")
+	if !ok || !a.checkPassword(w, ctx, name, body.Current) {
 		return
 	}
 	if err := passwd.Check(body.New); err != nil {
@@ -452,6 +468,198 @@ func (a *auth) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.srv.control.Audit(ctx, store.AdminIdentity(name), "password changed")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// account returns the password account signed in on r's session, or
+// answers the request itself and returns false. notAccount is the error
+// for sessions opened some other way (OIDC, an API key).
+func (a *auth) account(w http.ResponseWriter, r *http.Request, notAccount string) (string, bool) {
+	c, err := r.Cookie(control.SessionCookie)
+	if err != nil {
+		http.Error(w, "not signed in", http.StatusUnauthorized)
+		return "", false
+	}
+	who, err := a.srv.store.SessionIdentity(r.Context(), c.Value)
+	name, isAccount := strings.CutPrefix(who, "admin:")
+	switch {
+	case err != nil:
+		http.Error(w, "session expired; sign in again", http.StatusUnauthorized)
+		return "", false
+	case !isAccount:
+		http.Error(w, notAccount, http.StatusBadRequest)
+		return "", false
+	}
+	return name, true
+}
+
+// checkPassword checks name's current password, answering 403 if it's
+// wrong.
+func (a *auth) checkPassword(w http.ResponseWriter, ctx context.Context, name, password string) bool {
+	hash, err := a.srv.store.AdminPasswordHash(ctx, name)
+	if err == nil {
+		err = passwd.Verify(password, hash)
+	}
+	if err != nil {
+		http.Error(w, "the current password is wrong", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// useCode checks a TOTP code for name and uses it up: each code works
+// once, on every server sharing the database.
+func (a *auth) useCode(ctx context.Context, name, secret, code string) bool {
+	_, last, err := a.srv.store.AdminTOTP(ctx, name)
+	if err != nil {
+		return false
+	}
+	step, ok := totp.Check(secret, code, clock(), last)
+	if !ok {
+		return false
+	}
+	ok, err = a.srv.store.UseAdminTOTPStep(ctx, name, step)
+	return err == nil && ok
+}
+
+// twoFactorStatus tells the console whether the signed-in account uses
+// two-factor sign-in ("available" is false for OIDC and API key sessions).
+func (a *auth) twoFactorStatus(w http.ResponseWriter, r *http.Request) {
+	var who string
+	c, err := r.Cookie(control.SessionCookie)
+	if err == nil {
+		who, err = a.srv.store.SessionIdentity(r.Context(), c.Value)
+	}
+	if err != nil {
+		http.Error(w, "not signed in", http.StatusUnauthorized)
+		return
+	}
+	out := map[string]bool{"available": false, "enabled": false}
+	if name, isAccount := strings.CutPrefix(who, "admin:"); isAccount {
+		secret, _, err := a.srv.store.AdminTOTP(r.Context(), name)
+		out["available"], out["enabled"] = err == nil, secret != ""
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(out)
+}
+
+// twoFactorSetup starts turning two-factor sign-in on: it needs the
+// password, and returns a new secret (as text, an otpauth:// link and a QR
+// code) that only takes effect once twoFactorEnable sees a code from it.
+func (a *auth) twoFactorSetup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	name, ok := a.account(w, r, "two-factor sign-in is for password accounts; your identity provider handles it for OIDC")
+	if !ok || !a.checkPassword(w, ctx, name, body.Password) {
+		return
+	}
+	if secret, _, err := a.srv.store.AdminTOTP(ctx, name); err != nil || secret != "" {
+		http.Error(w, "two-factor sign-in is already on: turn it off first to use a new phone", http.StatusConflict)
+		return
+	}
+	secret := totp.NewSecret()
+	uri := totp.URI("Whalescale", name+"@"+consoleHost(a.srv.cfg.PublicURL), secret)
+	qr, err := totp.QRSVG(uri)
+	if err == nil {
+		err = a.srv.store.SetAdminTOTPPending(ctx, name, secret)
+	}
+	if err != nil {
+		a.srv.log.Error("two-factor setup", "admin", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]string{"secret": secret, "uri": uri, "qr": qr})
+}
+
+// twoFactorEnable turns two-factor sign-in on once a code from the new
+// secret checks out, and signs the account out everywhere else.
+func (a *auth) twoFactorEnable(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Code string `json:"code"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	name, ok := a.account(w, r, "two-factor sign-in is for password accounts")
+	if !ok {
+		return
+	}
+	pending, err := a.srv.store.AdminTOTPPending(ctx, name)
+	if err != nil || pending == "" {
+		http.Error(w, "start the setup again", http.StatusConflict)
+		return
+	}
+	step, ok := totp.Check(pending, body.Code, clock(), 0)
+	if !ok {
+		http.Error(w, "that code doesn't match: check the phone's clock, and type the code the app shows now", http.StatusForbidden)
+		return
+	}
+	err = a.srv.store.EnableAdminTOTP(ctx, name, pending, step)
+	if err == nil {
+		err = a.srv.store.DeleteSessionsOf(ctx, store.AdminIdentity(name))
+	}
+	if err == nil {
+		err = a.startSession(w, ctx, store.AdminIdentity(name)) // this browser stays signed in
+	}
+	if err != nil {
+		a.srv.log.Error("two-factor enable", "admin", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	a.srv.control.Audit(ctx, store.AdminIdentity(name), "two-factor sign-in turned on")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// twoFactorDisable turns two-factor sign-in off: it needs the password and
+// a current code. (Lost the phone? 'whalescale admins reset-2fa NAME' on
+// the server.)
+func (a *auth) twoFactorDisable(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	ctx := r.Context()
+	name, ok := a.account(w, r, "two-factor sign-in is for password accounts")
+	if !ok || !a.checkPassword(w, ctx, name, body.Password) {
+		return
+	}
+	secret, _, err := a.srv.store.AdminTOTP(ctx, name)
+	if err != nil || secret == "" {
+		http.Error(w, "two-factor sign-in is already off", http.StatusConflict)
+		return
+	}
+	if !a.useCode(ctx, name, secret, body.Code) {
+		http.Error(w, "that code is wrong or was already used: wait for the next one", http.StatusForbidden)
+		return
+	}
+	if err := a.srv.store.DisableAdminTOTP(ctx, name); err != nil {
+		a.srv.log.Error("two-factor disable", "admin", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	a.srv.control.Audit(ctx, store.AdminIdentity(name), "two-factor sign-in turned off")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// consoleHost names the server in authenticator apps: "ws.example.com".
+func consoleHost(publicURL string) string {
+	h := strings.TrimPrefix(strings.TrimPrefix(publicURL, "https://"), "http://")
+	h, _, _ = strings.Cut(h, "/")
+	if h == "" {
+		return "whalescale"
+	}
+	return h
 }
 
 func (a *auth) logout(w http.ResponseWriter, r *http.Request) {

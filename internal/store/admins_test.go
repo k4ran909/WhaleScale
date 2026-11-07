@@ -94,3 +94,50 @@ func TestAdmins(t *testing.T) {
 		t.Fatal("remaining admin missing")
 	}
 }
+
+func TestAdminTOTP(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	if _, err := s.CreateAdmin(ctx, "ann", "hash"); err != nil {
+		t.Fatal(err)
+	}
+	if secret, _, err := s.AdminTOTP(ctx, "ann"); err != nil || secret != "" {
+		t.Fatalf("new account: %q %v", secret, err)
+	}
+	if err := s.SetAdminTOTPPending(ctx, "ann", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	// Only the secret that's pending can be turned on.
+	if err := s.EnableAdminTOTP(ctx, "ann", "OTHER", 10); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("enable with another secret: %v", err)
+	}
+	if err := s.EnableAdminTOTP(ctx, "ann", "PENDING", 10); err != nil {
+		t.Fatal(err)
+	}
+	secret, last, _ := s.AdminTOTP(ctx, "ann")
+	pending, _ := s.AdminTOTPPending(ctx, "ann")
+	if secret != "PENDING" || last != 10 || pending != "" {
+		t.Fatalf("after enable: %q %d %q", secret, last, pending)
+	}
+	if list, _ := s.ListAdmins(ctx); len(list) != 1 || !list[0].TwoFactor {
+		t.Fatalf("ListAdmins = %+v", list)
+	}
+	// Each step's code works once, and older ones never.
+	for _, c := range []struct {
+		step int64
+		want bool
+	}{{10, false}, {11, true}, {11, false}, {9, false}, {12, true}} {
+		if ok, err := s.UseAdminTOTPStep(ctx, "ann", c.step); err != nil || ok != c.want {
+			t.Fatalf("UseAdminTOTPStep(%d) = %v %v", c.step, ok, err)
+		}
+	}
+	if err := s.DisableAdminTOTP(ctx, "ann"); err != nil {
+		t.Fatal(err)
+	}
+	if secret, _, _ := s.AdminTOTP(ctx, "ann"); secret != "" {
+		t.Fatal("still on after disable")
+	}
+	if err := s.DisableAdminTOTP(ctx, "nobody"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown account: %v", err)
+	}
+}

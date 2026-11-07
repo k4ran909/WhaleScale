@@ -248,12 +248,29 @@ async function postAuth(path: string, body: object) {
   });
   if (!res.ok) {
     const text = (await res.text()).trim();
+    // The password was right, and the account needs its authenticator code.
+    if (res.headers.get("X-Whalescale-Two-Factor") === "required") throw new ApiError("two-factor", text);
     throw new ApiError(res.status === 401 ? "unauthenticated" : String(res.status), text || "Request failed");
   }
+  return res;
 }
 
 export const setupAdmin = (code: string, name: string, password: string) => postAuth("/auth/setup", { code, name, password });
-export const loginWithPassword = (name: string, password: string) => postAuth("/auth/password", { name, password });
+export const loginWithPassword = (name: string, password: string, code = "") =>
+  postAuth("/auth/password", { name, password, code });
+
+/** Two-factor sign-in for password accounts ("available" is false for
+ * OIDC and API key sessions). */
+export async function twoFactorStatus(): Promise<{ available: boolean; enabled: boolean }> {
+  const res = await fetch("/auth/2fa", { credentials: "same-origin" });
+  if (!res.ok) throw new ApiError(String(res.status), (await res.text()).trim() || "Request failed");
+  return res.json();
+}
+/** Starts setup: a new secret as text, an otpauth:// link and a QR code (SVG). */
+export const twoFactorSetup = (password: string) =>
+  postAuth("/auth/2fa/setup", { password }).then((r) => r.json() as Promise<{ secret: string; uri: string; qr: string }>);
+export const twoFactorEnable = (code: string) => postAuth("/auth/2fa/enable", { code });
+export const twoFactorDisable = (password: string, code: string) => postAuth("/auth/2fa/disable", { password, code });
 export const loginWithAPIKey = (key: string) => postAuth("/auth/apikey", { key });
 export const changePassword = (current: string, next: string) =>
   postAuth("/auth/password/change", { current, new: next });

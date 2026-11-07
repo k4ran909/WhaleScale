@@ -15,6 +15,7 @@ type Admin struct {
 	ID        uint64
 	Name      string
 	CreatedAt time.Time
+	TwoFactor bool // signs in with a TOTP code too
 }
 
 // ValidName reports whether name is a valid user or admin name.
@@ -124,7 +125,7 @@ func (s *Store) DeleteAdmin(ctx context.Context, name string) error {
 
 // ListAdmins returns the console accounts, oldest first.
 func (s *Store) ListAdmins(ctx context.Context) ([]Admin, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, created_at FROM admins ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, created_at, totp_secret <> '' FROM admins ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +134,73 @@ func (s *Store) ListAdmins(ctx context.Context) ([]Admin, error) {
 	for rows.Next() {
 		var a Admin
 		var created int64
-		if err := rows.Scan(&a.ID, &a.Name, &created); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &created, &a.TwoFactor); err != nil {
 			return nil, err
 		}
 		a.CreatedAt = time.Unix(created, 0)
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// AdminTOTP returns a console account's TOTP secret ("" when two-factor
+// sign-in is off) and the time step of the last code it used.
+func (s *Store) AdminTOTP(ctx context.Context, name string) (secret string, last int64, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT totp_secret, totp_last FROM admins WHERE name = ?`, name).Scan(&secret, &last)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, ErrNotFound
+	}
+	return secret, last, err
+}
+
+// SetAdminTOTPPending stores the secret being set up, until EnableAdminTOTP.
+func (s *Store) SetAdminTOTPPending(ctx context.Context, name, secret string) error {
+	return s.updateAdmin(ctx, `UPDATE admins SET totp_pending = ? WHERE name = ?`, secret, name)
+}
+
+// AdminTOTPPending returns the secret being set up ("" when none).
+func (s *Store) AdminTOTPPending(ctx context.Context, name string) (string, error) {
+	var p string
+	err := s.db.QueryRowContext(ctx, `SELECT totp_pending FROM admins WHERE name = ?`, name).Scan(&p)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return p, err
+}
+
+// EnableAdminTOTP turns two-factor sign-in on with the pending secret,
+// if it's still pending; step is the code that confirmed it.
+func (s *Store) EnableAdminTOTP(ctx context.Context, name, pending string, step int64) error {
+	return s.updateAdmin(ctx, `UPDATE admins SET totp_secret = totp_pending, totp_pending = '', totp_last = ?
+		WHERE name = ? AND totp_pending = ? AND totp_pending <> ''`, step, name, pending)
+}
+
+// DisableAdminTOTP turns two-factor sign-in off.
+func (s *Store) DisableAdminTOTP(ctx context.Context, name string) error {
+	return s.updateAdmin(ctx, `UPDATE admins SET totp_secret = '', totp_pending = '', totp_last = 0 WHERE name = ?`, name)
+}
+
+// UseAdminTOTPStep records that a code from step was used, and reports
+// false if one from that step or later already was: across every server
+// sharing the database, a code works once.
+func (s *Store) UseAdminTOTPStep(ctx context.Context, name string, step int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE admins SET totp_last = ? WHERE name = ? AND totp_last < ?`, step, name, step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+func (s *Store) updateAdmin(ctx context.Context, query string, args ...any) error {
+	res, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // AdminIdentity is a console account's session identity.

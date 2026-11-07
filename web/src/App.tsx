@@ -12,6 +12,7 @@ import {
   Route,
   ScrollText,
   ShieldCheck,
+  Smartphone,
   SquareTerminal,
   Users,
   X,
@@ -35,7 +36,21 @@ import {
   AnimatedSidebarTrigger,
 } from "@/components/ui/animated-sidebar";
 import { AsciiAquarium } from "@/components/aquarium/ascii-aquarium";
-import { api, ApiError, authStatus, AuthStatus, changePassword, loginWithAPIKey, loginWithPassword, logout, setupAdmin } from "./api";
+import {
+  api,
+  ApiError,
+  authStatus,
+  AuthStatus,
+  changePassword,
+  loginWithAPIKey,
+  loginWithPassword,
+  logout,
+  setupAdmin,
+  twoFactorDisable,
+  twoFactorEnable,
+  twoFactorSetup,
+  twoFactorStatus,
+} from "./api";
 import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
 import { errText } from "./ui";
 
@@ -93,6 +108,7 @@ export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [tab, setTab] = useState(currentTab);
   const [pwOpen, setPwOpen] = useState(false);
+  const [tfOpen, setTfOpen] = useState(false);
 
   useEffect(() => {
     const onHash = () => setTab(currentTab());
@@ -168,6 +184,13 @@ export function App() {
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
             )}
+            {me.method === "admin" && (
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton icon={<Smartphone className="size-4" />} onSelect={() => setTfOpen(true)}>
+                  Two-factor sign-in
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+            )}
             <AnimatedSidebarMenuItem>
               <AnimatedSidebarMenuButton
                 icon={<LogOut className="size-4" />}
@@ -202,6 +225,7 @@ export function App() {
         </header>
         <div className="main">
           {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
+          {tfOpen && <TwoFactor onClose={() => setTfOpen(false)} />}
           <View />
         </div>
       </AnimatedSidebarInset>
@@ -320,9 +344,22 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
   const [pw, setPw] = useState("");
   const [key, setKey] = useState("");
   const [useKey, setUseKey] = useState(false);
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
   const { busy, err, onSubmit } = useSubmit(async () => {
     if (useKey) await loginWithAPIKey(key);
-    else await loginWithPassword(name, pw);
+    else {
+      try {
+        await loginWithPassword(name, pw, needCode ? code : "");
+      } catch (e) {
+        // The password was right; ask for the authenticator code.
+        if (e instanceof ApiError && e.code === "two-factor" && !needCode) {
+          setNeedCode(true);
+          return;
+        }
+        throw e;
+      }
+    }
     onDone();
   });
   return (
@@ -349,6 +386,21 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
             Password
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required />
           </label>
+          {needCode && (
+            <label>
+              Code from your authenticator app
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123 456"
+                maxLength={7}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+          )}
         </>
       )}
       {err && <div className="err-line">{err}</div>}
@@ -360,7 +412,13 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
       </button>
       {!useKey && (
         <p className="muted small">
-          Forgot your password? On the server run <code>whalescale admins reset-password NAME</code>.
+          Forgot your password? On the server run <code>whalescale admins reset-password NAME</code>
+          {needCode && (
+            <>
+              ; lost your phone, <code>whalescale admins reset-2fa NAME</code>
+            </>
+          )}
+          .
         </p>
       )}
     </Card>
@@ -395,6 +453,97 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
           </label>
           <button className="btn primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button>
         </div>
+      )}
+      {err && <div className="err-line">{err}</div>}
+    </form>
+  );
+}
+
+/** TwoFactor turns two-factor sign-in (TOTP) on or off for the signed-in
+ * password account. */
+function TwoFactor({ onClose }: { onClose: () => void }) {
+  const [status, setStatus] = useState<{ available: boolean; enabled: boolean }>();
+  const [loadErr, setLoadErr] = useState<string>();
+  const [pw, setPw] = useState("");
+  const [code, setCode] = useState("");
+  const [setup, setSetup] = useState<{ secret: string; uri: string; qr: string }>();
+  const [done, setDone] = useState<string>();
+  useEffect(() => {
+    twoFactorStatus().then(setStatus, (e) => setLoadErr(errText(e)));
+  }, []);
+  const { busy, err, onSubmit } = useSubmit(async () => {
+    if (status?.enabled) {
+      await twoFactorDisable(pw, code);
+      setDone("Two-factor sign-in is off. You sign in with your password alone.");
+    } else if (!setup) {
+      setSetup(await twoFactorSetup(pw));
+    } else {
+      await twoFactorEnable(code);
+      setDone("Two-factor sign-in is on. Other browsers signed in as you were signed out.");
+    }
+    setPw("");
+    setCode("");
+  });
+  const codeField = (
+    <label>
+      Code from the app
+      <input inputMode="numeric" autoComplete="one-time-code" placeholder="123 456" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} required />
+    </label>
+  );
+  return (
+    <form className="secret" onSubmit={onSubmit}>
+      <div className="secret-head">
+        <strong>Two-factor sign-in</strong>
+        <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+      </div>
+      {loadErr && <div className="err-line">{loadErr}</div>}
+      {done ? (
+        <p className="ok-line">{done}</p>
+      ) : !status ? (
+        !loadErr && <p className="muted">Loading…</p>
+      ) : status.enabled ? (
+        <>
+          <p>
+            <strong>On.</strong> Signing in takes your password and a code from your authenticator app. To turn it off, confirm both.
+          </p>
+          <div className="form-grid">
+            <label>
+              Password
+              <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required />
+            </label>
+            {codeField}
+            <button className="btn danger" disabled={busy}>{busy ? "Turning off…" : "Turn off"}</button>
+          </div>
+        </>
+      ) : !setup ? (
+        <>
+          <p>
+            Ask for a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy…) every time you sign in, on top of your
+            password. Confirm your password to start.
+          </p>
+          <div className="form-grid">
+            <label>
+              Password
+              <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required />
+            </label>
+            <button className="btn primary" disabled={busy}>{busy ? "Starting…" : "Set up"}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p>Scan this with your authenticator app, then type the 6-digit code it shows.</p>
+          <div className="row" style={{ alignItems: "flex-start", gap: "1.25rem" }}>
+            <img src={"data:image/svg+xml;utf8," + encodeURIComponent(setup.qr)} width={180} height={180} alt="QR code for your authenticator app" />
+            <div>
+              <p className="muted small">Can't scan? Enter this key in the app instead:</p>
+              <code className="mono" style={{ wordBreak: "break-all" }}>{setup.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
+            </div>
+          </div>
+          <div className="form-grid">
+            {codeField}
+            <button className="btn primary" disabled={busy}>{busy ? "Checking…" : "Turn on"}</button>
+          </div>
+        </>
       )}
       {err && <div className="err-line">{err}</div>}
     </form>
