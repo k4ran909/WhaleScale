@@ -21,7 +21,7 @@ func TestSignVerify(t *testing.T) {
 	}
 	// What pasting into a secrets form adds is forgiven.
 	enc := k.Encode()
-	for _, pasted := range []string{"\"" + enc + "\"", " " + enc + "\r\n", enc[:30] + "\n" + enc[30:]} {
+	for _, pasted := range []string{"\"" + enc + "\"", " " + enc + "\r\n", enc[:30] + "\n" + enc[30:], strings.TrimPrefix(enc, keyPrefix)} {
 		if k3, err := ParseKey(pasted); err != nil || k3.PublicKey() != k.PublicKey() {
 			t.Errorf("ParseKey(pasted form): %v", err)
 		}

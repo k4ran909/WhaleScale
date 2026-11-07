@@ -63,6 +63,12 @@ func ParseKey(s string) (*Key, error) {
 	s = strings.Join(strings.Fields(s), "")
 	s = strings.Trim(s, `"'`)
 	rest, ok := strings.CutPrefix(s, keyPrefix)
+	// Just the part after the prefix (double-clicking it in an editor
+	// selects only that) is fine too: it decodes to 40 bytes, where the
+	// public key decodes to 42, so the two can't be mixed up.
+	if b, err := base64.StdEncoding.DecodeString(s); !ok && err == nil && len(b) == 8+ed25519.SeedSize {
+		rest, ok = s, true
+	}
 	switch {
 	case s == "":
 		return nil, errors.New("the release key is empty")
