@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,14 +16,20 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/k4ran909/whalescale/internal/release"
 )
 
-// Where releases come from. The installer is checked against the
-// release's checksums.txt before it runs.
+// Where releases come from. Before the installer runs, the release's
+// checksums.txt must carry a good signature from the release key
+// (checksums.txt.minisig), and the installer must match its checksum.
 const (
 	releasesAPI = "https://api.github.com/repos/k4ran909/WhaleScale/releases/latest"
 	downloadURL = "https://github.com/k4ran909/WhaleScale/releases/download"
 )
+
+// releaseKey is the key releases must be signed with (tests swap it).
+var releaseKey = release.PublicKey
 
 // installerName is the release's installer for this PC.
 func installerName() string { return "whalescale-setup-windows-" + runtime.GOARCH + ".exe" }
@@ -94,7 +101,7 @@ func newer(current, latest string) bool {
 // the release's checksums.txt, returning its path.
 func downloadInstaller(ctx context.Context, hc *http.Client, base, tag, dir string) (string, error) {
 	name := installerName()
-	want, err := checksumFor(ctx, hc, base+"/"+tag+"/checksums.txt", name)
+	want, err := checksumFor(ctx, hc, base+"/"+tag, name)
 	if err != nil {
 		return "", err
 	}
@@ -130,21 +137,21 @@ func downloadInstaller(ctx context.Context, hc *http.Client, base, tag, dir stri
 	return path, nil
 }
 
-// checksumFor returns name's SHA-256 from a checksums.txt ("<hex>  name").
-func checksumFor(ctx context.Context, hc *http.Client, url, name string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+// checksumFor returns name's SHA-256 from the release's checksums.txt
+// ("<hex>  name"), once its signature checks out.
+func checksumFor(ctx context.Context, hc *http.Client, releaseURL, name string) (string, error) {
+	sums, err := fetch(ctx, hc, releaseURL+"/checksums.txt")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("download checksums: %w", err)
 	}
-	resp, err := hc.Do(req)
+	sig, err := fetch(ctx, hc, releaseURL+"/checksums.txt.minisig")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("download the checksums' signature: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("download checksums: %s", resp.Status)
+	if err := release.Verify(releaseKey, sums, string(sig)); err != nil {
+		return "", fmt.Errorf("the release isn't signed with the Whalescale release key (%v): not installing it", err)
 	}
-	sc := bufio.NewScanner(io.LimitReader(resp.Body, 1<<20))
+	sc := bufio.NewScanner(bytes.NewReader(sums))
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) == 2 && f[1] == name && len(f[0]) == 64 {
@@ -152,4 +159,21 @@ func checksumFor(ctx context.Context, hc *http.Client, url, name string) (string
 		}
 	}
 	return "", fmt.Errorf("%s isn't in the release's checksums", name)
+}
+
+// fetch GETs a small file (up to 1 MB).
+func fetch(ctx context.Context, hc *http.Client, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, errors.New(resp.Status)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }

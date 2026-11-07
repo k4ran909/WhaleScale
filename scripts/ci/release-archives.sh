@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds the release downloads for tag $1 (e.g. v1.2.3) into dist/: an
-# archive per OS/arch, Windows installers, and checksums. Needs zip, unzip,
-# curl and makensis (NSIS).
+# archive per OS/arch, Windows installers, an SBOM, and checksums signed
+# with the release key ($RELEASE_SIGNING_KEY, see docs/woodpecker.md).
+# Needs zip, unzip, curl, makensis (NSIS) and minisign.
 set -eu
 version=$1
 v=${version#v}
@@ -39,5 +40,13 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 wi
     tar -czf "dist/$name.tar.gz" -C "$out" .
   fi
 done
+# What went into every program (CycloneDX), read from their build info.
+programs=$(find build -mindepth 2 -maxdepth 2 -type f \( -name whalescale -o -name 'whalescale.exe' -o -name 'whalescale-tray.exe' -o -name 'ws' -o -name 'ws.exe' -o -name 'wsd' -o -name 'wsd.exe' \) | sort)
+# shellcheck disable=SC2086 # one path per word
+go run ./internal/release/tool sbom -version "$version" -time "$(git log -1 --format=%cI)" $programs > dist/sbom.cdx.json
 (cd dist && sha256sum ./* | sed 's# \./# #' > checksums.txt)
+# Sign the checksums (which cover every file), then check the signature
+# with the real minisign, as users will.
+go run ./internal/release/tool sign dist/checksums.txt
+minisign -Vm dist/checksums.txt -p packaging/release-key.pub
 ls -l dist

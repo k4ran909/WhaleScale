@@ -9,6 +9,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/k4ran909/whalescale/internal/release"
 )
 
 func TestNewer(t *testing.T) {
@@ -36,6 +39,14 @@ func TestUpdateDownload(t *testing.T) {
 	sum := sha256.Sum256(installer)
 	name := installerName()
 	tampered := false
+	key, err := release.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(k string) { releaseKey = k }(releaseKey)
+	releaseKey = key.PublicKey()
+	sums := "0000  other.zip\n" + hex.EncodeToString(sum[:]) + "  " + name + "\n"
+	sig := key.Sign([]byte(sums), "checksums.txt", time.Now())
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" {
@@ -45,7 +56,10 @@ func TestUpdateDownload(t *testing.T) {
 		w.Write([]byte(`{"tag_name":"v0.1.4","name":"v0.1.4"}`))
 	})
 	mux.HandleFunc("/dl/v0.1.4/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("0000  other.zip\n" + hex.EncodeToString(sum[:]) + "  " + name + "\n"))
+		w.Write([]byte(sums))
+	})
+	mux.HandleFunc("/dl/v0.1.4/checksums.txt.minisig", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(sig))
 	})
 	mux.HandleFunc("/dl/v0.1.4/"+name, func(w http.ResponseWriter, r *http.Request) {
 		if tampered {
@@ -78,5 +92,18 @@ func TestUpdateDownload(t *testing.T) {
 	}
 	if _, err := downloadInstaller(ctx, hs.Client(), hs.URL+"/dl", "v9.9.9", t.TempDir()); err == nil {
 		t.Fatal("missing release accepted")
+	}
+
+	// Checksums signed with any other key (or not at all) are refused
+	// before anything is downloaded.
+	tampered = false
+	other, _ := release.NewKey()
+	sig = other.Sign([]byte(sums), "checksums.txt", time.Now())
+	if _, err := downloadInstaller(ctx, hs.Client(), hs.URL+"/dl", tag, t.TempDir()); err == nil || !strings.Contains(err.Error(), "isn't signed") {
+		t.Fatalf("checksums signed with another key: %v", err)
+	}
+	sig = ""
+	if _, err := downloadInstaller(ctx, hs.Client(), hs.URL+"/dl", tag, t.TempDir()); err == nil {
+		t.Fatal("unsigned checksums accepted")
 	}
 }

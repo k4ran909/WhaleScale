@@ -11,6 +11,8 @@
 set -eu
 
 REPO="k4ran909/WhaleScale"
+# The release key's public half (internal/release.PublicKey).
+RELEASE_KEY="RWQTDZ8OU3crgX88ZlDbLDwo0k+eu+ZQJMQ/DF3FsOwAoYXbEWqs6Jz5"
 VERSION="latest"
 SERVER=0
 JOIN=""
@@ -54,6 +56,17 @@ trap 'rm -rf "$tmp"' EXIT
 say "downloading $asset ($VERSION)"
 curl -fsSL -o "$tmp/$asset" "$base/$asset"
 curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"
+
+# The checksums are signed with the release key (packaging/release-key.pub),
+# from v0.1.8 on. With minisign installed, a bad signature stops here.
+if command -v minisign >/dev/null; then
+	if curl -fsSL -o "$tmp/checksums.txt.minisig" "$base/checksums.txt.minisig"; then
+		say "verifying signature"
+		minisign -Vqm "$tmp/checksums.txt" -P "$RELEASE_KEY" || die "checksums.txt isn't signed with the Whalescale release key"
+	else
+		say "note: $VERSION has no signature (releases before v0.1.8 weren't signed)"
+	fi
+fi
 
 say "verifying checksum"
 expected=$(grep " $asset\$" "$tmp/checksums.txt" | cut -d' ' -f1)

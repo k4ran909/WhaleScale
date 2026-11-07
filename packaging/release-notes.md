@@ -14,6 +14,6 @@ The `.tar.gz` and `.zip` archives hold the plain programs, for manual installs a
 - **amd64**: Intel and AMD processors, which most PCs and servers have.
 - **arm64**: ARM processors, such as Apple Silicon Macs (M1 and later), Raspberry Pi 4/5 with a 64-bit system, ARM cloud servers and Snapdragon laptops.
 
-`checksums.txt` lets you verify a download (`sha256sum -c checksums.txt`). GitHub adds the two "Source code" entries to every release by itself; you don't need them.
+`checksums.txt` lets you verify a download (`sha256sum -c --ignore-missing checksums.txt`), and `checksums.txt.minisig` proves the checksums come from the Whalescale release key: `minisign -Vm checksums.txt -P RWQTDZ8OU3crgX88ZlDbLDwo0k+eu+ZQJMQ/DF3FsOwAoYXbEWqs6Jz5`. The tray icon's Update checks both by itself. `sbom.cdx.json` lists every Go module built into the programs (CycloneDX). GitHub adds the two "Source code" entries to every release by itself; you don't need them.
 
 Windows may warn that the installer is from an unknown publisher because it isn't code-signed yet: choose **More info → Run anyway**.
