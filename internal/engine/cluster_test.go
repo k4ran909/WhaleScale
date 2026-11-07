@@ -122,9 +122,16 @@ func testClusterFailover(t *testing.T, crash bool) {
 		}
 		return false
 	})
-	waitFor(t, "s1 leads", s1.srv.Leader)
+	// The lease goes to whichever server holds it: on a busy machine it can
+	// pass to s2 while the devices are being set up (the test's lease is
+	// 2 s). Fail over whichever one leads now; its devices must move to the
+	// other. (TestLeaderStepsDownWhenLeaseLapses checks two never lead.)
+	waitFor(t, "exactly one leader", func() bool { return s1.srv.Leader() != s2.srv.Leader() })
+	gone, stays := s1, s2
+	movers := []*Engine{a, c}
 	if s2.srv.Leader() {
-		t.Fatal("two leaders")
+		gone, stays = s2, s1
+		movers = []*Engine{b, d}
 	}
 
 	// A policy saved through s2 reaches a, which is connected to s1.
@@ -142,7 +149,7 @@ func testClusterFailover(t *testing.T, crash bool) {
 		return len(f) == 1 && len(f[0].Ports) == 1 && f[0].Ports[0].First == 7400
 	})
 
-	// Steady traffic a -> b while s1 goes away.
+	// Steady traffic a -> b while the leader goes away.
 	var sent, failed atomic.Int64
 	stopTraffic := make(chan struct{})
 	trafficDone := make(chan struct{})
@@ -162,18 +169,20 @@ func testClusterFailover(t *testing.T, crash bool) {
 	}()
 	time.Sleep(500 * time.Millisecond)
 	if crash {
-		s1.crash()
+		gone.crash()
 	} else {
-		s1.stop()
+		gone.stop()
 	}
 
-	waitFor(t, "a moves to s2", func() bool {
-		a.apiMu.Lock()
-		defer a.apiMu.Unlock()
-		return a.apiURL == s2.url
-	})
-	waitFor(t, "s2 takes over as leader", s2.srv.Leader)
-	// Relayed traffic resumes once everyone is on s2's relay.
+	for _, m := range movers {
+		waitFor(t, m.opts.State.NodeName+" moves to the other server", func() bool {
+			m.apiMu.Lock()
+			defer m.apiMu.Unlock()
+			return m.apiURL == stays.url
+		})
+	}
+	waitFor(t, "the other server takes over as leader", stays.srv.Leader)
+	// Relayed traffic resumes once everyone is on the remaining relay.
 	waitFor(t, "relayed traffic resumes", func() bool { return roundTrip(c, d, 7400, 2*time.Second) == nil })
 	time.Sleep(time.Second)
 	close(stopTraffic)
