@@ -2,8 +2,8 @@ apiVersion: v2
 name: whalescale
 description: Self-hosted mesh VPN control server (control plane, relay, STUN, web console)
 type: application
-version: 0.1.7
-appVersion: "0.1.7"
+version: 0.1.8
+appVersion: "0.1.8"
 home: https://github.com/k4ran909/WhaleScale
 icon: https://raw.githubusercontent.com/k4ran909/WhaleScale/main/assets/brand/app-icon.svg
 sources:
