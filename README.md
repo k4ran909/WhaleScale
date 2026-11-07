@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo.svg">
+    <img src="assets/brand/logo-blue.svg" alt="Whalescale" width="200">
+  </picture>
+</p>
+
 # Whalescale
 
 A self-hosted mesh VPN: control plane, relay, STUN, web console and clients, all yours. One server binary with SQLite, or PostgreSQL for several servers. See [plan.md](plan.md) for the vision and roadmap.

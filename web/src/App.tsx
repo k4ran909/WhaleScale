@@ -234,7 +234,7 @@ function Card({ children, onSubmit }: { children: ReactNode; onSubmit?: (e: Form
       <AsciiAquarium />
       <form className="login-card" onSubmit={onSubmit}>
         <div className="brand big">
-          <Logo /> Whalescale
+          <img src="/whale.svg" width={73} height={40} alt="" /> Whalescale
         </div>
         {children}
       </form>
@@ -401,11 +401,8 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Logo is the app icon: the pixel whale on navy (web/public, made by
+ * scripts/brand.sh from assets/brand). */
 function Logo({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="var(--accent)" />
-      <path d="M6 19c3 0 4-3 7-3s4 3 7 3 4-3 6-3" stroke="var(--accent-text)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-    </svg>
-  );
+  return <img src="/favicon.svg" width={size} height={size} alt="" className="block shrink-0" />;
 }

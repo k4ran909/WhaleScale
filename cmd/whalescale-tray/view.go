@@ -1,6 +1,7 @@
 // Command whalescale-tray is Whalescale's icon in the Windows notification
-// area: green when this PC is connected, grey when not, with the network's
-// devices in its menu and Connect, Disconnect and Open dashboard.
+// area: the whale on blue when this PC is connected, on grey when not,
+// with the network's devices in its menu and Connect, Disconnect and Open
+// dashboard.
 //
 // It runs as the signed-in user, who may not use wsd's local API, so it
 // reads the status wsd publishes (clientstate.PublicStatusPath) and runs
@@ -21,7 +22,7 @@ const staleAfter = 10 * time.Second
 
 // view is what the tray shows.
 type view struct {
-	Color   string // "green", "amber" or "grey"
+	Color   string // "blue", "amber" or "grey"
 	Title   string // the menu's first line
 	Tooltip string
 	// Self is this PC's line ("karan · 100.64.0.1"); Address is copied.
@@ -58,7 +59,7 @@ func viewOf(ps clientstate.PublicStatus, err error, now time.Time) view {
 		}
 		return v
 	}
-	v.Color, v.Title, v.CanDisconnect = "green", "Connected", true
+	v.Color, v.Title, v.CanDisconnect = "blue", "Connected", true
 	v.Self, v.Address = ps.Name, ps.Address
 	if ps.Address != "" {
 		v.Self = ps.Name + " · " + ps.Address

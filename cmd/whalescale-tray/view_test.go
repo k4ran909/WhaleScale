@@ -37,7 +37,7 @@ func TestViewOf(t *testing.T) {
 		"not logged in":  {ps: fresh(clientstate.PublicStatus{State: "logged-out"}), color: "grey", title: "Not on a network"},
 		"ws down":        {ps: fresh(clientstate.PublicStatus{State: "down", Server: "https://ws.example.com"}), color: "grey", title: "Disconnected", connect: true},
 		"connecting":     {ps: fresh(clientstate.PublicStatus{State: "connecting"}), color: "amber", title: "Connecting", disconnect: true},
-		"connected":      {ps: connected, color: "green", title: "Connected", disconnect: true, peers: true},
+		"connected":      {ps: connected, color: "blue", title: "Connected", disconnect: true, peers: true},
 	} {
 		v := viewOf(tc.ps, tc.err, now)
 		if v.Color != tc.color || !strings.Contains(v.Title, tc.title) || v.CanStart != tc.start ||
@@ -75,7 +75,7 @@ func TestViewOf(t *testing.T) {
 	}
 }
 
-// The icon is a valid .ico: three PNG images, the logo's colours.
+// The icon is a valid .ico: three PNG images of the whale on its colour.
 func TestIcon(t *testing.T) {
 	for name, want := range colors {
 		ico := icon(name)
@@ -95,7 +95,7 @@ func TestIcon(t *testing.T) {
 			if err != nil || img.Bounds().Dx() != size {
 				t.Fatalf("%s: entry %d: %v", name, i, err)
 			}
-			// A point on the square, away from the wave, has the colour; a
+			// A point on the square, above the whale, has the colour; a
 			// corner is transparent.
 			r, g, b, a := img.At(size/2, size/5).RGBA()
 			if uint8(r>>8) != want.R || uint8(g>>8) != want.G || uint8(b>>8) != want.B || a>>8 != 0xff {

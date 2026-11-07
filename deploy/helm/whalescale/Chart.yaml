@@ -5,6 +5,7 @@ type: application
 version: 0.1.6
 appVersion: "0.1.6"
 home: https://github.com/k4ran909/WhaleScale
+icon: https://raw.githubusercontent.com/k4ran909/WhaleScale/main/assets/brand/app-icon.svg
 sources:
   - https://github.com/k4ran909/WhaleScale
 keywords: [vpn, wireguard, mesh, tailscale, headscale]

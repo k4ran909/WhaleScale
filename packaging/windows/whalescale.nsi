@@ -69,6 +69,10 @@ Var FinishText
 Var UpdateMode
 
 !define MUI_ABORTWARNING
+; The pixel whale (scripts/brand.sh makes the .ico from assets/brand).
+; makensis runs in this file's directory.
+!define MUI_ICON "whalescale.ico"
+!define MUI_UNICON "whalescale.ico"
 !define MUI_WELCOMEPAGE_TITLE "Install Whalescale"
 !define MUI_WELCOMEPAGE_TEXT "Whalescale puts this PC on your own private network, so your devices can reach each other from anywhere, as if they were in the same room.$\r$\n$\r$\nHave the join code from your Whalescale dashboard ready: Machines -> Add device."
 !insertmacro MUI_PAGE_WELCOME
@@ -165,12 +169,13 @@ Section "Install"
   File "${SRCDIR}/whalescale-tray.exe"
   File "${SRCDIR}/wintun.dll"
   File "${SRCDIR}/wintun-LICENSE.txt"
+  File "whalescale.ico"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayName" "${APP}"
   WriteRegStr HKLM "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "${UNINSTKEY}" "Publisher" "Whalescale"
-  WriteRegStr HKLM "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\wsd.exe"
+  WriteRegStr HKLM "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\whalescale.ico"
   WriteRegStr HKLM "${UNINSTKEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINSTKEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegStr HKLM "${UNINSTKEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
@@ -191,9 +196,9 @@ Section "Install"
   ; 'ws status' talks to the service, which only Administrators may do.
   CreateDirectory "$SMPROGRAMS\Whalescale"
   CreateShortcut "$SMPROGRAMS\Whalescale\Whalescale status.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" \
-    "-NoProfile -WindowStyle Hidden -Command Start-Process -Verb RunAs cmd.exe -ArgumentList '/k ws status'" "$INSTDIR\wsd.exe" 0
+    "-NoProfile -WindowStyle Hidden -Command Start-Process -Verb RunAs cmd.exe -ArgumentList '/k ws status'" "$INSTDIR\whalescale.ico" 0
   CreateShortcut "$SMPROGRAMS\Whalescale\Uninstall Whalescale.lnk" "$INSTDIR\uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\Whalescale\Whalescale.lnk" "$INSTDIR\whalescale-tray.exe"
+  CreateShortcut "$SMPROGRAMS\Whalescale\Whalescale.lnk" "$INSTDIR\whalescale-tray.exe" "" "$INSTDIR\whalescale.ico" 0
 
   ; The tray icon starts at every sign-in, and now. Explorer starts it as the
   ; signed-in user, not as this elevated installer.
@@ -229,6 +234,7 @@ Section "Uninstall"
   Delete "$INSTDIR\wsd.exe"
   Delete "$INSTDIR\wintun.dll"
   Delete "$INSTDIR\wintun-LICENSE.txt"
+  Delete "$INSTDIR\whalescale.ico"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\Whalescale\Whalescale status.lnk"
