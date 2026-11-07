@@ -39,6 +39,9 @@ import { api, ApiError, authStatus, AuthStatus, changePassword, loginWithAPIKey,
 import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
 import { errText } from "./ui";
 
+// The sidebar toggles on Ctrl+B, or Cmd+B on a Mac.
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 // The console's pages, grouped as the sidebar shows them.
 const groups = [
   {
@@ -194,7 +197,7 @@ export function App() {
             <span className="truncate font-medium text-foreground">{tab.label}</span>
           </nav>
           <kbd className="ml-auto hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground sm:block">
-            Ctrl B
+            {isMac ? "⌘B" : "Ctrl B"}
           </kbd>
         </header>
         <div className="main">

@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -337,6 +338,54 @@ func cmdNodes(args []string) error {
 		fmt.Println("deleted node", id)
 	default:
 		return fmt.Errorf("unknown nodes subcommand %q", args[0])
+	}
+	return nil
+}
+
+func cmdRecordings(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: whalescale recordings list | delete ID")
+	}
+	fs, db := adminFlags("recordings " + args[0])
+	dir := fs.String("recordings-dir", configuredRecordingsDir(), "where recordings are stored (default: 'recordings' next to the database)")
+	st, err := openStore(fs, db, args[1:])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if *dir == "" {
+		*dir = filepath.Join(store.DataDir(*db), "recordings")
+	}
+	ctx := context.Background()
+	switch args[0] {
+	case "list":
+		list, err := st.ListRecordings(ctx, 500)
+		if err != nil {
+			return err
+		}
+		tw := table("ID\tNODE\tLOCAL USER\tFROM\tSTARTED\tLENGTH\tSIZE")
+		for _, r := range list {
+			from := r.SrcUser + "@" + r.SrcNode
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%d\n", r.ID, r.NodeName, r.LocalUser, from,
+				r.StartedAt.Format(time.DateTime), r.EndedAt.Sub(r.StartedAt).Round(time.Second), r.Size)
+		}
+		tw.Flush()
+	case "delete":
+		if fs.NArg() != 1 {
+			return errors.New("usage: whalescale recordings delete ID")
+		}
+		id, err := strconv.ParseUint(fs.Arg(0), 10, 64)
+		if err != nil {
+			return fmt.Errorf("bad recording id %q", fs.Arg(0))
+		}
+		r, err := st.DeleteRecording(ctx, *dir, id)
+		if err != nil {
+			return err
+		}
+		cliAudit(ctx, st, "recording deleted", "recording_id", id, "node", r.NodeName)
+		fmt.Println("deleted recording", id)
+	default:
+		return fmt.Errorf("unknown recordings subcommand %q", args[0])
 	}
 	return nil
 }

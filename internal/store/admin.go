@@ -525,3 +525,18 @@ func (s *Store) RecordingByID(ctx context.Context, dir string, id uint64) (*Reco
 	data, err := os.ReadFile(filepath.Join(dir, filepath.Base(r.File)))
 	return &r, data, err
 }
+
+// DeleteRecording deletes a recording and its file.
+func (s *Store) DeleteRecording(ctx context.Context, dir string, id uint64) (*Recording, error) {
+	r, err := scanRecording(s.db.QueryRowContext(ctx, `DELETE FROM recordings WHERE id = ? RETURNING `+recordingColumns, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("recording %d: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Remove(filepath.Join(dir, filepath.Base(r.File))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return &r, err
+	}
+	return &r, nil
+}

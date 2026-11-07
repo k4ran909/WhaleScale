@@ -37,6 +37,7 @@ Usage:
   whalescale relays      list | approve NODE | unapprove NODE
   whalescale flows       [--node NAME] [--since 1h] [--denied] [--limit 100]
   whalescale audit       [--since 24h] [--actor X] [--action X] [--limit 100] | --verify
+  whalescale recordings  list | delete ID     (recorded SSH sessions)
   whalescale access      list [--all] | approve ID | deny ID | revoke ID
   whalescale cluster     servers sharing this database, and which one leads
   whalescale policy      check FILE | explain SRC DST:PORT [--file FILE]
@@ -89,6 +90,8 @@ func main() {
 		err = cmdFlows(args)
 	case "audit":
 		err = cmdAudit(args)
+	case "recordings":
+		err = cmdRecordings(args)
 	case "access":
 		err = cmdAccess(args)
 	case "cluster":
@@ -132,6 +135,16 @@ func configuredDB() string {
 		os.Exit(1)
 	}
 	return opts.db
+}
+
+// configuredRecordingsDir reads 'recordings-dir' the way configuredDB reads
+// 'db'; empty means the default beside the database.
+func configuredRecordingsDir() string {
+	opts, _, err := loadServeConfig(nil, true)
+	if err != nil {
+		return ""
+	}
+	return opts.recordingsDir
 }
 
 // configuredPublicURL reads 'public-url' the way configuredDB reads 'db':

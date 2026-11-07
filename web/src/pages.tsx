@@ -799,8 +799,8 @@ function sizeText(s?: string): string {
 }
 
 export function Recordings() {
-  const { data: recs, error } = useLoad(api.listRecordings, 15000);
-  const [view, setView] = useState<{ title: string; text: string }>();
+  const { data: recs, error, reload } = useLoad(api.listRecordings, 15000);
+  const [view, setView] = useState<{ id: string; title: string; text: string }>();
   const [msg, setMsg] = useState<string>();
 
   const open = async (r: { id: string; nodeName: string; localUser: string }, download: boolean) => {
@@ -815,7 +815,7 @@ export function Recordings() {
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        setView({ title: `${r.localUser}@${r.nodeName}`, text: castToText(cast) });
+        setView({ id: r.id, title: `${r.localUser}@${r.nodeName}`, text: castToText(cast) });
       }
     } catch (e) {
       setMsg(errText(e));
@@ -875,6 +875,16 @@ export function Recordings() {
                     <td className="right">
                       <button className="btn ghost" onClick={() => open(r, false)}>View</button>
                       <button className="btn ghost" onClick={() => open(r, true)}>Download</button>
+                      <ConfirmButton
+                        label="Delete"
+                        confirm="Delete recording?"
+                        onConfirm={() =>
+                          api.deleteRecording(r.id).then(() => {
+                            if (view?.id === r.id) setView(undefined);
+                            reload();
+                          }, (e) => setMsg(errText(e)))
+                        }
+                      />
                     </td>
                   </tr>
                 );

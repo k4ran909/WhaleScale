@@ -92,6 +92,9 @@ const (
 	// AdminServiceGetRecordingProcedure is the fully-qualified name of the AdminService's GetRecording
 	// RPC.
 	AdminServiceGetRecordingProcedure = "/whalescale.v1.AdminService/GetRecording"
+	// AdminServiceDeleteRecordingProcedure is the fully-qualified name of the AdminService's
+	// DeleteRecording RPC.
+	AdminServiceDeleteRecordingProcedure = "/whalescale.v1.AdminService/DeleteRecording"
 	// AdminServiceListAuditEventsProcedure is the fully-qualified name of the AdminService's
 	// ListAuditEvents RPC.
 	AdminServiceListAuditEventsProcedure = "/whalescale.v1.AdminService/ListAuditEvents"
@@ -149,6 +152,7 @@ type AdminServiceClient interface {
 	QueryFlows(context.Context, *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error)
 	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
+	DeleteRecording(context.Context, *connect.Request[v1.DeleteRecordingRequest]) (*connect.Response[v1.DeleteRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	// Network lock. The server stores and relays what admins sign on their
@@ -314,6 +318,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteRecording: connect.NewClient[v1.DeleteRecordingRequest, v1.DeleteRecordingResponse](
+			httpClient,
+			baseURL+AdminServiceDeleteRecordingProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("DeleteRecording")),
+			connect.WithClientOptions(opts...),
+		),
 		listAuditEvents: connect.NewClient[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse](
 			httpClient,
 			baseURL+AdminServiceListAuditEventsProcedure,
@@ -402,6 +412,7 @@ type adminServiceClient struct {
 	queryFlows           *connect.Client[v1.QueryFlowsRequest, v1.QueryFlowsResponse]
 	listRecordings       *connect.Client[v1.ListRecordingsRequest, v1.ListRecordingsResponse]
 	getRecording         *connect.Client[v1.GetRecordingRequest, v1.GetRecordingResponse]
+	deleteRecording      *connect.Client[v1.DeleteRecordingRequest, v1.DeleteRecordingResponse]
 	listAuditEvents      *connect.Client[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse]
 	getLock              *connect.Client[v1.GetLockRequest, v1.GetLockResponse]
 	updateLock           *connect.Client[v1.UpdateLockRequest, v1.UpdateLockResponse]
@@ -529,6 +540,11 @@ func (c *adminServiceClient) GetRecording(ctx context.Context, req *connect.Requ
 	return c.getRecording.CallUnary(ctx, req)
 }
 
+// DeleteRecording calls whalescale.v1.AdminService.DeleteRecording.
+func (c *adminServiceClient) DeleteRecording(ctx context.Context, req *connect.Request[v1.DeleteRecordingRequest]) (*connect.Response[v1.DeleteRecordingResponse], error) {
+	return c.deleteRecording.CallUnary(ctx, req)
+}
+
 // ListAuditEvents calls whalescale.v1.AdminService.ListAuditEvents.
 func (c *adminServiceClient) ListAuditEvents(ctx context.Context, req *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {
 	return c.listAuditEvents.CallUnary(ctx, req)
@@ -607,6 +623,7 @@ type AdminServiceHandler interface {
 	QueryFlows(context.Context, *connect.Request[v1.QueryFlowsRequest]) (*connect.Response[v1.QueryFlowsResponse], error)
 	ListRecordings(context.Context, *connect.Request[v1.ListRecordingsRequest]) (*connect.Response[v1.ListRecordingsResponse], error)
 	GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error)
+	DeleteRecording(context.Context, *connect.Request[v1.DeleteRecordingRequest]) (*connect.Response[v1.DeleteRecordingResponse], error)
 	// The audit log of admin and security-relevant actions, newest first.
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	// Network lock. The server stores and relays what admins sign on their
@@ -768,6 +785,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("GetRecording")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceDeleteRecordingHandler := connect.NewUnaryHandler(
+		AdminServiceDeleteRecordingProcedure,
+		svc.DeleteRecording,
+		connect.WithSchema(adminServiceMethods.ByName("DeleteRecording")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListAuditEventsHandler := connect.NewUnaryHandler(
 		AdminServiceListAuditEventsProcedure,
 		svc.ListAuditEvents,
@@ -876,6 +899,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListRecordingsHandler.ServeHTTP(w, r)
 		case AdminServiceGetRecordingProcedure:
 			adminServiceGetRecordingHandler.ServeHTTP(w, r)
+		case AdminServiceDeleteRecordingProcedure:
+			adminServiceDeleteRecordingHandler.ServeHTTP(w, r)
 		case AdminServiceListAuditEventsProcedure:
 			adminServiceListAuditEventsHandler.ServeHTTP(w, r)
 		case AdminServiceGetLockProcedure:
@@ -995,6 +1020,10 @@ func (UnimplementedAdminServiceHandler) ListRecordings(context.Context, *connect
 
 func (UnimplementedAdminServiceHandler) GetRecording(context.Context, *connect.Request[v1.GetRecordingRequest]) (*connect.Response[v1.GetRecordingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetRecording is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) DeleteRecording(context.Context, *connect.Request[v1.DeleteRecordingRequest]) (*connect.Response[v1.DeleteRecordingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.DeleteRecording is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error) {

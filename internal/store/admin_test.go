@@ -163,6 +163,18 @@ func TestRecordings(t *testing.T) {
 	if _, _, err := s.RecordingByID(ctx, dir, 999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown recording: %v", err)
 	}
+	if _, err := s.DeleteRecording(ctx, dir, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RecordingByID(ctx, dir, r.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted recording: %v", err)
+	}
+	if files, _ := os.ReadDir(dir); len(files) != 0 {
+		t.Fatalf("files left after delete: %v", files)
+	}
+	if _, err := s.DeleteRecording(ctx, dir, r.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleting twice: %v", err)
+	}
 }
 
 func TestRecordingQuotaAndRetention(t *testing.T) {

@@ -209,11 +209,12 @@ func TestReadOnlyAPIKey(t *testing.T) {
 		}
 	}
 	for m, body := range map[string]string{
-		"CreateUser":   `{"name":"mallory"}`,
-		"SetPolicy":    `{"policy":"{\"acls\":[]}"}`,
-		"CreateAPIKey": `{}`,
-		"GetRecording": `{"id":"1"}`,
-		"DecideAccess": `{"id":"1","approve":true}`,
+		"CreateUser":      `{"name":"mallory"}`,
+		"SetPolicy":       `{"policy":"{\"acls\":[]}"}`,
+		"CreateAPIKey":    `{}`,
+		"GetRecording":    `{"id":"1"}`,
+		"DeleteRecording": `{"id":"1"}`,
+		"DecideAccess":    `{"id":"1","approve":true}`,
 	} {
 		if code, out := adminCall(t, c, hs.URL, m, body, bearer); code != 403 {
 			t.Errorf("%s with a read key: %d %v, want 403", m, code, out)

@@ -627,6 +627,19 @@ func (a *Admin) GetRecording(ctx context.Context, req *connect.Request[v1.GetRec
 	return connect.NewResponse(&v1.GetRecordingResponse{Recording: recordingProto(r), Data: data}), nil
 }
 
+func (a *Admin) DeleteRecording(ctx context.Context, req *connect.Request[v1.DeleteRecordingRequest]) (*connect.Response[v1.DeleteRecordingResponse], error) {
+	id, err := a.auth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	r, err := a.svc.store.DeleteRecording(ctx, a.svc.cfg.RecordingsDir, req.Msg.Id)
+	if err != nil {
+		return nil, notFoundOr(a, "delete recording", err)
+	}
+	a.audit(ctx, id, "recording deleted", "recording_id", r.ID, "node", r.NodeName)
+	return connect.NewResponse(&v1.DeleteRecordingResponse{}), nil
+}
+
 // --- API keys ---
 
 func apiKeyProto(k *store.APIKey) *v1.APIKey {

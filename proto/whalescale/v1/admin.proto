@@ -46,6 +46,7 @@ service AdminService {
 
   rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
   rpc GetRecording(GetRecordingRequest) returns (GetRecordingResponse);
+  rpc DeleteRecording(DeleteRecordingRequest) returns (DeleteRecordingResponse);
 
   // The audit log of admin and security-relevant actions, newest first.
   rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
@@ -263,6 +264,8 @@ message GetRecordingResponse {
   Recording recording = 1;
   bytes data = 2;
 }
+message DeleteRecordingRequest { uint64 id = 1; }
+message DeleteRecordingResponse {}
 
 message GetLockRequest {}
 message GetLockResponse {

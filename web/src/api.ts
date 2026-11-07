@@ -214,6 +214,7 @@ export const api = {
   listRecordings: () => call<{ recordings?: Recording[] }>("ListRecordings").then((r) => r.recordings ?? []),
   // data is base64 (protobuf JSON for bytes).
   getRecording: (id: string) => call<{ recording: Recording; data?: string }>("GetRecording", { id }),
+  deleteRecording: (id: string) => call("DeleteRecording", { id }),
   listExposures: () =>
     call<{ exposures?: Exposure[]; gatewayDomain?: string }>("ListExposures").then((r) => ({
       exposures: r.exposures ?? [],
