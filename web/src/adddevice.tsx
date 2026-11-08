@@ -4,12 +4,14 @@ import { api, Node } from "./api";
 import { Banner, CopyField, errText, useLoad } from "./ui";
 
 const releases = "https://github.com/k4ran909/WhaleScale/releases/latest/download";
+const androidGuide = "https://github.com/k4ran909/WhaleScale/blob/main/docs/guides/android.md";
 const installScript = "https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh";
 
-type OS = "windows" | "linux" | "macos";
+type OS = "windows" | "linux" | "macos" | "android";
 
 function guessOS(): OS {
   const p = navigator.userAgent;
+  if (/Android/i.test(p)) return "android";
   if (/Windows/i.test(p)) return "windows";
   if (/Mac/i.test(p)) return "macos";
   return "linux";
@@ -24,6 +26,7 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
   const [newUser, setNewUser] = useState("");
   const [several, setSeveral] = useState(false);
   const [code, setCode] = useState<string>();
+  const [qr, setQR] = useState<string>();
   const [os, setOS] = useState<OS>(guessOS);
   const [busy, setBusy] = useState(false);
   const [joined, setJoined] = useState<Node[]>([]);
@@ -67,6 +70,7 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
       known.current = undefined;
       const r = await api.createPreAuthKey(owner, several, false, several ? 7 * 86400 : 86400);
       setCode(r.joinCode || r.secret);
+      setQR(r.joinCodeQr);
       setJoined([]);
     } catch (e) {
       toast.error(errText(e));
@@ -125,9 +129,9 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
           <CopyField text={code} />
 
           <div className="tabs" role="tablist">
-            {(["windows", "macos", "linux"] as OS[]).map((o) => (
+            {(["windows", "macos", "linux", "android"] as OS[]).map((o) => (
               <button key={o} type="button" role="tab" aria-selected={os === o} className={os === o ? "tab active" : "tab"} onClick={() => setOS(o)}>
-                {{ windows: "Windows", macos: "macOS", linux: "Linux" }[o]}
+                {{ windows: "Windows", macos: "macOS", linux: "Linux", android: "Android" }[o]}
               </button>
             ))}
           </div>
@@ -145,6 +149,21 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
               </li>
               <li>Paste the join code when the installer asks for it, and click Install.</li>
             </ol>
+          ) : os === "android" ? (
+            <ol className="steps">
+              <li>
+                Install the Whalescale app on the phone (<a href={androidGuide}>how</a>).
+              </li>
+              <li>
+                Tap <strong>Scan QR code</strong> and point the camera at this code, or paste the join code instead.
+                {qr ? (
+                  <div className="qr">
+                    <img src={"data:image/svg+xml;utf8," + encodeURIComponent(qr)} width={200} height={200} alt="QR code of the join code" />
+                  </div>
+                ) : null}
+              </li>
+              <li>Tap Join, then allow the VPN connection when Android asks.</li>
+            </ol>
           ) : (
             <ol className="steps">
               <li>
@@ -154,10 +173,14 @@ export function AddDevice({ onClose }: { onClose: () => void }) {
               <li>It installs Whalescale, starts it, and joins your network.</li>
             </ol>
           )}
-          <p className="sub">
-            Whalescale already installed? Run this instead{os === "windows" ? " in a terminal opened as Administrator" : ""}:
-          </p>
-          <CopyField text={`${os === "windows" ? "ws" : "sudo ws"} login ${code}`} />
+          {os !== "android" ? (
+            <>
+              <p className="sub">
+                Whalescale already installed? Run this instead{os === "windows" ? " in a terminal opened as Administrator" : ""}:
+              </p>
+              <CopyField text={`${os === "windows" ? "ws" : "sudo ws"} login ${code}`} />
+            </>
+          ) : null}
 
           {joined.length > 0 ? (
             <Banner kind="ok">

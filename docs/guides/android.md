@@ -1,0 +1,124 @@
+# Android app
+
+The Android app puts a phone on your network like any other device: join
+with a code from the dashboard, then switch the VPN on. It is new and not on
+Google Play yet; you build the APK yourself (below) or take it from CI.
+
+## Using it
+
+1. In the dashboard, open **Machines → Add device**, get a join code and pick
+   the **Android** tab. It shows the code as a QR code.
+2. In the app, tap **Scan QR code** and point the camera at it, or paste the
+   join code (`wsjoin-…`). Check the device name and tap **Join**.
+3. Android asks whether Whalescale may set up a VPN connection: allow it.
+
+The main screen then shows:
+
+- **The switch:** connect and disconnect.
+- **This device:** its name and mesh IP address (tap the address to copy it).
+- **Devices:** everyone else on the network, with a green dot when online
+  and how traffic reaches them: **Direct** (peer to peer), **Relay** (through
+  the server's relay), **Peer relay**, or **Idle** (no traffic lately).
+- **Sign out:** removes this phone from the network and the dashboard. To come
+  back, join with a new code.
+- The app's version, and the Go core's.
+
+What it does on the phone:
+
+- Traffic to `100.64.0.0/10` (the mesh) and to [subnet routes](networking.md)
+  an admin approved goes through the tunnel. Everything else, including the
+  internet, goes the usual way. When a route is approved or removed the app
+  rebuilds the VPN interface on its own.
+- DNS goes to MagicDNS at `100.100.100.100`, so names like
+  `laptop.whale.internal` (or just `laptop`) work. Other names are looked up
+  with the phone's own DNS servers.
+- The app's own connections (to the server, the relay, peers' real
+  addresses) stay outside the tunnel.
+- The device's keys and identity are in the app's private storage
+  (`files/state.json`), so reconnecting doesn't register it again. They are
+  left out of backups and phone-to-phone transfers on purpose: a new phone
+  joins as a new device.
+
+Tips and limits:
+
+- **Stay connected across restarts:** Android Settings → Network & internet →
+  VPN → Whalescale (gear) → **Always-on VPN**. The app also reconnects on its
+  own when you open it, if it was connected before.
+- **Private DNS:** with a fixed Private DNS provider (Settings → Network &
+  internet → Private DNS → hostname), Android sends lookups there instead of
+  to MagicDNS, so mesh names don't resolve; mesh IP addresses still work.
+  "Automatic" is fine.
+- Not on Android yet: using an exit node, offering this phone as a subnet
+  router, relay or exit node, SSH into the phone, and several networks
+  (profiles). The roadmap ([plan.md](../../plan.md), Phase 5) lists what's
+  next.
+
+## Building it
+
+The app is two parts: the Go core, `mobile/` (it wraps the same engine as
+`wsd`), built into `android/app/libs/whalescale.aar` with
+[gomobile](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile), and the Kotlin
+app in `android/` (Jetpack Compose), built with Gradle.
+
+You need, on Linux, macOS or WSL:
+
+| Tool | Version |
+|---|---|
+| Go | the one in `go.mod` (1.27.3) |
+| JDK | 17 |
+| Android SDK | platform 35, build-tools 35.0.0 |
+| Android NDK | r27c (`27.2.12479018`) |
+
+[`scripts/ci/android-sdk.sh`](../../scripts/ci/android-sdk.sh) installs the
+JDK, SDK and NDK into one folder without root (about 3 GB; it accepts the
+Android SDK license for you):
+
+```bash
+ANDROID_TOOLS=$HOME/android-tools sh scripts/ci/android-sdk.sh
+```
+
+Then, from the repository root:
+
+```bash
+export JAVA_HOME=$HOME/android-tools/jdk17 ANDROID_HOME=$HOME/android-tools/sdk
+export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018 PATH=$HOME/android-tools/jdk17/bin:$PATH
+sh android/build-go.sh
+cd android && ./gradlew assembleDebug
+```
+
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Install it
+with `adb install`, or copy it to the phone and open it (allow installing
+from that app when Android asks). `ANDROID_TOOLS=$HOME/android-tools sh
+scripts/ci/android-build.sh` does both steps and copies the APK to `dist/`.
+
+To work on the Kotlin side in Android Studio, run `sh android/build-go.sh`
+once (and again after changing Go code), then open the `android/` folder.
+
+`build-go.sh` builds for arm64 and 32-bit arm phones and the x86_64
+emulator. Set `VERSION=v0.1.9` to stamp a version into the core, and pass
+`-PwsVersion=0.1.9` to Gradle for the app's own version (its `versionCode`
+is derived from it: 0.1.9 becomes 109).
+
+### Release builds
+
+`./gradlew assembleRelease` signs the APK when these are set, and leaves it
+unsigned (not installable) otherwise:
+
+| Variable | |
+|---|---|
+| `WS_ANDROID_KEYSTORE` | path to the keystore (`.jks`) |
+| `WS_ANDROID_KEYSTORE_PASSWORD` | its password |
+| `WS_ANDROID_KEY_ALIAS` | the key's alias (default `whalescale`) |
+| `WS_ANDROID_KEY_PASSWORD` | the key's password (default: the keystore's) |
+
+Make a key once with
+`keytool -genkeypair -keystore whalescale.jks -alias whalescale -keyalg EC -validity 10000`
+and keep it safe: Android only installs an update signed with the same key.
+
+### CI
+
+[`.woodpecker/android.yaml`](../../.woodpecker/android.yaml) builds a debug APK
+on pushes to `main` and on pull requests that touch the app, the Go code it's
+built from, or the pipeline. The first run downloads the JDK, SDK and NDK
+into the `woodpecker-android` volume; later runs reuse it. Releases don't
+include an APK yet: that needs a signing key kept as a CI secret.

@@ -100,6 +100,17 @@ type Options struct {
 	SSH bool
 	// SSHRunner overrides how sessions run (tests).
 	SSHRunner sshserver.Runner
+	// Platform, when set, supplies the TUN instead of the OS (mobile apps):
+	// the engine then leaves addresses, routes and DNS to it.
+	Platform Platform
+	// LocalDNS answers this machine's own lookups for names outside the
+	// mesh. A Platform's DNS server gets every lookup, not just mesh names
+	// as split DNS does on desktops, so the rest must go somewhere: the
+	// phone's own DNS servers. Without it they're refused.
+	LocalDNS func(ctx context.Context, query []byte) ([]byte, error)
+	// OSVersion is reported instead of what osinfo finds (mobile apps know
+	// it better).
+	OSVersion string
 	// Testing knobs.
 	ReportInterval  time.Duration // default 30s
 	NoDirect        bool
@@ -163,6 +174,9 @@ type Engine struct {
 	portmap *portmap.Client
 	sshKey  ssh.Signer
 	router  *osnet.Router
+	// swap and platCfg: the Platform's TUN and how it was last set up.
+	swap    *swapTUN
+	platCfg TunnelConfig
 	ready   chan struct{}
 	lastErr string
 
@@ -426,11 +440,15 @@ func (e *Engine) updateNode(eps []netip.AddrPort) error {
 	for name, port := range e.opts.Exposures {
 		exposures = append(exposures, &v1.Exposure{Name: name, Port: uint32(port)})
 	}
+	osVer := osVersion
+	if e.opts.OSVersion != "" {
+		osVer = e.opts.OSVersion
+	}
 	req := connect.NewRequest(&v1.UpdateNodeRequest{
 		NodeKey: e.nodeKey.Public().String(), DiscoKey: e.disco.Public().String(),
 		Endpoints: strs, Os: runtime.GOOS, AdvertisedRoutes: routes, Exposures: exposures,
 		OfferRelay: e.opts.OfferRelay, SshHostKey: e.sshHostPublic(),
-		OsVersion: osVersion, ClientVersion: version.Version,
+		OsVersion: osVer, ClientVersion: version.Version,
 	})
 	ctx, cancel := context.WithTimeout(e.ctx, 15*time.Second)
 	defer cancel()
@@ -761,6 +779,17 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	if err := e.syncOSRoutesLocked(subnets); err != nil {
 		e.log.Warn("install subnet routes", "err", err)
 	}
+	if e.swap != nil {
+		if cfg := tunnelConfig(self, dnsSuffix(nm), subnets); !cfg.equal(e.platCfg) {
+			if td, err := e.opts.Platform.OpenTUN(cfg); err != nil {
+				e.log.Warn("reconfigure tunnel; keeping the old routes", "err", err)
+			} else {
+				e.swap.Swap(td)
+				e.platCfg = cfg
+				e.log.Info("tunnel reconfigured", "routes", len(cfg.Routes))
+			}
+		}
+	}
 
 	// Packet filter.
 	var rules []policy.Rule
@@ -785,11 +814,7 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	e.selfIPs = selfIPs
 	e.filter.SetFlowLogging(nm.FlowLogs)
 
-	suffix := "whale.internal"
-	if nm.Dns != nil && nm.Dns.Suffix != "" {
-		suffix = nm.Dns.Suffix
-	}
-	e.dns.SetRecords(suffix, dnsNames)
+	e.dns.SetRecords(dnsSuffix(nm), dnsNames)
 
 	select {
 	case <-e.ready:
@@ -801,6 +826,14 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 }
 
 type selfInfo struct{ v4, v6 netip.Addr }
+
+// dnsSuffix is the MagicDNS domain a map names, or the default.
+func dnsSuffix(nm *v1.NetworkMap) string {
+	if nm.Dns != nil && nm.Dns.Suffix != "" {
+		return nm.Dns.Suffix
+	}
+	return "whale.internal"
+}
 
 func selfAddrs(n *v1.Node) (selfInfo, error) {
 	var s selfInfo
@@ -846,6 +879,14 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 		e.wg.Add(1)
 		go func() { defer e.wg.Done(); e.dns.Serve(pc) }()
 		go func() { <-e.ctx.Done(); pc.Close() }()
+	} else if e.opts.Platform != nil {
+		cfg := tunnelConfig(self, dnsSuffix(nm), nil)
+		td, err := e.opts.Platform.OpenTUN(cfg)
+		if err != nil {
+			return fmt.Errorf("open tunnel: %w", err)
+		}
+		e.swap, e.platCfg = newSwapTUN(td), cfg
+		tdev = e.swap
 	} else {
 		name := e.opts.TUNName
 		if name == "" {
@@ -879,15 +920,14 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 	e.dev = dev
 	e.wgDev.Store(dev)
 
-	if !e.opts.Userspace {
+	if e.opts.Platform != nil {
+		e.log.Info("tunnel up", "ipv4", self.v4, "ipv6", self.v6)
+	} else if !e.opts.Userspace {
 		ifname, err := tdev.Name()
 		if err != nil {
 			return err
 		}
-		suffix := "whale.internal"
-		if nm.Dns != nil && nm.Dns.Suffix != "" {
-			suffix = nm.Dns.Suffix
-		}
+		suffix := dnsSuffix(nm)
 		route6 := netip.Prefix{}
 		if self.v6.IsValid() {
 			route6 = netip.PrefixFrom(self.v6, 48).Masked()
@@ -1078,8 +1118,8 @@ func matchesPeer(p *v1.Node, target string) bool {
 
 // dnsForward decides where MagicDNS sends names outside the mesh. This
 // machine's own lookups go through its exit node when it uses one, and fail
-// while the exit node can't be used rather than leak to the local network.
-// Peers' lookups are resolved upstream if this machine is an approved exit
+// while the exit node can't be used rather than leak to the local network;
+// otherwise they go to opts.LocalDNS if set (mobile). Peers' lookups are resolved upstream if this machine is an approved exit
 // node. Anything else is refused, as without exit nodes.
 func (e *Engine) dnsForward(ctx context.Context, from netip.Addr, query []byte) ([]byte, error) {
 	e.mu.Lock()
@@ -1099,6 +1139,8 @@ func (e *Engine) dnsForward(ctx context.Context, from netip.Addr, query []byte) 
 			var d net.Dialer
 			return d.DialContext(ctx, "udp", dst.String())
 		}, query)
+	case local && e.opts.LocalDNS != nil:
+		return e.opts.LocalDNS(ctx, query)
 	case !local && isExit:
 		return e.dnsUpstream(ctx, query)
 	}

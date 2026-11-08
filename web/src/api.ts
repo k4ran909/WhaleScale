@@ -174,7 +174,7 @@ export const api = {
   deleteUser: (name: string) => call("DeleteUser", { name }),
   listPreAuthKeys: () => call<{ keys?: PreAuthKey[] }>("ListPreAuthKeys").then((r) => r.keys ?? []),
   createPreAuthKey: (user: string, reusable: boolean, ephemeral: boolean, expirationSeconds: number) =>
-    call<{ key: PreAuthKey; secret: string; joinCode?: string }>("CreatePreAuthKey", { user, reusable, ephemeral, expirationSeconds }),
+    call<{ key: PreAuthKey; secret: string; joinCode?: string; joinCodeQr?: string }>("CreatePreAuthKey", { user, reusable, ephemeral, expirationSeconds }),
   expirePreAuthKey: (prefix: string) => call("ExpirePreAuthKey", { prefix }),
   listAPIKeys: () => call<{ keys?: APIKey[] }>("ListAPIKeys").then((r) => r.keys ?? []),
   createAPIKey: (expirationSeconds: number, scope: "admin" | "read" = "admin") =>

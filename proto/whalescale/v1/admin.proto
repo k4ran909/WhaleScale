@@ -127,6 +127,8 @@ message CreatePreAuthKeyResponse {
   // The server's URL and the secret in one string for 'ws login' and the
   // Windows installer (see internal/joincode). Empty without a public URL.
   string join_code = 3;
+  // The join code as a QR code (SVG), for the Android app to scan.
+  string join_code_qr = 4;
 }
 message ExpirePreAuthKeyRequest { string prefix = 1; }
 message ExpirePreAuthKeyResponse {}

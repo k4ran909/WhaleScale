@@ -11,6 +11,7 @@ The dashboard's **Machines → Add device** walks you through it and shows each 
   curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join wsjoin-...
   ```
 
+- **Android:** in the [Android app](android.md), tap **Scan QR code** and scan the code the dashboard's Android tab shows, or paste the join code.
 - **Already installed:** `sudo ws login wsjoin-…` (on Windows, `ws login wsjoin-…` in a terminal opened as Administrator). It joins and connects.
 
 Then:

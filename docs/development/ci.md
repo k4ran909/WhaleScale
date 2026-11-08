@@ -13,6 +13,7 @@ through GitHub's API, so it works while GitHub Actions is unavailable.
 | `terraform.yaml` | same | provider acceptance tests |
 | `helm.yaml` | same | chart lint and render |
 | `vuln.yaml` | same, plus nightly | `govulncheck` on both modules |
+| `android.yaml` | same, when the app or Go code changes | the Go core with gomobile and a debug APK ([Android app](../guides/android.md)) |
 | `release.yaml` | `v*` tags | archives and checksums on GitHub Releases; images on `ghcr.io` |
 
 What GitHub Actions did that this doesn't: build artifacts aren't kept per
@@ -51,7 +52,7 @@ In Woodpecker: **Add repository** → `k4ran909/WhaleScale` → enable. Then in 
 
 - **Project → Require approval for:** pull requests from forks. The repository is public, and pipelines run on your server: approve fork pull requests after reading them.
 - **Project → Timeout:** 60 minutes (race tests on a small server are slow).
-- **Project → Trusted → Volumes:** on (admins only). The pipelines keep Go's module and build caches and npm's cache in named Docker volumes (`woodpecker-go-mod`, `woodpecker-go-build`, `woodpecker-npm`), so runs don't download everything again. Without this setting Woodpecker refuses to start them. Leave **Network** and **Security** off.
+- **Project → Trusted → Volumes:** on (admins only). The pipelines keep Go's module and build caches and npm's cache in named Docker volumes (`woodpecker-go-mod`, `woodpecker-go-build`, `woodpecker-npm`, and for the Android app `woodpecker-android` and `woodpecker-gradle`), so runs don't download everything again. Without this setting Woodpecker refuses to start them. Leave **Network** and **Security** off.
 - **Secrets → Add** `github_token`: a classic personal access token (GitHub → Settings → Developer settings → Tokens (classic)) with the `repo` and `write:packages` scopes. Events: **Push** and **Tag** only, never Pull Request. The release pipeline uses it for GitHub Releases and for pushing images to `ghcr.io`.
 - **Secrets → Add** `release_signing_key`: the release key's private half, the one line in the file `go run ./internal/release/tool keygen -out FILE` wrote. Events: **Tag** only. The release pipeline signs `checksums.txt` with it (`checksums.txt.minisig`), and the tray's updater refuses releases without that signature, so a release without the secret fails rather than shipping unsigned. Its public half is `packaging/release-key.pub` and `internal/release.PublicKey`. Keep a copy of the private key somewhere safe, such as a password manager: if it's lost, a new key means a release whose tray can't update itself, so people install that one by hand.
 - **Cron → Add** a job named `nightly`, branch `main`, schedule `0 3 * * *`. It runs `vuln.yaml` so a new advisory shows up even on quiet days.
@@ -62,6 +63,6 @@ In Woodpecker: **Add repository** → `k4ran909/WhaleScale` → enable. Then in 
 - **Capacity.** `WOODPECKER_MAX_WORKFLOWS=3` runs three pipelines at once. The race tests want about 2 CPU cores and 3 GB of RAM; lower it on a small server.
 - **Releases if GitHub limits more than Actions.** If the account restrictions also block the API, `publish release` and the image push fail with 403. Try a test tag first.
 - **Trusting volumes has a cost.** With it on, a pipeline file may mount any volume, including the host's Docker socket, which means control of the host. That's why fork pull requests need your approval: before approving one, check whether it changes `.woodpecker/` or `scripts/ci/`. Your own pushes are unaffected.
-- **Caches:** downloads are retried (`scripts/ci/retry.sh`), and the caches are safe to share between runs. To start fresh: `docker volume rm woodpecker-go-mod woodpecker-go-build woodpecker-npm` on the agent's host.
+- **Caches:** downloads are retried (`scripts/ci/retry.sh`), and the caches are safe to share between runs. To start fresh: `docker volume rm woodpecker-go-mod woodpecker-go-build woodpecker-npm woodpecker-android woodpecker-gradle` on the agent's host.
 - **Shell variables in pipelines.** Woodpecker replaces `$VAR` in commands before running them, so scripts with variables live in `scripts/ci/` rather than inline.
 - **When GitHub Actions comes back**, both systems will run on every push. Disable the repository in Woodpecker, or delete `.github/workflows/`, to keep one.

@@ -893,7 +893,9 @@ type CreatePreAuthKeyResponse struct {
 	Secret string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
 	// The server's URL and the secret in one string for 'ws login' and the
 	// Windows installer (see internal/joincode). Empty without a public URL.
-	JoinCode      string `protobuf:"bytes,3,opt,name=join_code,json=joinCode,proto3" json:"join_code,omitempty"`
+	JoinCode string `protobuf:"bytes,3,opt,name=join_code,json=joinCode,proto3" json:"join_code,omitempty"`
+	// The join code as a QR code (SVG), for the Android app to scan.
+	JoinCodeQr    string `protobuf:"bytes,4,opt,name=join_code_qr,json=joinCodeQr,proto3" json:"join_code_qr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -945,6 +947,13 @@ func (x *CreatePreAuthKeyResponse) GetSecret() string {
 func (x *CreatePreAuthKeyResponse) GetJoinCode() string {
 	if x != nil {
 		return x.JoinCode
+	}
+	return ""
+}
+
+func (x *CreatePreAuthKeyResponse) GetJoinCodeQr() string {
+	if x != nil {
+		return x.JoinCodeQr
 	}
 	return ""
 }
@@ -4199,11 +4208,13 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x1a\n" +
 	"\breusable\x18\x02 \x01(\bR\breusable\x12\x1c\n" +
 	"\tephemeral\x18\x03 \x01(\bR\tephemeral\x12-\n" +
-	"\x12expiration_seconds\x18\x04 \x01(\x04R\x11expirationSeconds\"|\n" +
+	"\x12expiration_seconds\x18\x04 \x01(\x04R\x11expirationSeconds\"\x9e\x01\n" +
 	"\x18CreatePreAuthKeyResponse\x12+\n" +
 	"\x03key\x18\x01 \x01(\v2\x19.whalescale.v1.PreAuthKeyR\x03key\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\x12\x1b\n" +
-	"\tjoin_code\x18\x03 \x01(\tR\bjoinCode\"1\n" +
+	"\tjoin_code\x18\x03 \x01(\tR\bjoinCode\x12 \n" +
+	"\fjoin_code_qr\x18\x04 \x01(\tR\n" +
+	"joinCodeQr\"1\n" +
 	"\x17ExpirePreAuthKeyRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"\x1a\n" +
 	"\x18ExpirePreAuthKeyResponse\"\x12\n" +

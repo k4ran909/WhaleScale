@@ -1,0 +1,8 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.iml
+.idea/
+# Built by build-go.sh.
+app/libs/

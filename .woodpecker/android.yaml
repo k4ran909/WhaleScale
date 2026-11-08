@@ -1,0 +1,41 @@
+# The Android app: the Go core built with gomobile, then a debug APK with
+# Gradle. Only when something it's built from changes.
+#
+# JDK, Android SDK and NDK (about 3 GB) are installed once into the
+# 'woodpecker-android' volume, and Gradle's downloads kept in
+# 'woodpecker-gradle'. A release APK needs a signing key and isn't built
+# here yet (see docs/guides/android.md).
+
+variables:
+  - &paths
+    include:
+      - android/**
+      - mobile/**
+      - internal/**
+      - gen/**
+      - go.mod
+      - go.sum
+      - .woodpecker/android.yaml
+      - scripts/ci/android-*.sh
+
+when:
+  - event: push
+    branch: main
+    path: *paths
+  - event: pull_request
+    path: *paths
+  - event: manual
+
+steps:
+  - name: debug apk
+    image: golang:1.27.3
+    volumes:
+      - woodpecker-go-mod:/go/pkg/mod
+      - woodpecker-go-build:/root/.cache/go-build
+      - woodpecker-android:/opt/android-tools
+      - woodpecker-gradle:/root/.gradle
+    commands:
+      - sh scripts/ci/retry.sh apt-get update -qq
+      - sh scripts/ci/retry.sh apt-get install -y -qq unzip
+      - sh scripts/ci/android-sdk.sh
+      - sh scripts/ci/android-build.sh debug

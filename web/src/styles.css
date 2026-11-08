@@ -199,6 +199,8 @@ td.right { text-align: right; }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .steps { list-style: decimal; margin: 0.5rem 0 0.75rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.6rem; }
 .steps .secret-row { margin-top: 0.4rem; }
+.steps .qr { margin-top: 0.6rem; }
+.steps .qr img { display: block; background: #fff; border-radius: 8px; padding: 6px; max-width: 100%; height: auto; }
 .waiting { display: flex; align-items: center; gap: 0.5rem; color: var(--muted-foreground); }
 .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
