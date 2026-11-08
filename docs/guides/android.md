@@ -142,6 +142,9 @@ built from, or the pipeline. The first run downloads the JDK, SDK and NDK
 into the `woodpecker-android` volume; later runs reuse it. Google ships the
 NDK and Gradle's `aapt2` only for x86_64 Linux, so on an arm64 agent the step
 runs an amd64 image under QEMU emulation. The agent's Docker host must have
-it registered (`docker run --privileged --rm tonistiigi/binfmt --install
-amd64`), and the build is several times slower than on x86_64. Releases don't
+it registered, or the step fails at once with `exec format error` (BuildKit's
+own emulation, which builds the amd64 release image, doesn't cover normal
+steps). On a Debian or Ubuntu host, once: `sudo apt install qemu-user-static
+binfmt-support`; it stays registered after a reboot. The build is several
+times slower than on x86_64. Releases don't
 include an APK yet: that needs a signing key kept as a CI secret.
