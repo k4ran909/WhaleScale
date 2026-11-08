@@ -92,10 +92,21 @@ func TestForward(t *testing.T) {
 	if m.ID != 42 || len(m.Answers) != 1 || m.Answers[0].Body.(*dnsmessage.AResource).A != want.As4() {
 		t.Fatalf("forwarded answer: %+v", m)
 	}
-	// Mesh names never leave the machine.
+	// Mesh names never leave the machine, nor do reverse lookups of mesh
+	// addresses (answered at once, not left to time out upstream).
 	if m := ask(t, s, from, "pc.whale.internal."); len(m.Answers) != 1 || len(asked) != 1 {
 		t.Fatalf("mesh name forwarded or unanswered: %+v (asked %v)", m, asked)
 	}
+	for _, name := range []string{"1.0.64.100.in-addr.arpa.", "9.200.127.100.in-addr.arpa.", "64.100.in-addr.arpa."} {
+		if m := ask(t, s, from, name); m.RCode != dnsmessage.RCodeNameError || len(asked) != 1 {
+			t.Fatalf("%s: rcode %v, forwarded %d times", name, m.RCode, len(asked)-1)
+		}
+	}
+	// Reverse lookups outside the mesh range are forwarded as usual.
+	if ask(t, s, from, "1.0.128.100.in-addr.arpa."); len(asked) != 2 {
+		t.Fatal("reverse lookup outside the mesh not forwarded")
+	}
+	asked = asked[:1]
 	fwdErr = errors.New("exit node offline")
 	if m := ask(t, s, from, "example.com."); m.RCode != dnsmessage.RCodeServerFailure {
 		t.Fatalf("failed forward: rcode %v", m.RCode)

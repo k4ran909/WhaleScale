@@ -67,7 +67,20 @@ type TunnelConfig struct {
 // private files directory.
 func stateFile(dir string) string { return filepath.Join(dir, "state.json") }
 
-var log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})) // gomobile sends stderr to logcat
+var (
+	logLevel = new(slog.LevelVar)                                                              // Info
+	log      = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})) // gomobile sends stderr to logcat
+)
+
+// SetDebugLogging turns debug messages in logcat on or off (debug builds
+// of the app turn them on).
+func SetDebugLogging(on bool) {
+	if on {
+		logLevel.Set(slog.LevelDebug)
+	} else {
+		logLevel.Set(slog.LevelInfo)
+	}
+}
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -308,7 +321,9 @@ func SetNetwork(addrs, dns string) {
 	}
 	var ds []string
 	for _, s := range lines(dns) {
-		if a, err := netip.ParseAddr(s); err == nil {
+		// MagicDNS itself would be a loop: Android can hand over the VPN's
+		// own settings.
+		if a, err := netip.ParseAddr(s); err == nil && a != engine.MagicDNSAddr {
 			ds = append(ds, netip.AddrPortFrom(a, 53).String())
 		}
 	}

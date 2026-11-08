@@ -99,6 +99,25 @@ emulator. Set `VERSION=v0.1.9` to stamp a version into the core, and pass
 `-PwsVersion=0.1.9` to Gradle for the app's own version (its `versionCode`
 is derived from it: 0.1.9 becomes 109).
 
+Debug builds print the Go core's debug messages to logcat (tag `GoLog`):
+`adb logcat -s GoLog`.
+
+### Testing on an emulator
+
+An emulator (`sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"`,
+then `avdmanager create avd -n ws -k "system-images;android-35;google_apis;x86_64"`)
+works as a phone. On Linux and WSL it needs `/dev/kvm`, so your user must be
+in the `kvm` group. Start the server on an address the emulator can reach,
+such as the machine's LAN or WSL address rather than `localhost` (inside the
+emulator, `localhost` is the emulator itself). Long join codes typed with
+`adb shell input text` can lose characters, so type them in pieces.
+
+The app has been tried this way on Android 15: joining, connecting, a direct
+path and pings to a Linux peer both ways, MagicDNS and internet names,
+approving and removing a subnet route (the VPN interface is rebuilt without
+dropping traffic), reconnecting on launch, disconnecting and signing out.
+Scanning a QR code with a real camera hasn't been tried yet.
+
 ### Release builds
 
 `./gradlew assembleRelease` signs the APK when these are set, and leaves it

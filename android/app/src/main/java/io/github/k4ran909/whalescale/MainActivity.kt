@@ -133,9 +133,30 @@ fun rememberStatus(): Pair<DeviceStatus, () -> Unit> {
 
 @Composable
 fun App() {
+    val context = LocalContext.current
     val (status, refresh) = rememberStatus()
+    var vpnError by remember { mutableStateOf<String?>(null) }
+    // Asking for the VPN permission lives here, above both screens: joining
+    // switches to the home screen while Android's dialog is still open, and
+    // the answer must still arrive somewhere.
+    val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) WhalescaleVpnService.connect(context)
+        else vpnError = "Whalescale needs the VPN permission to connect."
+        refresh()
+    }
+    val connect = {
+        vpnError = null
+        TunnelErrors.last = null
+        val ask = VpnService.prepare(context)
+        if (ask != null) vpnPermission.launch(ask) else WhalescaleVpnService.connect(context)
+        refresh()
+    }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        if (status.joined) HomeScreen(status, refresh) else JoinScreen(onJoined = refresh)
+        if (status.joined) {
+            HomeScreen(status, refresh, connect, vpnError, clearError = { vpnError = null })
+        } else {
+            JoinScreen(onJoined = connect)
+        }
     }
 }
 
@@ -152,10 +173,6 @@ fun JoinScreen(onJoined: () -> Unit) {
     val scan = rememberLauncherForActivityResult(ScanContract()) { r ->
         r.contents?.let { code = it.trim(); error = null }
     }
-    val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK) WhalescaleVpnService.connect(context)
-        onJoined()
-    }
 
     fun join() {
         busy = true
@@ -169,12 +186,8 @@ fun JoinScreen(onJoined: () -> Unit) {
                 error = err.message ?: err.toString()
                 return@launch
             }
-            // Joining means connecting: ask for the VPN permission now.
-            val ask = VpnService.prepare(context)
-            if (ask != null) vpnPermission.launch(ask) else {
-                WhalescaleVpnService.connect(context)
-                onJoined()
-            }
+            // Joining means connecting (asking for the VPN permission first).
+            onJoined()
         }
     }
 
@@ -239,31 +252,31 @@ fun JoinScreen(onJoined: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(status: DeviceStatus, refresh: () -> Unit) {
+fun HomeScreen(
+    status: DeviceStatus,
+    refresh: () -> Unit,
+    connect: () -> Unit,
+    vpnError: String?,
+    clearError: () -> Unit,
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var askSignOut by remember { mutableStateOf(false) }
-    var startError by remember { mutableStateOf<String?>(null) }
-
-    val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK) WhalescaleVpnService.connect(context)
-        else startError = "Whalescale needs the VPN permission to connect."
-        refresh()
-    }
     // The service can't show its own errors; pick them up here.
-    LaunchedEffect(status) { TunnelErrors.last?.let { startError = it } }
+    var serviceError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(status) { serviceError = TunnelErrors.last }
+    val startError = vpnError ?: serviceError
 
     fun setUp(on: Boolean) {
-        startError = null
-        TunnelErrors.last = null
+        clearError()
+        serviceError = null
         if (on) {
-            val ask = VpnService.prepare(context)
-            if (ask != null) vpnPermission.launch(ask) else WhalescaleVpnService.connect(context)
+            connect()
         } else {
             WhalescaleVpnService.disconnect(context)
+            refresh()
         }
-        refresh()
     }
 
     Scaffold(

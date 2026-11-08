@@ -10,6 +10,7 @@
     <!-- No backups or device transfers: state.json holds this device's
          keys, and a copy elsewhere would be a second device with them. -->
     <application
+        android:name=".WhalescaleApp"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

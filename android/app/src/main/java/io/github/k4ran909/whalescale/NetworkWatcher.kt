@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.net.NetworkCapabilities
 import mobile.Mobile
 
 /**
@@ -22,10 +23,17 @@ class NetworkWatcher(context: Context, private val onNetwork: (Network?) -> Unit
         }
 
         override fun onLost(network: Network) {
+            if (isVpn(network)) return
             Mobile.setNetwork("", "")
             onNetwork(null)
         }
     }
+
+    // The app is left out of its own VPN, yet Android can still report the
+    // VPN as its default network now and then. Its DNS server is MagicDNS
+    // itself: forwarding there would loop, so VPNs are skipped.
+    private fun isVpn(n: Network) =
+        cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
 
     fun start() {
         cm.activeNetwork?.let { n -> cm.getLinkProperties(n)?.let { update(n, it) } }
@@ -37,6 +45,7 @@ class NetworkWatcher(context: Context, private val onNetwork: (Network?) -> Unit
     }
 
     private fun update(network: Network, lp: LinkProperties) {
+        if (isVpn(network)) return
         // Go's address parser takes no "%wlan0" scope (and skips link-local
         // addresses anyway).
         fun host(a: java.net.InetAddress) = a.hostAddress?.substringBefore('%') ?: ""

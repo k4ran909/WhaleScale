@@ -56,6 +56,9 @@ data class DeviceStatus(
     }
 }
 
+/** Turns on the Go core's debug messages in logcat for debug builds. */
+fun initCore() = Mobile.setDebugLogging(BuildConfig.DEBUG)
+
 /** Where the Go core keeps this device's identity: app-private storage. */
 val Context.stateDir: String get() = filesDir.absolutePath
 

@@ -66,10 +66,12 @@ type swapTUN struct {
 	events chan tun.Event
 	closed chan struct{}
 	once   sync.Once
+	// debugf reports moves to a new device (tests and debugging).
+	debugf func(msg string, args ...any)
 }
 
 func newSwapTUN(d tun.Device) *swapTUN {
-	return &swapTUN{cur: d, events: make(chan tun.Event), closed: make(chan struct{})}
+	return &swapTUN{cur: d, events: make(chan tun.Event), closed: make(chan struct{}), debugf: func(string, ...any) {}}
 }
 
 func (s *swapTUN) current() tun.Device {
@@ -85,7 +87,8 @@ func (s *swapTUN) Swap(d tun.Device) {
 	old := s.cur
 	s.cur = d
 	s.mu.Unlock()
-	old.Close()
+	err := old.Close()
+	s.debugf("closed the previous tun", "err", err)
 }
 
 func (s *swapTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
@@ -95,6 +98,7 @@ func (s *swapTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 		if err == nil || n > 0 || s.retry(d) != nil {
 			return n, err
 		}
+		s.debugf("tun read moves to the new interface", "err", err)
 	}
 }
 
@@ -105,6 +109,7 @@ func (s *swapTUN) Write(bufs [][]byte, offset int) (int, error) {
 		if err == nil || s.retry(d) != nil {
 			return n, err
 		}
+		s.debugf("tun write moves to the new interface", "err", err)
 	}
 }
 

@@ -886,6 +886,7 @@ func (e *Engine) startDeviceLocked(self selfInfo, nm *v1.NetworkMap) error {
 			return fmt.Errorf("open tunnel: %w", err)
 		}
 		e.swap, e.platCfg = newSwapTUN(td), cfg
+		e.swap.debugf = e.log.Debug
 		tdev = e.swap
 	} else {
 		name := e.opts.TUNName
@@ -1123,7 +1124,10 @@ func matchesPeer(p *v1.Node, target string) bool {
 // node. Anything else is refused, as without exit nodes.
 func (e *Engine) dnsForward(ctx context.Context, from netip.Addr, query []byte) ([]byte, error) {
 	e.mu.Lock()
-	local := !from.IsValid() || from.IsLoopback() || slices.Contains(e.selfIPs, from)
+	// With a Platform, queries only come out of this device's own TUN (no
+	// port 53 is open to peers), sometimes from its underlying address
+	// while Android swaps interfaces.
+	local := !from.IsValid() || from.IsLoopback() || slices.Contains(e.selfIPs, from) || e.opts.Platform != nil
 	exitDNS, isExit, tnet := e.exitDNS, e.isExit, e.tnet
 	e.mu.Unlock()
 	switch {
@@ -1144,6 +1148,7 @@ func (e *Engine) dnsForward(ctx context.Context, from netip.Addr, query []byte) 
 	case !local && isExit:
 		return e.dnsUpstream(ctx, query)
 	}
+	e.log.Debug("not forwarding a DNS query outside the mesh", "from", from, "local", local)
 	return nil, dnsserver.ErrRefused
 }
 

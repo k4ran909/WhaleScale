@@ -135,7 +135,7 @@ func TestJoinAndSignOut(t *testing.T) {
 
 func TestSetNetwork(t *testing.T) {
 	t.Cleanup(func() { SetNetwork("", "") })
-	SetNetwork("192.168.1.20/24\nfe80::1%wlan0\n2001:db8::5\nnonsense\n", "192.168.1.1\n\n8.8.8.8\nbad")
+	SetNetwork("192.168.1.20/24\nfe80::1%wlan0\n2001:db8::5\nnonsense\n", "192.168.1.1\n\n8.8.8.8\nbad\n100.100.100.100")
 	netMu.Lock()
 	addrs, dns := netAddrs, netDNS
 	netMu.Unlock()
