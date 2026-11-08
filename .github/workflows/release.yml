@@ -26,7 +26,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/* --notes-file packaging/release-notes.md --generate-notes --verify-tag
+        run: gh release create "${{ github.ref_name }}" dist/* --notes-file build/release-notes.md --generate-notes --verify-tag
 
   image:
     runs-on: ubuntu-latest
