@@ -1,0 +1,27 @@
+# After the whalescale package is installed ($1 = install) or upgraded
+# ($1 = upgrade). scripts/ci/linux-packages.sh wraps this for dpkg and rpm.
+
+# install.sh's 'wsd install-service' wrote a unit for /usr/local/bin/wsd,
+# which would override the packaged one.
+old=/etc/systemd/system/wsd.service
+if [ -f "$old" ] && grep -q '^ExecStart=/usr/local/bin/wsd' "$old"; then
+	systemctl disable --now wsd.service >/dev/null 2>&1 || true
+	rm -f "$old" /etc/systemd/system/multi-user.target.wants/wsd.service
+	echo "whalescale: replaced the wsd service from install.sh; /usr/local/bin/ws and wsd can be deleted"
+fi
+
+mkdir -p /var/lib/whalescale
+chmod 0700 /var/lib/whalescale
+
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+	if [ "$1" = install ]; then
+		systemctl enable --now wsd.service || true
+	else
+		systemctl try-restart wsd.service || true
+	fi
+fi
+
+if [ ! -f /var/lib/whalescale/state.json ]; then
+	echo "whalescale: next, join your network: sudo ws login <join code from the dashboard: Machines -> Add device>"
+fi

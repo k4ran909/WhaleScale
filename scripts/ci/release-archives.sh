@@ -1,8 +1,9 @@
 #!/bin/sh
 # Builds the release downloads for tag $1 (e.g. v1.2.3) into dist/: an
-# archive per OS/arch, Windows installers, an SBOM, and checksums signed
-# with the release key ($RELEASE_SIGNING_KEY, see docs/development/ci.md).
-# Needs zip, unzip, curl, makensis (NSIS) and minisign.
+# archive per OS/arch, Windows installers, Linux .deb and .rpm packages,
+# an SBOM, and checksums signed with the release key ($RELEASE_SIGNING_KEY,
+# see docs/development/ci.md).
+# Needs zip, unzip, curl, makensis (NSIS), dpkg-deb, rpmbuild and minisign.
 set -eu
 version=$1
 v=${version#v}
@@ -38,6 +39,10 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 wi
     sh scripts/ci/windows-installer.sh "$out" "$arch" "$v" "dist/whalescale-setup-windows-$arch.exe"
   else
     tar -czf "dist/$name.tar.gz" -C "$out" .
+  fi
+  if [ "$os" = linux ]; then
+    # whalescale and whalescale-server as .deb and .rpm.
+    sh scripts/ci/linux-packages.sh "$version" "$arch" "$out" dist
   fi
 done
 # What went into every program (CycloneDX), read from their build info.

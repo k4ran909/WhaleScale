@@ -85,6 +85,7 @@ ws status   # needs sudo if the state dir is root-only
 - [ ] `systemctl status wsd` is active
 - [ ] `ip addr show whale0` has 100.64.x.x; `ip route` has `100.64.0.0/10 dev whale0`
 - [ ] `resolvectl status whale0` lists the node's own IP as DNS server for `whale.internal`
+- [ ] With the package instead (`sudo apt install ./whalescale-amd64.deb`, or the `.rpm` with `dnf`): `systemctl is-enabled wsd` says enabled before `ws login`; after a reboot the machine reconnects by itself; installing a newer package keeps it on the network; `apt remove whalescale` stops `wsd`
 
 ## 4. The mesh (Phase 1 goal)
 

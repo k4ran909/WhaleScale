@@ -1,0 +1,6 @@
+# Before the whalescale-server package is removed (not on upgrades). The
+# configuration in /etc/whalescale and the database in /var/lib/whalescale
+# are kept.
+if [ -d /run/systemd/system ]; then
+	systemctl disable --now whalescale.service || true
+fi

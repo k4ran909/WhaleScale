@@ -1,0 +1,43 @@
+# After the whalescale-server package is installed ($1 = install) or
+# upgraded ($1 = upgrade). scripts/ci/linux-packages.sh wraps this for dpkg
+# and rpm.
+
+if ! getent passwd whalescale >/dev/null; then
+	if getent group whalescale >/dev/null; then group="-g whalescale"; else group="--user-group"; fi
+	# shellcheck disable=SC2086 # one or two words
+	useradd --system $group --home-dir /var/lib/whalescale --no-create-home --shell /usr/sbin/nologin whalescale
+fi
+mkdir -p /etc/whalescale/conf.d
+conf=/etc/whalescale/config.yaml
+[ -f "$conf" ] && chgrp whalescale "$conf" 2>/dev/null || true
+
+# install.sh --server wrote a unit for /usr/local/bin/whalescale, which
+# would override the packaged one.
+old=/etc/systemd/system/whalescale.service
+if [ -f "$old" ] && grep -q '^ExecStart=/usr/local/bin/whalescale' "$old"; then
+	rm -f "$old"
+	echo "whalescale-server: replaced the service from install.sh; /usr/local/bin/whalescale can be deleted"
+fi
+
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+	if [ -f "$conf" ]; then
+		if [ "$1" = install ]; then
+			systemctl enable whalescale.service >/dev/null 2>&1 || true
+			systemctl restart whalescale.service || true
+		else
+			systemctl try-restart whalescale.service || true
+		fi
+	fi
+fi
+
+if [ ! -f "$conf" ]; then
+	cat <<'EOF'
+whalescale-server: installed. To set it up:
+  1. sudo cp /usr/share/doc/whalescale-server/config.example.yaml /etc/whalescale/config.yaml
+     and set public-url (and the TLS lines, or tls-acme: true) in it
+  2. sudo whalescale configtest && sudo systemctl enable --now whalescale
+  3. sudo whalescale setup-code, then open the public URL to create your admin account
+Or do all of it in one go: install.sh --server --domain NAME (docs/install/linux.md).
+EOF
+fi
