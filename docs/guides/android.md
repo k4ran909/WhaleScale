@@ -2,7 +2,11 @@
 
 The Android app puts a phone on your network like any other device: join
 with a code from the dashboard, then switch the VPN on. It is new and not on
-Google Play yet; you build the APK yourself (below) or take it from a CI run.
+Google Play yet. Download `whalescale-android.apk` from the
+[latest release](https://github.com/k4ran909/WhaleScale/releases/latest/download/whalescale-android.apk)
+on the phone and open it (Android asks once to allow installing apps from
+your browser or file manager), or build it yourself (below). Android 8 or
+newer; arm64, 32-bit arm and x86_64.
 
 ## Using it
 
@@ -133,6 +137,9 @@ unsigned (not installable) otherwise:
 Make a key once with
 `keytool -genkeypair -keystore whalescale.jks -alias whalescale -keyalg EC -validity 10000`
 and keep it safe: Android only installs an update signed with the same key.
+Released APKs are signed with the key in the CI secrets (below); an APK you
+build with another key can't update one from a release, or the other way
+round, without uninstalling first.
 
 ### CI
 
@@ -146,5 +153,14 @@ it registered, or the step fails at once with `exec format error` (BuildKit's
 own emulation, which builds the amd64 release image, doesn't cover normal
 steps). On a Debian or Ubuntu host, once: `sudo apt install qemu-user-static
 binfmt-support`; it stays registered after a reboot. The build is several
-times slower than on x86_64. Releases don't
-include an APK yet: that needs a signing key kept as a CI secret.
+times slower than on x86_64.
+
+Releases: the `android apk` step of
+[`.woodpecker/release.yaml`](../../.woodpecker/release.yaml) builds the signed
+APK ([`scripts/ci/android-release.sh`](../../scripts/ci/android-release.sh))
+before the other downloads, so `checksums.txt` and its signature cover it,
+and it's published as `whalescale-android.apk`, a fixed name for the
+`releases/latest/download/` link. It needs the `android_keystore` and
+`android_keystore_password` secrets ([CI](../development/ci.md)) and the same
+amd64 emulation. Without either, the step fails, the release goes out without
+the APK, and its notes leave out the Android row.

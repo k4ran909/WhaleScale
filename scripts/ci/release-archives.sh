@@ -1,8 +1,9 @@
 #!/bin/sh
 # Builds the release downloads for tag $1 (e.g. v1.2.3) into dist/: an
 # archive per OS/arch, Windows installers, Linux .deb and .rpm packages,
-# an SBOM, and checksums signed with the release key ($RELEASE_SIGNING_KEY,
-# see docs/development/ci.md).
+# the Android APK when the 'android apk' step built one, an SBOM, and
+# checksums signed with the release key ($RELEASE_SIGNING_KEY, see
+# docs/development/ci.md). Also writes build/release-notes.md.
 # Needs zip, unzip, curl, makensis (NSIS), dpkg-deb, rpmbuild and minisign.
 set -eu
 version=$1
@@ -45,6 +46,16 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 wi
     sh scripts/ci/linux-packages.sh "$version" "$arch" "$out" dist
   fi
 done
+# The Android APK, if the 'android apk' step built it (it can't on an
+# agent without amd64 emulation). The release notes list it only then.
+apk=${ANDROID_APK:-build-android/whalescale-android.apk}
+if [ -f "$apk" ]; then
+  cp "$apk" dist/whalescale-android.apk
+  cp packaging/release-notes.md build/release-notes.md
+else
+  echo "release-archives: no Android APK ($apk); releasing without it" >&2
+  grep -v 'whalescale-android\.apk' packaging/release-notes.md > build/release-notes.md
+fi
 # What went into every program (CycloneDX), read from their build info.
 programs=$(find build -mindepth 2 -maxdepth 2 -type f \( -name whalescale -o -name 'whalescale.exe' -o -name 'whalescale-tray.exe' -o -name 'ws' -o -name 'ws.exe' -o -name 'wsd' -o -name 'wsd.exe' \) | sort)
 # shellcheck disable=SC2086 # one path per word

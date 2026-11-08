@@ -1,5 +1,5 @@
-# On a v* tag: release archives on GitHub Releases and multi-arch images on
-# ghcr.io. Both use the 'github_token' secret: a classic personal access
+# On a v* tag: release archives, packages and the Android APK on GitHub
+# Releases, and multi-arch images on ghcr.io. Both use the 'github_token' secret: a classic personal access
 # token with the 'repo' and 'write:packages' scopes (see docs/development/ci.md).
 
 when:
@@ -7,8 +7,32 @@ when:
     ref: refs/tags/v*
 
 steps:
+  # The signed Android APK, released as whalescale-android.apk. It goes
+  # first so the checksums cover it. Google ships the NDK and aapt2 only for
+  # x86_64 Linux, so this is the amd64 golang image (same digest as
+  # android.yaml) under QEMU, which the arm64 agent's Docker host must have
+  # registered (docs/development/ci.md). Until it does, or without the
+  # keystore secrets, this step fails and the release goes out without the
+  # APK: release-archives.sh then leaves the Android row out of the notes.
+  - name: android apk
+    image: golang:1.27.3@sha256:a5406f41680f17b4aa0b49de641e00f116215f5c8829d548d29cb44c4f85aa4f
+    failure: ignore
+    volumes:
+      - woodpecker-go-mod:/go/pkg/mod
+      - woodpecker-go-build:/root/.cache/go-build
+      - woodpecker-android:/opt/android-tools
+      - woodpecker-gradle:/root/.gradle
+    environment:
+      ANDROID_KEYSTORE:
+        from_secret: android_keystore
+      WS_ANDROID_KEYSTORE_PASSWORD:
+        from_secret: android_keystore_password
+    commands:
+      - sh scripts/ci/android-release.sh "${CI_COMMIT_TAG}"
+
   - name: build archives
     image: golang:1.27.3
+    depends_on: [android apk]
     commands:
       - sh scripts/ci/retry.sh apt-get update -qq
       - sh scripts/ci/retry.sh apt-get install -y -qq zip unzip nsis minisign rpm
@@ -29,7 +53,9 @@ steps:
     commands:
       - sh scripts/ci/retry.sh apk add --no-cache github-cli
       # The "which file do I need?" guide, then GitHub's list of changes.
-      - gh release create "${CI_COMMIT_TAG}" dist/* --notes-file packaging/release-notes.md --generate-notes --verify-tag
+      # (build/release-notes.md: packaging/release-notes.md, without the
+      # Android row when the APK couldn't be built.)
+      - gh release create "${CI_COMMIT_TAG}" dist/* --notes-file build/release-notes.md --generate-notes --verify-tag
 
   - name: image
     image: woodpeckerci/plugin-docker-buildx:6.1.2
