@@ -139,5 +139,9 @@ and keep it safe: Android only installs an update signed with the same key.
 [`.woodpecker/android.yaml`](../../.woodpecker/android.yaml) builds a debug APK
 on pushes to `main` and on pull requests that touch the app, the Go code it's
 built from, or the pipeline. The first run downloads the JDK, SDK and NDK
-into the `woodpecker-android` volume; later runs reuse it. Releases don't
+into the `woodpecker-android` volume; later runs reuse it. Google ships the
+NDK and Gradle's `aapt2` only for x86_64 Linux, so on an arm64 agent the step
+runs an amd64 image under QEMU emulation. The agent's Docker host must have
+it registered (`docker run --privileged --rm tonistiigi/binfmt --install
+amd64`), and the build is several times slower than on x86_64. Releases don't
 include an APK yet: that needs a signing key kept as a CI secret.

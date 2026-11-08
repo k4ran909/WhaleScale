@@ -28,7 +28,12 @@ when:
 
 steps:
   - name: debug apk
-    image: golang:1.27.3
+    # Google ships the NDK and Gradle's aapt2 only for x86_64 Linux, and the
+    # agent is arm64, so this is golang:1.27.3's amd64 image, pinned by
+    # digest, running under QEMU emulation (the same that builds the amd64
+    # release image). It's slow; keep the digest in step with the Go
+    # version in go.mod.
+    image: golang:1.27.3@sha256:a5406f41680f17b4aa0b49de641e00f116215f5c8829d548d29cb44c4f85aa4f
     volumes:
       - woodpecker-go-mod:/go/pkg/mod
       - woodpecker-go-build:/root/.cache/go-build
