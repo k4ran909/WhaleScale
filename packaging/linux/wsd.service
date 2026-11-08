@@ -1,0 +1,19 @@
+[Unit]
+Description=Whalescale mesh VPN agent
+Documentation=https://github.com/k4ran909/WhaleScale
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/wsd --state /var/lib/whalescale/state.json --tun os --port 41641
+Restart=on-failure
+RestartSec=2
+StateDirectory=whalescale
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

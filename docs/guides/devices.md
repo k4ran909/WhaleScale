@@ -11,6 +11,7 @@ The dashboard's **Machines → Add device** walks you through it and shows each 
   curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh | sh -s -- --join wsjoin-...
   ```
 
+- **Linux, with a package:** see [Linux packages](#linux-packages) below. The system's package manager then installs upgrades.
 - **Already installed:** `sudo ws login wsjoin-…` (on Windows, `ws login wsjoin-…` in a terminal opened as Administrator). It joins and connects.
 
 Then:
@@ -27,6 +28,34 @@ For short-lived machines (CI runners, containers), use an ephemeral key: `whales
 Machines prove each request with their machine key rather than sending a reusable token. The server has an X25519 key; a machine learns its public half at login (over TLS) and then signs every control, relay and gateway request. Each signature covers the method, the server, the path and the time, and the server accepts it once. Once a machine has signed a request, its login token is refused. So a header copied from a proxy log, a debugging dump or a TLS-inspecting middlebox is useless, and so is the token itself. Older clients keep using the token until they're upgraded. If machines reach the server under names other than `--public-url`'s (an internal address, say), list them with `--node-auth-hosts`.
 
 Manual install on Windows, without the installer: unzip `whalescale_<version>_windows_amd64.zip` (it includes the `wintun.dll` network driver next to `wsd.exe`), and in an Administrator terminal run `wsd install-service`, then `ws login wsjoin-…`.
+
+## Linux packages
+
+Every release has `.deb` and `.rpm` packages for amd64 and arm64, under fixed names, so these links always get the latest:
+
+| System | Install |
+|---|---|
+| Debian, Ubuntu, Mint, Pop!_OS, Raspberry Pi OS | `curl -fLO https://github.com/k4ran909/WhaleScale/releases/latest/download/whalescale-amd64.deb && sudo apt install ./whalescale-amd64.deb` |
+| Fedora, RHEL, Rocky, Alma, CentOS Stream | `sudo dnf install https://github.com/k4ran909/WhaleScale/releases/latest/download/whalescale-x86_64.rpm` |
+| openSUSE | `sudo zypper install https://github.com/k4ran909/WhaleScale/releases/latest/download/whalescale-x86_64.rpm` |
+
+On ARM (Raspberry Pi 4/5 with a 64-bit system, ARM servers), use `whalescale-arm64.deb` or `whalescale-aarch64.rpm`. Then join:
+
+```bash
+sudo ws login wsjoin-...
+```
+
+| Package | Contains |
+|---|---|
+| `whalescale` | `ws` and `wsd` in `/usr/bin`, and the `wsd` systemd service, started and enabled on install |
+| `whalescale-server` | the server in `/usr/bin`, its hardened systemd unit and the example config in `/usr/share/doc/whalescale-server/` |
+
+- **Upgrading:** install the newer package the same way. It restarts `wsd` and keeps the machine on its network.
+- **Removing:** `sudo apt remove whalescale` or `sudo dnf remove whalescale`. This stops the service and keeps the machine's identity in `/var/lib/whalescale`, so reinstalling rejoins as the same machine. Delete that folder to forget it.
+- **Moving from install.sh:** installing the package replaces the service that `install.sh` set up. Afterwards `/usr/local/bin/ws` and `/usr/local/bin/wsd` can be deleted.
+- **Other distributions** (Arch, Alpine, NixOS…): use the install command above, or the `whalescale_<version>_linux_<arch>.tar.gz` archive and `sudo wsd install-service`.
+
+The packages aren't signed themselves. They're listed in the signed `checksums.txt`, so they can be checked as below.
 
 ## Verifying downloads
 

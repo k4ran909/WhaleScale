@@ -13,7 +13,9 @@ through GitHub's API, so it works while GitHub Actions is unavailable.
 | `terraform.yaml` | same | provider acceptance tests |
 | `helm.yaml` | same | chart lint and render |
 | `vuln.yaml` | same, plus nightly | `govulncheck` on both modules |
-| `release.yaml` | `v*` tags | archives and checksums on GitHub Releases; images on `ghcr.io` |
+| `installer.yaml` | same | the Windows installer builds |
+| `packages.yaml` | same | the `.deb` and `.rpm` packages build, and install, upgrade and uninstall on Debian and Fedora |
+| `release.yaml` | `v*` tags | archives, installers, `.deb`/`.rpm` packages and signed checksums on GitHub Releases; images on `ghcr.io` |
 
 What GitHub Actions did that this doesn't: build artifacts aren't kept per
 run (the release pipeline publishes the real ones). Like Actions here, tests

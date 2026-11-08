@@ -48,6 +48,21 @@ Open the address, enter the setup code, and create your admin account. That page
 | `--db postgres://…` | Use PostgreSQL instead of SQLite, to run [several servers](../guides/high-availability.md) that take over from each other. |
 | `--version vX.Y.Z` | A specific release instead of the latest. |
 
+## With a package instead
+
+The `whalescale-server` package (`.deb` or `.rpm`) installs the server in `/usr/bin`, with its systemd unit and the `whalescale` user. Upgrades then come from `apt` or `dnf`. You write the config yourself:
+
+```bash
+curl -fLO https://github.com/k4ran909/WhaleScale/releases/latest/download/whalescale-server-amd64.deb
+sudo apt install ./whalescale-server-amd64.deb        # or: sudo dnf install .../whalescale-server-x86_64.rpm
+sudo cp /usr/share/doc/whalescale-server/config.example.yaml /etc/whalescale/config.yaml
+sudoedit /etc/whalescale/config.yaml                  # public-url, and tls-acme: true or your certificates
+sudo whalescale configtest && sudo systemctl enable --now whalescale
+sudo whalescale setup-code
+```
+
+A server set up with the command above can switch to the package later: installing it replaces the `/usr/local/bin` service and keeps `/etc/whalescale/config.yaml`.
+
 ## After installing
 
 ```bash

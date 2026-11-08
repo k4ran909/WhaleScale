@@ -1,0 +1,5 @@
+# Before the whalescale package is removed (not on upgrades). The state in
+# /var/lib/whalescale is kept: reinstalling rejoins as the same machine.
+if [ -d /run/systemd/system ]; then
+	systemctl disable --now wsd.service || true
+fi

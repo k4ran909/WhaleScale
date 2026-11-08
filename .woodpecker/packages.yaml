@@ -1,0 +1,49 @@
+# The Linux packages must build, install, upgrade and uninstall: the .deb on
+# Debian and the .rpm on Fedora. (The release pipeline builds and publishes
+# them for amd64 and arm64.) There is no systemd in these containers, so the
+# install scripts skip the service; it's tested in docs/development/real-world-test.md.
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: manual
+
+steps:
+  - name: packages build
+    image: golang:1.27.3
+    volumes:
+      - woodpecker-go-mod:/go/pkg/mod
+      - woodpecker-go-build:/root/.cache/go-build
+    environment:
+      CGO_ENABLED: "0"
+      GOOS: linux
+      GOARCH: amd64
+    commands:
+      - sh scripts/ci/retry.sh apt-get update -qq
+      - sh scripts/ci/retry.sh apt-get install -y -qq rpm
+      - mkdir -p build/bin
+      - for c in whalescale ws wsd; do go build -trimpath -ldflags "-X github.com/k4ran909/whalescale/internal/version.Version=v0.0.0-ci" -o build/bin/$c ./cmd/$c; done
+      - sh scripts/ci/linux-packages.sh v0.0.0-ci amd64 build/bin build/packages
+
+  - name: deb installs on debian
+    image: debian:13
+    depends_on: [packages build]
+    commands:
+      - apt-get install -y ./build/packages/whalescale-amd64.deb ./build/packages/whalescale-server-amd64.deb
+      - ws version && wsd version && whalescale version
+      - test -d /var/lib/whalescale && getent passwd whalescale && test -d /etc/whalescale/conf.d
+      - apt-get install -y --reinstall ./build/packages/whalescale-amd64.deb
+      - apt-get remove -y whalescale whalescale-server
+      - test ! -e /usr/bin/ws && test ! -e /usr/bin/whalescale
+
+  - name: rpm installs on fedora
+    image: fedora:42
+    depends_on: [packages build]
+    commands:
+      - rpm -i build/packages/whalescale-x86_64.rpm build/packages/whalescale-server-x86_64.rpm
+      - ws version && wsd version && whalescale version
+      - test -d /var/lib/whalescale && getent passwd whalescale && test -d /etc/whalescale/conf.d
+      - rpm -U --replacepkgs build/packages/whalescale-x86_64.rpm
+      - rpm -e whalescale whalescale-server
+      - test ! -e /usr/bin/ws && test ! -e /usr/bin/whalescale

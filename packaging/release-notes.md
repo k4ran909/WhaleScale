@@ -7,7 +7,11 @@ Adding a device is easiest from your dashboard: **Machines → Add device** give
 | **Windows PC** (almost all) | `whalescale-setup-windows-amd64.exe`: run it and paste your join code |
 | Windows on ARM (Snapdragon laptops, Surface Pro X) | `whalescale-setup-windows-arm64.exe` |
 | **Mac** or **Linux** | nothing to pick: run `curl -fsSL https://raw.githubusercontent.com/k4ran909/WhaleScale/main/deploy/install.sh \| sh -s -- --join <your join code>` |
-| The server | the Docker image `ghcr.io/k4ran909/whalescale` (see the README), or the archive for your server's system |
+| Debian, Ubuntu, Mint, Raspberry Pi OS | or the package: `whalescale-amd64.deb` (`whalescale-arm64.deb` on ARM), with `sudo apt install ./whalescale-amd64.deb` |
+| Fedora, RHEL, Rocky, Alma, openSUSE | or the package: `whalescale-x86_64.rpm` (`whalescale-aarch64.rpm` on ARM), with `sudo dnf install ./whalescale-x86_64.rpm` |
+| The server | one command: `install.sh --server --domain NAME` (see the README); or the Docker image `ghcr.io/k4ran909/whalescale`; or the `whalescale-server` package (`.deb` / `.rpm`) |
+
+The packages install the programs in `/usr/bin`, start the `wsd` service and keep themselves upgradable with your system's package manager. Then join with `sudo ws login <your join code>`.
 
 The `.tar.gz` and `.zip` archives hold the plain programs, for manual installs and servers. Each system appears twice because there are two kinds of processor:
 
