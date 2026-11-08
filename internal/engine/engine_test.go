@@ -135,7 +135,8 @@ func (n *testNet) nodeWith(name string, o Options) *Engine {
 	}
 	st.NodeToken, st.NodeID, st.NodeName = resp.Msg.NodeToken, resp.Msg.Node.Id, resp.Msg.Node.Name
 
-	o.State, o.Userspace, o.Log, o.IncludeLoopback = st, true, n.log.With("node", name), true
+	o.State, o.Log, o.IncludeLoopback = st, n.log.With("node", name), true
+	o.Userspace = o.Platform == nil
 	e, err := New(o)
 	if err != nil {
 		t.Fatal(err)

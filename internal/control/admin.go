@@ -18,6 +18,7 @@ import (
 	"github.com/k4ran909/whalescale/internal/joincode"
 	"github.com/k4ran909/whalescale/internal/policy"
 	"github.com/k4ran909/whalescale/internal/store"
+	"github.com/k4ran909/whalescale/internal/totp"
 )
 
 // SessionCookie holds a web console session token.
@@ -269,6 +270,8 @@ func (a *Admin) CreatePreAuthKey(ctx context.Context, req *connect.Request[v1.Cr
 	resp := &v1.CreatePreAuthKeyResponse{Key: preAuthKeyProto(k), Secret: secret}
 	if a.svc.cfg.PublicURL != "" {
 		resp.JoinCode = joincode.Encode(a.svc.cfg.PublicURL, secret)
+		// For the Android app's scanner. Not drawing it only loses the QR.
+		resp.JoinCodeQr, _ = totp.QRSVG(resp.JoinCode)
 	}
 	return connect.NewResponse(resp), nil
 }

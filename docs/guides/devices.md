@@ -12,6 +12,7 @@ The dashboard's **Machines → Add device** walks you through it and shows each 
   ```
 
 - **Linux, with a package:** see [Linux packages](#linux-packages) below. The system's package manager then installs upgrades.
+- **Android:** in the [Android app](android.md), tap **Scan QR code** and scan the code the dashboard's Android tab shows, or paste the join code.
 - **Already installed:** `sudo ws login wsjoin-…` (on Windows, `ws login wsjoin-…` in a terminal opened as Administrator). It joins and connects.
 
 Then:

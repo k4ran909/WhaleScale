@@ -1052,7 +1052,7 @@ func (c *Conn) updateEndpoints() {
 		eps = append(eps, c.mapped)
 	}
 	c.mu.Unlock()
-	if addrs, err := net.InterfaceAddrs(); err == nil {
+	if addrs, err := interfaceAddrs(); err == nil {
 		for _, a := range addrs {
 			ipn, ok := a.(*net.IPNet)
 			if !ok {
@@ -1115,7 +1115,7 @@ func (c *Conn) netWatchLoop() {
 // localAddrs lists the machine's usable unicast addresses, sorted, leaving
 // out the mesh's own ranges (our tunnel coming up isn't a network change).
 func (c *Conn) localAddrs() []netip.Addr {
-	addrs, err := net.InterfaceAddrs()
+	addrs, err := interfaceAddrs()
 	if err != nil {
 		return nil
 	}

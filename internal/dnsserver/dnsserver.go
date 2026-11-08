@@ -103,6 +103,32 @@ func (s *Server) Handle(query []byte) ([]byte, bool) {
 	return s.HandleFrom(context.Background(), netip.Addr{}, query)
 }
 
+// meshReverse reports whether name is a reverse lookup (PTR) inside the
+// mesh range 100.64.0.0/10, e.g. "1.0.64.100.in-addr.arpa.". Those are
+// answered here (as unknown names) rather than forwarded: no outside
+// server knows them, and waiting for one to time out makes tools that look
+// up every address (ping) stall. This matters where every lookup comes
+// here, as on Android.
+func meshReverse(name string) bool {
+	rest, ok := strings.CutSuffix(name, ".in-addr.arpa.")
+	if !ok {
+		return false
+	}
+	labels := strings.Split(rest, ".")
+	n := len(labels)
+	if n < 2 || labels[n-1] != "100" {
+		return false
+	}
+	second := 0
+	for _, c := range labels[n-2] {
+		if c < '0' || c > '9' || second > 255 {
+			return false
+		}
+		second = second*10 + int(c-'0')
+	}
+	return second >= 64 && second <= 127
+}
+
 // HandleFrom answers one DNS query message from src, forwarding names
 // outside the mesh if there is a Forwarder.
 func (s *Server) HandleFrom(ctx context.Context, src netip.Addr, query []byte) ([]byte, bool) {
@@ -119,7 +145,7 @@ func (s *Server) HandleFrom(ctx context.Context, src netip.Addr, query []byte) (
 	name := strings.ToLower(q.Name.String())
 
 	s.mu.RLock()
-	inZone := s.suffix != "" && (name == s.suffix || strings.HasSuffix(name, "."+s.suffix))
+	inZone := s.suffix != "" && (name == s.suffix || strings.HasSuffix(name, "."+s.suffix)) || meshReverse(name)
 	addrs, found := s.records[name]
 	fwd := s.fwd
 	s.mu.RUnlock()
