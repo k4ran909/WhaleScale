@@ -15,7 +15,7 @@ through GitHub's API, so it works while GitHub Actions is unavailable.
 | `vuln.yaml` | same, plus nightly | `govulncheck` on both modules |
 | `installer.yaml` | same | the Windows installer builds |
 | `packages.yaml` | same | the `.deb` and `.rpm` packages build, and install, upgrade and uninstall on Debian and Fedora |
-| `android.yaml` | same, when the app or Go code changes | the Go core with gomobile and a debug APK ([Android app](../guides/android.md)) |
+| `android.yaml` | by hand only, for now (see below) | the Go core with gomobile and a debug APK ([Android app](../guides/android.md)) |
 | `release.yaml` | `v*` tags | archives, installers, `.deb`/`.rpm` packages and signed checksums on GitHub Releases; images on `ghcr.io` |
 
 What GitHub Actions did that this doesn't: build artifacts aren't kept per
@@ -65,7 +65,7 @@ In Woodpecker: **Add repository** → `k4ran909/WhaleScale` → enable. Then in 
 - **Capacity.** `WOODPECKER_MAX_WORKFLOWS=3` runs three pipelines at once. The race tests want about 2 CPU cores and 3 GB of RAM; lower it on a small server.
 - **Releases if GitHub limits more than Actions.** If the account restrictions also block the API, `publish release` and the image push fail with 403. Try a test tag first.
 - **Trusting volumes has a cost.** With it on, a pipeline file may mount any volume, including the host's Docker socket, which means control of the host. That's why fork pull requests need your approval: before approving one, check whether it changes `.woodpecker/` or `scripts/ci/`. Your own pushes are unaffected.
-- **amd64 emulation for the Android app:** Google ships the Android NDK and build tools only for x86_64 Linux, so on an arm64 host `android.yaml` runs an amd64 image under QEMU. Register it on the host once: `sudo apt install qemu-user-static binfmt-support` (Debian/Ubuntu). Without it the step fails with `exec format error`.
+- **amd64 emulation for the Android app:** Google ships the Android NDK and build tools only for x86_64 Linux, so on an arm64 host `android.yaml` runs an amd64 image under QEMU. Register it on the host once: `sudo apt install qemu-user-static binfmt-support` (Debian/Ubuntu). Without it the step fails with `exec format error`, which is why the pipeline only runs by hand for now.
 - **Caches:** downloads are retried (`scripts/ci/retry.sh`), and the caches are safe to share between runs. To start fresh: `docker volume rm woodpecker-go-mod woodpecker-go-build woodpecker-npm woodpecker-android woodpecker-gradle` on the agent's host.
 - **Shell variables in pipelines.** Woodpecker replaces `$VAR` in commands before running them, so scripts with variables live in `scripts/ci/` rather than inline.
 - **When GitHub Actions comes back**, both systems will run on every push. Disable the repository in Woodpecker, or delete `.github/workflows/`, to keep one.

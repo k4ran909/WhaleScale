@@ -1,37 +1,25 @@
 # The Android app: the Go core built with gomobile, then a debug APK with
-# Gradle. Only when something it's built from changes.
+# Gradle.
 #
 # JDK, Android SDK and NDK (about 3 GB) are installed once into the
 # 'woodpecker-android' volume, and Gradle's downloads kept in
 # 'woodpecker-gradle'. A release APK needs a signing key and isn't built
 # here yet (see docs/guides/android.md).
 
-variables:
-  - &paths
-    include:
-      - android/**
-      - mobile/**
-      - internal/**
-      - gen/**
-      - go.mod
-      - go.sum
-      - .woodpecker/android.yaml
-      - scripts/ci/android-*.sh
-
+# Manual only for now: the agent is arm64, and its Docker host can't run the
+# amd64 image yet (see below). Start it from Woodpecker's "Run pipeline"
+# once it can, then switch the push and pull_request triggers back on.
 when:
-  - event: push
-    branch: main
-    path: *paths
-  - event: pull_request
-    path: *paths
   - event: manual
 
 steps:
   - name: debug apk
     # Google ships the NDK and Gradle's aapt2 only for x86_64 Linux, and the
     # agent is arm64, so this is golang:1.27.3's amd64 image, pinned by
-    # digest, running under QEMU emulation (the same that builds the amd64
-    # release image). It's slow; keep the digest in step with the Go
+    # digest, running under QEMU emulation. The agent's Docker host must have
+    # it registered (docs/development/ci.md); BuildKit's own emulation, which
+    # builds the amd64 release image, doesn't cover normal steps. It's slow;
+    # keep the digest in step with the Go
     # version in go.mod.
     image: golang:1.27.3@sha256:a5406f41680f17b4aa0b49de641e00f116215f5c8829d548d29cb44c4f85aa4f
     volumes:

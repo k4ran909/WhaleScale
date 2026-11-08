@@ -2,7 +2,7 @@
 
 The Android app puts a phone on your network like any other device: join
 with a code from the dashboard, then switch the VPN on. It is new and not on
-Google Play yet; you build the APK yourself (below) or take it from CI.
+Google Play yet; you build the APK yourself (below) or take it from a CI run.
 
 ## Using it
 
@@ -136,9 +136,9 @@ and keep it safe: Android only installs an update signed with the same key.
 
 ### CI
 
-[`.woodpecker/android.yaml`](../../.woodpecker/android.yaml) builds a debug APK
-on pushes to `main` and on pull requests that touch the app, the Go code it's
-built from, or the pipeline. The first run downloads the JDK, SDK and NDK
+[`.woodpecker/android.yaml`](../../.woodpecker/android.yaml) builds a debug APK.
+For now it only runs when started by hand (**Run pipeline** in Woodpecker),
+until the agent can run it (below); build the APK yourself meanwhile. The first run downloads the JDK, SDK and NDK
 into the `woodpecker-android` volume; later runs reuse it. Google ships the
 NDK and Gradle's `aapt2` only for x86_64 Linux, so on an arm64 agent the step
 runs an amd64 image under QEMU emulation. The agent's Docker host must have
