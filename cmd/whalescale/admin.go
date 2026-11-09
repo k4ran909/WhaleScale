@@ -41,7 +41,7 @@ func table(header string) *tabwriter.Writer {
 // shown once (nothing to type into a 'docker exec' without a terminal);
 // change them in the console.
 func cmdAdmins(args []string) error {
-	usage := errors.New("usage: whalescale admins list | create NAME | reset-password NAME | reset-2fa NAME | delete NAME")
+	usage := errors.New("usage: whalescale admins list | create NAME | reset-password NAME | reset-2fa NAME | reset-passkeys NAME | delete NAME")
 	if len(args) == 0 {
 		return usage
 	}
@@ -63,13 +63,13 @@ func cmdAdmins(args []string) error {
 		if err != nil {
 			return err
 		}
-		tw := table("NAME\tCREATED\tTWO-FACTOR")
+		tw := table("NAME\tCREATED\tTWO-FACTOR\tPASSKEYS")
 		for _, a := range admins {
 			twoFactor := "off"
 			if a.TwoFactor {
 				twoFactor = "on"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", a.Name, a.CreatedAt.Format(time.DateTime), twoFactor)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", a.Name, a.CreatedAt.Format(time.DateTime), twoFactor, a.Passkeys)
 		}
 		tw.Flush()
 	case "reset-2fa":
@@ -90,6 +90,25 @@ func cmdAdmins(args []string) error {
 		}
 		cliAudit(ctx, st, "two-factor sign-in reset", "admin", name)
 		fmt.Printf("two-factor sign-in is off for %s: they sign in with the password, then can turn it on again in the console\n", name)
+	case "reset-passkeys":
+		// For a lost or stolen device: removes every passkey of the
+		// account, and signs it out everywhere.
+		if fs.NArg() != 1 {
+			return usage
+		}
+		name := strings.ToLower(fs.Arg(0))
+		n, err := st.DeleteAdminPasskeys(ctx, name)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("no admin account %q; see 'whalescale admins list'", name)
+			}
+			return err
+		}
+		if err := st.DeleteSessionsOf(ctx, store.AdminIdentity(name)); err != nil {
+			return err
+		}
+		cliAudit(ctx, st, "passkeys reset", "admin", name, "removed", fmt.Sprint(n))
+		fmt.Printf("removed %d passkey(s) of %s and signed them out: they sign in with the password, and can add passkeys again in the console\n", n, name)
 	case "create", "reset-password":
 		if fs.NArg() != 1 {
 			return usage

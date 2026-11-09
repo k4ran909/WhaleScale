@@ -204,7 +204,7 @@ The research below (sources at the end) found these recurring problems in Tailsc
 ### Phase 6: Ready for 1.0
 - Real-world verification: the open "done when" checks of Phases 1–4 (docs/development/real-world-test.md) and the success metrics below, measured
 - Supply chain: signed releases (checksums signed in minisign format; the tray's updater verifies them), an SBOM per release, a code-signed Windows installer and icons in the programs
-- Admin accounts: two-factor sign-in (TOTP), then passkeys
+- Admin accounts: two-factor sign-in (TOTP) and passkeys (WebAuthn) **(done)**
 - A license (see open question 1) and a trademark check of the name (question 4)
 - External security audit
 - **Done when:** a stranger installs from the README to first ping in under 10 minutes on Windows, Linux and macOS, every release is signed and verified on update, and the audit's findings are fixed

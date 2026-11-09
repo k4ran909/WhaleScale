@@ -25,7 +25,8 @@ Usage:
   whalescale serve       [flags]           run the server (see 'whalescale serve -h')
   whalescale configtest  [flags]           validate configuration and show where each value came from
   whalescale doctor      [flags]           check a running server end to end
-  whalescale admins      list | create NAME | reset-password NAME | reset-2fa NAME | delete NAME   (console accounts)
+  whalescale admins      list | create NAME | reset-password NAME | reset-2fa NAME |
+                         reset-passkeys NAME | delete NAME   (console accounts)
   whalescale setup-code                    the code that creates the first admin account in the console
   whalescale users       create NAME | list | delete NAME
   whalescale preauthkeys create --user NAME [--reusable] [--ephemeral] [--expiration 24h]

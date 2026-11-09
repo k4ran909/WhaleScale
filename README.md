@@ -37,7 +37,7 @@ Whalescale connects your computers, servers and phones into one private network,
 - **Access control:** a policy with tests and "why can't A reach B?" explanations, temporary access, device posture and network lock.
 - **Reach more:** subnet routers into whole LANs, exit nodes, and a gateway that publishes a service on the internet with HTTPS.
 - **SSH by identity:** no keys to manage, with recorded sessions.
-- **Web console:** setup in the browser, two-factor sign-in, an audit log and flow logs.
+- **Web console:** setup in the browser, passkeys and two-factor sign-in, an audit log and flow logs.
 - **Easy clients:** a Windows installer and tray icon, one command on macOS and Linux, `.deb` and `.rpm` packages, an Android app, and signed updates.
 - **Runs anywhere:** one command on Linux, Docker, Dokploy or Kubernetes, with failover across servers.
 - **Automation:** an admin API, a Terraform provider and an MCP server for AI agents.

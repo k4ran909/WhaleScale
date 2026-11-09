@@ -17,7 +17,7 @@ New here? Start with **[Getting started](getting-started.md)**: a server, an adm
 |---|---|
 | [Adding devices](guides/devices.md) | Windows installer and tray icon, macOS and Linux, `.deb` and `.rpm` packages, join codes, several networks, verifying downloads |
 | [Android app](guides/android.md) | Joining from a phone with a QR code, and building the APK |
-| [Web console](guides/console.md) | Signing in, admin accounts, two-factor sign-in, API keys |
+| [Web console](guides/console.md) | Signing in, admin accounts, passkeys, two-factor sign-in, API keys |
 | [Access policy](guides/access-policy.md) | Rules, temporary access, device posture and limits, policy from Git, tests, "why can't A reach B?" |
 | [Networking](guides/networking.md) | Subnet routers, exit nodes, relays and hard NATs, peer relays, port mapping, roaming and multipath |
 | [SSH over the mesh](guides/ssh.md) | Key-free SSH by identity, and session recordings |

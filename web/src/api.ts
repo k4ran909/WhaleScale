@@ -230,6 +230,8 @@ export interface AuthStatus {
   // No admin account yet: the console shows first-run setup.
   setup: boolean;
   oidc: boolean;
+  // The server can offer passkeys (its public URL is https://).
+  passkeys: boolean;
   publicUrl: string;
 }
 
@@ -277,4 +279,119 @@ export const changePassword = (current: string, next: string) =>
 
 export async function logout() {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+}
+
+// ---------- passkeys (WebAuthn) ----------
+
+export interface Passkey {
+  id: number;
+  name: string;
+  created: number; // Unix seconds
+  lastUsed?: number;
+}
+
+/** The browser can make and use passkeys. */
+export const passkeysSupported = () =>
+  typeof window !== "undefined" && "PublicKeyCredential" in window && !!navigator.credentials;
+
+// WebAuthn takes binary values; the server sends and wants them as base64url.
+function fromB64url(s: string): ArrayBuffer {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0)).buffer;
+}
+function toB64url(b: ArrayBuffer): string {
+  let bin = "";
+  for (const byte of new Uint8Array(b)) bin += String.fromCharCode(byte);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+const descriptors = (list?: { id: string; type: string; transports?: string[] }[]) =>
+  (list ?? []).map((c) => ({ ...c, id: fromB64url(c.id) }) as PublicKeyCredentialDescriptor);
+
+/** passkeyError says what went wrong in the browser's passkey prompt. */
+function passkeyError(e: unknown, creating: boolean): Error {
+  if (e instanceof DOMException) {
+    if (e.name === "NotAllowedError")
+      return new ApiError(
+        "passkey",
+        creating ? "No passkey was made: the prompt was closed or timed out." : "Cancelled, or this device has no passkey for this server.",
+      );
+    if (e.name === "InvalidStateError") return new ApiError("passkey", "This device already has a passkey for your account here.");
+    if (e.name === "SecurityError") return new ApiError("passkey", "Passkeys only work on the server's own address: " + location.origin + " isn't it.");
+    return new ApiError("passkey", e.message);
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+export async function listPasskeys(): Promise<{ available: boolean; passkeys: Passkey[] }> {
+  const res = await fetch("/auth/passkeys", { credentials: "same-origin", cache: "no-store" });
+  if (!res.ok) throw new ApiError(String(res.status), (await res.text()).trim() || "Request failed");
+  return res.json();
+}
+
+/** addPasskey makes a passkey on this device (the browser asks for the
+ * fingerprint, face, PIN or security key) and saves it for the account. */
+export async function addPasskey(password: string, name: string): Promise<Passkey> {
+  const start = await postAuth("/auth/passkeys/register/begin", { password }).then((r) => r.json());
+  const pk = start.options.publicKey;
+  let cred: PublicKeyCredential | null;
+  try {
+    cred = (await navigator.credentials.create({
+      publicKey: {
+        ...pk,
+        challenge: fromB64url(pk.challenge),
+        user: { ...pk.user, id: fromB64url(pk.user.id) },
+        excludeCredentials: descriptors(pk.excludeCredentials),
+      },
+    })) as PublicKeyCredential | null;
+  } catch (e) {
+    throw passkeyError(e, true);
+  }
+  if (!cred) throw new ApiError("passkey", "No passkey was made.");
+  const res = cred.response as AuthenticatorAttestationResponse;
+  const credential = {
+    id: cred.id,
+    rawId: toB64url(cred.rawId),
+    type: cred.type,
+    authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
+    clientExtensionResults: cred.getClientExtensionResults(),
+    response: {
+      clientDataJSON: toB64url(res.clientDataJSON),
+      attestationObject: toB64url(res.attestationObject),
+      transports: res.getTransports?.() ?? [],
+    },
+  };
+  return postAuth("/auth/passkeys/register/finish", { token: start.token, name, credential }).then((r) => r.json());
+}
+
+export const deletePasskey = (id: number) => postAuth("/auth/passkeys/delete", { id });
+
+/** loginWithPasskey signs in with any passkey this device has for the
+ * server: no name or password. */
+export async function loginWithPasskey() {
+  const start = await postAuth("/auth/passkeys/login/begin", {}).then((r) => r.json());
+  const pk = start.options.publicKey;
+  let cred: PublicKeyCredential | null;
+  try {
+    cred = (await navigator.credentials.get({
+      publicKey: { ...pk, challenge: fromB64url(pk.challenge), allowCredentials: descriptors(pk.allowCredentials) },
+    })) as PublicKeyCredential | null;
+  } catch (e) {
+    throw passkeyError(e, false);
+  }
+  if (!cred) throw new ApiError("passkey", "Cancelled.");
+  const res = cred.response as AuthenticatorAssertionResponse;
+  const credential = {
+    id: cred.id,
+    rawId: toB64url(cred.rawId),
+    type: cred.type,
+    authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
+    clientExtensionResults: cred.getClientExtensionResults(),
+    response: {
+      clientDataJSON: toB64url(res.clientDataJSON),
+      authenticatorData: toB64url(res.authenticatorData),
+      signature: toB64url(res.signature),
+      userHandle: res.userHandle ? toB64url(res.userHandle) : undefined,
+    },
+  };
+  await postAuth("/auth/passkeys/login/finish", { token: start.token, credential });
 }

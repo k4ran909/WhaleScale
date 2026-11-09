@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"golang.org/x/oauth2"
 
 	"github.com/k4ran909/whalescale/internal/control"
@@ -53,6 +54,7 @@ type auth struct {
 	verifier *oidc.IDTokenVerifier
 	oauth    oauth2.Config
 	secure   bool
+	passkeys *webauthn.WebAuthn // nil where browsers won't offer passkeys
 
 	mu     sync.Mutex
 	states map[string]authState
@@ -60,6 +62,11 @@ type auth struct {
 
 func newAuth(ctx context.Context, s *Server, cfg *OIDCConfig) (*auth, error) {
 	a := &auth{srv: s, cfg: cfg, states: map[string]authState{}, secure: strings.HasPrefix(s.cfg.PublicURL, "https://")}
+	pk, err := newPasskeys(s.cfg.PublicURL)
+	if err != nil {
+		return nil, fmt.Errorf("passkeys for %s: %w", s.cfg.PublicURL, err)
+	}
+	a.passkeys = pk
 	if cfg == nil {
 		return a, nil
 	}
@@ -91,6 +98,12 @@ func (a *auth) routes(mux *http.ServeMux, limit func(http.Handler) http.Handler)
 	mux.Handle("POST /auth/2fa/setup", limit(http.HandlerFunc(a.twoFactorSetup)))
 	mux.Handle("POST /auth/2fa/enable", limit(http.HandlerFunc(a.twoFactorEnable)))
 	mux.Handle("POST /auth/2fa/disable", limit(http.HandlerFunc(a.twoFactorDisable)))
+	mux.Handle("GET /auth/passkeys", limit(http.HandlerFunc(a.passkeyList)))
+	mux.Handle("POST /auth/passkeys/register/begin", limit(http.HandlerFunc(a.passkeyRegisterBegin)))
+	mux.Handle("POST /auth/passkeys/register/finish", limit(http.HandlerFunc(a.passkeyRegisterFinish)))
+	mux.Handle("POST /auth/passkeys/delete", limit(http.HandlerFunc(a.passkeyDelete)))
+	mux.Handle("POST /auth/passkeys/login/begin", limit(http.HandlerFunc(a.passkeyLoginBegin)))
+	mux.Handle("POST /auth/passkeys/login/finish", limit(http.HandlerFunc(a.passkeyLoginFinish)))
 	mux.Handle("GET /auth/login", limit(http.HandlerFunc(a.login)))
 	mux.Handle("GET /auth/node", limit(http.HandlerFunc(a.nodeLogin)))
 	mux.Handle("GET /auth/callback", limit(http.HandlerFunc(a.callback)))
@@ -263,12 +276,19 @@ func (a *auth) apiKeyLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // readJSON decodes a small JSON body into v, answering the error itself.
+// Requiring the JSON content type also keeps other sites' forms out: a
+// cross-site request can't set it without the browser asking first.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return readJSONLimit(w, r, v, 4096)
+}
+
+// readJSONLimit is readJSON for bodies of up to limit bytes.
+func readJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "expected JSON", http.StatusUnsupportedMediaType)
 		return false
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(v); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return false
 	}
@@ -289,7 +309,8 @@ func (a *auth) status(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]any{"setup": setup, "oidc": a.enabled(), "publicUrl": a.srv.cfg.PublicURL})
+	json.NewEncoder(w).Encode(map[string]any{"setup": setup, "oidc": a.enabled(), "passkeys": a.passkeys != nil,
+		"publicUrl": a.srv.cfg.PublicURL})
 }
 
 // needsSetup: no admin account yet, and no identity provider to sign in

@@ -1,0 +1,26 @@
+-- Passkeys (WebAuthn credentials) for console accounts: each signs its
+-- account in without a password. credential holds the library's record
+-- (public key, sign count, flags) as JSON; credential_id is its ID,
+-- base64url, for finding it at sign-in.
+CREATE TABLE admin_passkeys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id      INTEGER NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+    credential_id TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    credential    TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    last_used     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX admin_passkeys_admin ON admin_passkeys(admin_id);
+
+-- Passkey ceremonies between the server's challenge and the browser's
+-- answer, in the database so the answer may reach any server. Each is
+-- taken (deleted) once.
+CREATE TABLE webauthn_ceremonies (
+    token      TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL,
+    admin      TEXT NOT NULL,
+    session    TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX webauthn_ceremonies_created ON webauthn_ceremonies(created_at);

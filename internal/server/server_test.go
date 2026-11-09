@@ -19,6 +19,13 @@ import (
 
 func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 	t.Helper()
+	return newTestServerAt(t, func(addr string) string { return "http://" + addr })
+}
+
+// newTestServerAt is newTestServer with the public URL publicURL(the
+// listener's address) returns.
+func newTestServerAt(t *testing.T, publicURL func(addr string) string) (*httptest.Server, *store.Store) {
+	t.Helper()
 	st, err := store.Open(context.Background(), storetest.DSN(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +36,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 		"index.html":    {Data: []byte("<!doctype html><title>console</title>")},
 		"assets/app.js": {Data: []byte("console.log(1)")},
 	}
-	srv, err := New(st, Config{PublicURL: "http://" + hs.Listener.Addr().String(), Console: console,
+	srv, err := New(st, Config{PublicURL: publicURL(hs.Listener.Addr().String()), Console: console,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)

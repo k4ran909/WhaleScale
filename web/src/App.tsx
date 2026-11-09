@@ -1,6 +1,7 @@
 import {
   Activity,
   ChevronRight,
+  Fingerprint,
   Globe,
   Hourglass,
   KeyRound,
@@ -38,14 +39,20 @@ import {
 import { toast } from "./toast";
 import { AsciiAquarium } from "@/components/aquarium/ascii-aquarium";
 import {
+  addPasskey,
   api,
   ApiError,
   authStatus,
   AuthStatus,
   changePassword,
+  deletePasskey,
+  listPasskeys,
   loginWithAPIKey,
+  loginWithPasskey,
   loginWithPassword,
   logout,
+  Passkey,
+  passkeysSupported,
   setupAdmin,
   twoFactorDisable,
   twoFactorEnable,
@@ -53,7 +60,7 @@ import {
   twoFactorStatus,
 } from "./api";
 import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
-import { errText } from "./ui";
+import { ConfirmButton, errText } from "./ui";
 
 // The sidebar toggles on Ctrl+B, or Cmd+B on a Mac.
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -110,6 +117,7 @@ export function App() {
   const [tab, setTab] = useState(currentTab);
   const [pwOpen, setPwOpen] = useState(false);
   const [tfOpen, setTfOpen] = useState(false);
+  const [pkOpen, setPkOpen] = useState(false);
 
   useEffect(() => {
     const onHash = () => setTab(currentTab());
@@ -192,11 +200,21 @@ export function App() {
                 </AnimatedSidebarMenuButton>
               </AnimatedSidebarMenuItem>
             )}
+            {me.method === "admin" && (
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton icon={<Fingerprint className="size-4" />} onSelect={() => setPkOpen(true)}>
+                  Passkeys
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+            )}
             <AnimatedSidebarMenuItem>
               <AnimatedSidebarMenuButton
                 icon={<LogOut className="size-4" />}
                 onSelect={async () => {
                   await logout();
+                  setPwOpen(false);
+                  setTfOpen(false);
+                  setPkOpen(false);
                   setMe(null);
                 }}
               >
@@ -227,6 +245,7 @@ export function App() {
         <div className="main">
           {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
           {tfOpen && <TwoFactor onClose={() => setTfOpen(false)} />}
+          {pkOpen && <Passkeys onClose={() => setPkOpen(false)} />}
           <View />
         </div>
       </AnimatedSidebarInset>
@@ -250,7 +269,11 @@ function SignIn({ onDone }: { onDone: () => void }) {
       </Card>
     );
   }
-  return status.setup ? <Setup onDone={onDone} onTaken={load} /> : <Login oidc={status.oidc} onDone={onDone} />;
+  return status.setup ? (
+    <Setup onDone={onDone} onTaken={load} />
+  ) : (
+    <Login oidc={status.oidc} passkeys={status.passkeys && passkeysSupported()} onDone={onDone} />
+  );
 }
 
 function Card({ children, onSubmit }: { children: ReactNode; onSubmit?: (e: FormEvent) => void }) {
@@ -338,7 +361,19 @@ function Setup({ onDone, onTaken }: { onDone: () => void; onTaken: () => void })
   );
 }
 
-function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
+function Login({ oidc, passkeys, onDone }: { oidc: boolean; passkeys: boolean; onDone: () => void }) {
+  const [pkBusy, setPkBusy] = useState(false);
+  const signInWithPasskey = async () => {
+    setPkBusy(true);
+    try {
+      await loginWithPasskey();
+      onDone();
+    } catch (e) {
+      toast.error(errText(e));
+    } finally {
+      setPkBusy(false);
+    }
+  };
   const [name, setName] = useState("");
   const [pw, setPw] = useState("");
   const [key, setKey] = useState("");
@@ -367,6 +402,16 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
       {oidc && (
         <>
           <a className="btn primary block" href="/auth/login">Sign in with your identity provider</a>
+          <div className="or"><span>or</span></div>
+        </>
+      )}
+      {passkeys && !useKey && (
+        <>
+          <button type="button" className={oidc ? "btn block" : "btn primary block"} disabled={pkBusy} onClick={signInWithPasskey}>
+            <span className="inline-flex items-center gap-2">
+              <Fingerprint aria-hidden="true" className="size-4" /> {pkBusy ? "Waiting for your passkey…" : "Sign in with a passkey"}
+            </span>
+          </button>
           <div className="or"><span>or</span></div>
         </>
       )}
@@ -402,7 +447,7 @@ function Login({ oidc, onDone }: { oidc: boolean; onDone: () => void }) {
           )}
         </>
       )}
-      <button className={oidc ? "btn block" : "btn primary block"} disabled={busy}>
+      <button className={oidc || (passkeys && !useKey) ? "btn block" : "btn primary block"} disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
       <button type="button" className="btn ghost small" onClick={() => setUseKey(!useKey)}>
@@ -538,6 +583,120 @@ function TwoFactor({ onClose }: { onClose: () => void }) {
             {codeField}
             <button className="btn primary" disabled={busy}>{busy ? "Checking…" : "Turn on"}</button>
           </div>
+        </>
+      )}
+    </form>
+  );
+}
+
+/** deviceName guesses a name for a new passkey from the browser's system. */
+function deviceName() {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  if (/Android/.test(ua)) return "Android phone";
+  if (/Mac/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows PC";
+  if (/Linux/.test(ua)) return "Linux PC";
+  return "Passkey";
+}
+
+const dateOf = (unix: number) => new Date(unix * 1000).toLocaleDateString(undefined, { dateStyle: "medium" });
+
+/** Passkeys lists, adds and removes the signed-in password account's
+ * passkeys. */
+function Passkeys({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<{ available: boolean; passkeys: Passkey[] }>();
+  const [name, setName] = useState(deviceName);
+  const [pw, setPw] = useState("");
+  const load = () =>
+    listPasskeys().then(setData, (e) => {
+      toast.error(errText(e));
+      onClose();
+    });
+  useEffect(() => {
+    load();
+  }, []);
+  const { busy, onSubmit } = useSubmit(async () => {
+    const p = await addPasskey(pw, name.trim());
+    toast.success(`Passkey "${p.name}" added. Next time, choose "Sign in with a passkey".`);
+    setPw("");
+    load();
+  });
+  const supported = passkeysSupported();
+  return (
+    <form className="secret" onSubmit={onSubmit}>
+      <div className="secret-head">
+        <strong>Passkeys</strong>
+        <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+      </div>
+      <p>
+        Sign in with this device's fingerprint, face or PIN, or a security key, instead of your password. A passkey only works
+        on this server's address, so a look-alike site can't use it, and it replaces the password and the two-factor code.
+      </p>
+      {!data ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <>
+          {data.passkeys.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Added</th>
+                    <th>Last used</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.passkeys.map((p) => (
+                    <tr key={p.id}>
+                      <td><strong>{p.name}</strong></td>
+                      <td>{dateOf(p.created)}</td>
+                      <td>{p.lastUsed ? dateOf(p.lastUsed) : <span className="muted">never</span>}</td>
+                      <td className="right">
+                        <ConfirmButton
+                          label="Remove"
+                          confirm="Remove passkey?"
+                          onConfirm={() =>
+                            deletePasskey(p.id).then(
+                              () => (toast.success(`Passkey "${p.name}" removed.`), load()),
+                              (e) => toast.error(errText(e)),
+                            )
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!data.available ? (
+            <p className="muted">
+              Passkeys need the server's <code>public-url</code> to be an <code>https://</code> address.
+            </p>
+          ) : !supported ? (
+            <p className="muted">This browser can't make passkeys. Try a current Chrome, Edge, Firefox or Safari.</p>
+          ) : (
+            <div className="form-grid">
+              <label>
+                Name for this passkey
+                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
+              </label>
+              <label>
+                Your password
+                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required />
+              </label>
+              <button className="btn primary" disabled={busy}>
+                {busy ? "Follow your browser's prompt…" : "Add a passkey"}
+              </button>
+            </div>
+          )}
+          <p className="muted small">
+            Lost a device? Remove its passkey here, or on the server run <code>whalescale admins reset-passkeys NAME</code>.
+          </p>
         </>
       )}
     </form>

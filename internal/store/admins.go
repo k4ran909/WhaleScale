@@ -16,6 +16,7 @@ type Admin struct {
 	Name      string
 	CreatedAt time.Time
 	TwoFactor bool // signs in with a TOTP code too
+	Passkeys  int  // how many passkeys can sign it in
 }
 
 // ValidName reports whether name is a valid user or admin name.
@@ -125,7 +126,8 @@ func (s *Store) DeleteAdmin(ctx context.Context, name string) error {
 
 // ListAdmins returns the console accounts, oldest first.
 func (s *Store) ListAdmins(ctx context.Context) ([]Admin, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, created_at, totp_secret <> '' FROM admins ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, created_at, totp_secret <> '',
+		(SELECT COUNT(*) FROM admin_passkeys p WHERE p.admin_id = admins.id) FROM admins ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +136,7 @@ func (s *Store) ListAdmins(ctx context.Context) ([]Admin, error) {
 	for rows.Next() {
 		var a Admin
 		var created int64
-		if err := rows.Scan(&a.ID, &a.Name, &created, &a.TwoFactor); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &created, &a.TwoFactor, &a.Passkeys); err != nil {
 			return nil, err
 		}
 		a.CreatedAt = time.Unix(created, 0)

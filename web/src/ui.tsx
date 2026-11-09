@@ -93,6 +93,7 @@ export function ConfirmButton(props: { label: string; confirm: string; onConfirm
   }, [armed]);
   return (
     <button
+      type="button" // inside a form, it mustn't submit it
       className={armed ? "btn danger" : "btn ghost"}
       disabled={busy}
       onClick={async () => {
