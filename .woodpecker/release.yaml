@@ -11,9 +11,11 @@ steps:
   # first so the checksums cover it. Google ships the NDK and aapt2 only for
   # x86_64 Linux, so this is the amd64 golang image (same digest as
   # android.yaml) under QEMU, which the arm64 agent's Docker host must have
-  # registered (docs/development/ci.md). Until it does, or without the
-  # keystore secrets, this step fails and the release goes out without the
-  # APK: release-archives.sh then leaves the Android row out of the notes.
+  # registered (docs/development/ci.md). Until it does, this step fails and
+  # the release goes out without the APK: release-archives.sh then leaves the
+  # Android row out of the notes. The two keystore secrets must exist,
+  # though: Woodpecker refuses to start a pipeline that names a missing
+  # secret, even for a step allowed to fail.
   - name: android apk
     image: golang:1.27.3@sha256:a5406f41680f17b4aa0b49de641e00f116215f5c8829d548d29cb44c4f85aa4f
     failure: ignore
