@@ -151,9 +151,11 @@ NDK and Gradle's `aapt2` only for x86_64 Linux, so on an arm64 agent the step
 runs an amd64 image under QEMU emulation. The agent's Docker host must have
 it registered, or the step fails at once with `exec format error` (BuildKit's
 own emulation, which builds the amd64 release image, doesn't cover normal
-steps). On a Debian or Ubuntu host, once: `sudo apt install qemu-user-static
-binfmt-support`; it stays registered after a reboot. The build is several
-times slower than on x86_64.
+steps). Use a recent QEMU: `docker run --privileged --rm tonistiigi/binfmt
+--install amd64` at every boot. Ubuntu 24.04's `qemu-user-static` is too old:
+`apt-get update` fails in the build image with "No good signature" (details
+in [CI](../development/ci.md)). The build is several times slower than on
+x86_64.
 
 Releases: the `android apk` step of
 [`.woodpecker/release.yaml`](../../.woodpecker/release.yaml) builds the signed

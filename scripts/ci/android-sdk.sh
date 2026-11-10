@@ -27,7 +27,23 @@ if [ ! -x "$SM" ]; then
   mkdir -p "$SDK/cmdline-tools" && rm -rf "$SDK/cmdline-tools/latest"
   mv "$T/clt/cmdline-tools" "$SDK/cmdline-tools/latest" && rm -rf "$T/clt"
 fi
-if [ ! -d "$SDK/ndk/$NDK" ] || [ ! -d "$SDK/platforms/android-35" ] || [ ! -d "$SDK/build-tools/35.0.0" ]; then
+# Each package is checked by a file it ends with, not its directory: a run
+# stopped mid-install (the CI timeout) leaves directories behind that
+# sdkmanager then counts as installed, and gomobile fails with "failed to
+# find android SDK platform". Anything incomplete is removed and reinstalled.
+missing=
+check() {
+  if [ ! -e "$SDK/$1/$2" ]; then
+    echo "android-sdk: $1 is missing or incomplete, (re)installing" >&2
+    rm -rf "${SDK:?}/$1"
+    missing=1
+  fi
+}
+check "ndk/$NDK" source.properties
+check platforms/android-35 android.jar
+check build-tools/35.0.0 lib/apksigner.jar
+check platform-tools package.xml
+if [ -n "$missing" ]; then
   yes | "$SM" --sdk_root="$SDK" --licenses > /dev/null || true
   # shellcheck disable=SC2086 # one package per word
   retry "$SM" --sdk_root="$SDK" $PACKAGES > /dev/null
