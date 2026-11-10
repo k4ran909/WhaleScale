@@ -11,6 +11,10 @@ export JAVA_HOME="$T/jdk17"
 export ANDROID_HOME="$T/sdk"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
 export PATH="$JAVA_HOME/bin:$PATH"
+# gomobile copies Go doc comments (with characters like →) into the Java
+# sources it compiles; CI containers default to an ASCII locale, where javac
+# refuses them as "unmappable character".
+export LC_ALL=C.UTF-8 JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
 version=${VERSION:-${CI_COMMIT_TAG:-$(git describe --tags --always 2>/dev/null || echo dev)}}
 
 sh scripts/ci/retry.sh go mod download
