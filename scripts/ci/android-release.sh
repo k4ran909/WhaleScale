@@ -21,13 +21,17 @@ key=$(mktemp)
 trap 'rm -f "$key"' EXIT
 printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$key"
 export WS_ANDROID_KEYSTORE="$key"
+# A password pasted into the secret form often carries a line break.
+WS_ANDROID_KEYSTORE_PASSWORD=$(printf '%s' "$WS_ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+export WS_ANDROID_KEYSTORE_PASSWORD
 
 sh scripts/ci/retry.sh apt-get update -qq
 sh scripts/ci/retry.sh apt-get install -y -qq unzip
 sh scripts/ci/android-sdk.sh
+T=${ANDROID_TOOLS:-/opt/android-tools}
+sh scripts/ci/android-keystore-check.sh "$key" "$T/jdk17/bin/keytool"
 VERSION=$version sh scripts/ci/android-build.sh release
 
-T=${ANDROID_TOOLS:-/opt/android-tools}
 apk=dist/whalescale-android-release.apk
 # Refuse anything that isn't properly signed, and show whose key it is.
 "$T/jdk17/bin/java" -jar "$T/sdk/build-tools/35.0.0/lib/apksigner.jar" verify --print-certs "$apk"
