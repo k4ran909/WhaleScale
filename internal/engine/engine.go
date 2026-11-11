@@ -603,6 +603,10 @@ func (e *Engine) apply(nm *v1.NetworkMap) error {
 	if err != nil {
 		return err
 	}
+	if self.v6.IsValid() && !e.opts.ForceRelay {
+		// Before SetPeers below, so peers' tunnel addresses are filtered too.
+		e.conn.SetMeshPrefix6(netip.PrefixFrom(self.v6, 48))
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 

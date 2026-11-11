@@ -104,9 +104,12 @@ type PeerConfig struct {
 type Conn struct {
 	opts Options
 	log  *slog.Logger
-	pc4  *net.UDPConn
-	pc6  *net.UDPConn // nil if IPv6 is unavailable
-	port uint16
+	// mesh6 is the mesh's IPv6 range, excluded like opts.Exclude but known
+	// only once the network map arrives (SetMeshPrefix6).
+	mesh6 atomic.Pointer[netip.Prefix]
+	pc4   *net.UDPConn
+	pc6   *net.UDPConn // nil if IPv6 is unavailable
+	port  uint16
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -382,7 +385,39 @@ func (c *Conn) excluded(a netip.Addr) bool {
 			return true
 		}
 	}
+	if p := c.mesh6.Load(); p != nil && p.Contains(a) {
+		return true
+	}
 	return false
+}
+
+// SetMeshPrefix6 excludes the mesh's IPv6 range (the deployment's /48) from
+// endpoints, as Options.Exclude does for its IPv4 range. Without it a node
+// advertises its tunnel's IPv6 address, and a peer that tries it reaches it
+// through the tunnel itself: a "direct" path that's really the relay, with
+// WireGuard inside WireGuard, which flaps and loses most packets. Addresses
+// already learned in the range are dropped.
+func (c *Conn) SetMeshPrefix6(p netip.Prefix) {
+	p = p.Masked()
+	if cur := c.mesh6.Load(); cur != nil && *cur == p {
+		return
+	}
+	c.mesh6.Store(&p)
+	c.mu.Lock()
+	for a := range c.byAddr {
+		if p.Contains(a.Addr()) {
+			delete(c.byAddr, a)
+		}
+	}
+	for _, q := range c.peers {
+		q.candidates = slices.DeleteFunc(q.candidates, func(a netip.AddrPort) bool { return p.Contains(a.Addr()) })
+		if q.bestAddr.IsValid() && p.Contains(q.bestAddr.Addr()) {
+			c.log.Info("dropping a direct path through the tunnel", "peer", q.cfg.Name, "addr", q.bestAddr)
+			q.bestAddr, q.bestLatency = netip.AddrPort{}, 0
+		}
+	}
+	c.mu.Unlock()
+	c.updateEndpoints()
 }
 
 // --- conn.Bind ---
@@ -652,7 +687,9 @@ func (c *Conn) handleDisco(pkt []byte, path discoPath, relayFrom key.Public) {
 		c.mu.Unlock()
 		return
 	}
-	viaUDP := udpFrom.IsValid()
+	// A disco message from inside the mesh's own ranges came through the
+	// tunnel: answer it, but never take its address as a direct path.
+	viaUDP := udpFrom.IsValid() && !c.excluded(udpFrom.Addr())
 
 	switch m := msg.(type) {
 	case *disco.Ping:
