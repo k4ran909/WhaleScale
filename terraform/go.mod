@@ -2,7 +2,7 @@ module github.com/k4ran909/whalescale/terraform
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	connectrpc.com/connect v1.18.1

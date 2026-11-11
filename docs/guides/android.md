@@ -68,7 +68,7 @@ You need, on Linux, macOS or WSL:
 
 | Tool | Version |
 |---|---|
-| Go | the one in `go.mod` (1.27.3) |
+| Go | the one in `go.mod` (1.27.4) |
 | JDK | 17 |
 | Android SDK | platform 35, build-tools 35.0.0 |
 | Android NDK | r27c (`27.2.12479018`) |

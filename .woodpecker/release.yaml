@@ -18,7 +18,7 @@ steps:
   # though: Woodpecker refuses to start a pipeline that names a missing
   # secret, even for a step allowed to fail.
   - name: android apk
-    image: golang:1.27.3@sha256:a5406f41680f17b4aa0b49de641e00f116215f5c8829d548d29cb44c4f85aa4f
+    image: golang:1.27.4@sha256:2cd7e1ebf475c6208122d2b9cefc638d98fcc8dfd8554c8872c9dd0c21f4ac61
     failure: ignore
     volumes:
       - woodpecker-go-mod:/go/pkg/mod
@@ -34,7 +34,7 @@ steps:
       - sh scripts/ci/android-release.sh "${CI_COMMIT_TAG}"
 
   - name: build archives
-    image: golang:1.27.3
+    image: golang:1.27.4
     depends_on: [android apk]
     commands:
       - sh scripts/ci/retry.sh apt-get update -qq

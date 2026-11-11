@@ -10,7 +10,7 @@ when:
 
 steps:
   - name: provider acceptance tests
-    image: golang:1.27.3
+    image: golang:1.27.4
     directory: terraform
     volumes:
       - woodpecker-go-mod:/go/pkg/mod

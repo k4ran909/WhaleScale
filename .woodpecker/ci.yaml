@@ -28,7 +28,7 @@ services:
 
 steps:
   - name: download modules and tools
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     commands:
       - sh scripts/ci/retry.sh go mod download
@@ -37,7 +37,7 @@ steps:
       - sh scripts/ci/retry.sh go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.18.1
 
   - name: generated code is current
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     commands:
       # Each step has its own /go/bin; these build from the warm caches.
@@ -49,19 +49,19 @@ steps:
       - git diff --exit-code -- gen/
 
   - name: vet
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     commands:
       - go vet ./...
 
   - name: test
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     commands:
       - go test -race -timeout 10m ./...
 
   - name: test on postgresql
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     environment:
       WHALESCALE_TEST_POSTGRES: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
@@ -70,7 +70,7 @@ steps:
       - go test -race -timeout 10m ./internal/store/... ./internal/control/... ./internal/server/... ./internal/engine/...
 
   - name: cross-compile
-    image: golang:1.27.3
+    image: golang:1.27.4
     volumes: *go_cache
     commands:
       - sh scripts/ci/build.sh
