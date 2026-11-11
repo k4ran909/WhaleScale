@@ -144,8 +144,8 @@ round, without uninstalling first.
 ### CI
 
 [`.woodpecker/android.yaml`](../../.woodpecker/android.yaml) builds a debug APK.
-For now it only runs when started by hand (**Run pipeline** in Woodpecker),
-until the agent can run it (below); build the APK yourself meanwhile. The first run downloads the JDK, SDK and NDK
+It only runs when started by hand (**Run pipeline** in Woodpecker), because
+on the arm64 agent it takes well over an hour (below). The first run downloads the JDK, SDK and NDK
 into the `woodpecker-android` volume; later runs reuse it. Google ships the
 NDK and Gradle's `aapt2` only for x86_64 Linux, so on an arm64 agent the step
 runs an amd64 image under QEMU emulation. The agent's Docker host must have

@@ -6,9 +6,9 @@
 # 'woodpecker-gradle'. A release APK needs a signing key and isn't built
 # here yet (see docs/guides/android.md).
 
-# Manual only for now: the agent is arm64, and its Docker host can't run the
-# amd64 image yet (see below). Start it from Woodpecker's "Run pipeline"
-# once it can, then switch the push and pull_request triggers back on.
+# Manual only: under emulation on the arm64 agent (see below) a build takes
+# well over an hour, too long for every push. Start it from Woodpecker's
+# "Run pipeline"; releases build the signed APK anyway (release.yaml).
 when:
   - event: manual
 
