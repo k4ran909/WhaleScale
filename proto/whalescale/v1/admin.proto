@@ -65,7 +65,81 @@ service AdminService {
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
   rpc ExpireAPIKey(ExpireAPIKeyRequest) returns (ExpireAPIKeyResponse);
+
+  // Server settings that can change while the server runs (gateway domain,
+  // flow logs, post-quantum keys). A value set here overrides the config
+  // file until reset.
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+  rpc UpdateSetting(UpdateSettingRequest) returns (UpdateSettingResponse);
+
+  // Console accounts: the team members who sign in to this console with a
+  // password.
+  rpc ListConsoleAccounts(ListConsoleAccountsRequest) returns (ListConsoleAccountsResponse);
+  rpc CreateConsoleAccount(CreateConsoleAccountRequest) returns (CreateConsoleAccountResponse);
+  rpc DeleteConsoleAccount(DeleteConsoleAccountRequest) returns (DeleteConsoleAccountResponse);
 }
+
+message Setting {
+  // The config file's key, e.g. "gateway-domain".
+  string name = 1;
+  // The value in effect: "true"/"false" for switches.
+  string value = 2;
+  // The config file's value.
+  string config_value = 3;
+  // Set in the console, overriding the config file.
+  bool from_console = 4;
+}
+
+message GetSettingsRequest {}
+message GetSettingsResponse {
+  repeated Setting settings = 1;
+  // MagicDNS: machines are reachable at <name>.<dns_suffix>.
+  string dns_suffix = 2;
+  // SSH rules in the access policy, and how many of them record sessions.
+  uint32 ssh_rules = 3;
+  uint32 ssh_recorded_rules = 4;
+}
+
+message UpdateSettingRequest {
+  string name = 1;
+  string value = 2;
+  // Forget the console's value and use the config file's again.
+  bool use_config = 3;
+}
+message UpdateSettingResponse {
+  repeated Setting settings = 1;
+}
+
+message ConsoleAccount {
+  string name = 1;
+  google.protobuf.Timestamp created_at = 2;
+  bool two_factor = 3;
+  uint32 passkeys = 4;
+}
+
+message ListConsoleAccountsRequest {}
+message ListConsoleAccountsResponse {
+  repeated ConsoleAccount accounts = 1;
+  // The account the caller is signed in as, if a password account.
+  string you = 2;
+}
+
+message CreateConsoleAccountRequest {
+  // Lowercase letters, digits and dashes. A user of the same name is
+  // created too, for the member's own machines.
+  string name = 1;
+}
+message CreateConsoleAccountResponse {
+  ConsoleAccount account = 1;
+  // A generated password, shown only once; the member changes it after
+  // signing in.
+  string password = 2;
+}
+
+message DeleteConsoleAccountRequest {
+  string name = 1;
+}
+message DeleteConsoleAccountResponse {}
 
 message WhoAmIRequest {}
 message WhoAmIResponse {

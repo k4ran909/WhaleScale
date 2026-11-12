@@ -27,6 +27,8 @@ ws lock status                                     # on any machine
 
 ## Post-quantum protection
 
+Turn it on in the console (**Settings → Post-quantum protection**), or in the server config:
+
 ```yaml
 post-quantum: true
 ```

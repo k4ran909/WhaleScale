@@ -22,6 +22,626 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Setting struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The config file's key, e.g. "gateway-domain".
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The value in effect: "true"/"false" for switches.
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// The config file's value.
+	ConfigValue string `protobuf:"bytes,3,opt,name=config_value,json=configValue,proto3" json:"config_value,omitempty"`
+	// Set in the console, overriding the config file.
+	FromConsole   bool `protobuf:"varint,4,opt,name=from_console,json=fromConsole,proto3" json:"from_console,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Setting) Reset() {
+	*x = Setting{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Setting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Setting) ProtoMessage() {}
+
+func (x *Setting) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Setting.ProtoReflect.Descriptor instead.
+func (*Setting) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Setting) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Setting) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *Setting) GetConfigValue() string {
+	if x != nil {
+		return x.ConfigValue
+	}
+	return ""
+}
+
+func (x *Setting) GetFromConsole() bool {
+	if x != nil {
+		return x.FromConsole
+	}
+	return false
+}
+
+type GetSettingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSettingsRequest) Reset() {
+	*x = GetSettingsRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSettingsRequest) ProtoMessage() {}
+
+func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{1}
+}
+
+type GetSettingsResponse struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Settings []*Setting             `protobuf:"bytes,1,rep,name=settings,proto3" json:"settings,omitempty"`
+	// MagicDNS: machines are reachable at <name>.<dns_suffix>.
+	DnsSuffix string `protobuf:"bytes,2,opt,name=dns_suffix,json=dnsSuffix,proto3" json:"dns_suffix,omitempty"`
+	// SSH rules in the access policy, and how many of them record sessions.
+	SshRules         uint32 `protobuf:"varint,3,opt,name=ssh_rules,json=sshRules,proto3" json:"ssh_rules,omitempty"`
+	SshRecordedRules uint32 `protobuf:"varint,4,opt,name=ssh_recorded_rules,json=sshRecordedRules,proto3" json:"ssh_recorded_rules,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GetSettingsResponse) Reset() {
+	*x = GetSettingsResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSettingsResponse) ProtoMessage() {}
+
+func (x *GetSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetSettingsResponse) GetSettings() []*Setting {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *GetSettingsResponse) GetDnsSuffix() string {
+	if x != nil {
+		return x.DnsSuffix
+	}
+	return ""
+}
+
+func (x *GetSettingsResponse) GetSshRules() uint32 {
+	if x != nil {
+		return x.SshRules
+	}
+	return 0
+}
+
+func (x *GetSettingsResponse) GetSshRecordedRules() uint32 {
+	if x != nil {
+		return x.SshRecordedRules
+	}
+	return 0
+}
+
+type UpdateSettingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Value string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// Forget the console's value and use the config file's again.
+	UseConfig     bool `protobuf:"varint,3,opt,name=use_config,json=useConfig,proto3" json:"use_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSettingRequest) Reset() {
+	*x = UpdateSettingRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSettingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSettingRequest) ProtoMessage() {}
+
+func (x *UpdateSettingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSettingRequest.ProtoReflect.Descriptor instead.
+func (*UpdateSettingRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UpdateSettingRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateSettingRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *UpdateSettingRequest) GetUseConfig() bool {
+	if x != nil {
+		return x.UseConfig
+	}
+	return false
+}
+
+type UpdateSettingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Settings      []*Setting             `protobuf:"bytes,1,rep,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSettingResponse) Reset() {
+	*x = UpdateSettingResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSettingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSettingResponse) ProtoMessage() {}
+
+func (x *UpdateSettingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSettingResponse.ProtoReflect.Descriptor instead.
+func (*UpdateSettingResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *UpdateSettingResponse) GetSettings() []*Setting {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+type ConsoleAccount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	TwoFactor     bool                   `protobuf:"varint,3,opt,name=two_factor,json=twoFactor,proto3" json:"two_factor,omitempty"`
+	Passkeys      uint32                 `protobuf:"varint,4,opt,name=passkeys,proto3" json:"passkeys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleAccount) Reset() {
+	*x = ConsoleAccount{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleAccount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleAccount) ProtoMessage() {}
+
+func (x *ConsoleAccount) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleAccount.ProtoReflect.Descriptor instead.
+func (*ConsoleAccount) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ConsoleAccount) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ConsoleAccount) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ConsoleAccount) GetTwoFactor() bool {
+	if x != nil {
+		return x.TwoFactor
+	}
+	return false
+}
+
+func (x *ConsoleAccount) GetPasskeys() uint32 {
+	if x != nil {
+		return x.Passkeys
+	}
+	return 0
+}
+
+type ListConsoleAccountsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConsoleAccountsRequest) Reset() {
+	*x = ListConsoleAccountsRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConsoleAccountsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConsoleAccountsRequest) ProtoMessage() {}
+
+func (x *ListConsoleAccountsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConsoleAccountsRequest.ProtoReflect.Descriptor instead.
+func (*ListConsoleAccountsRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{6}
+}
+
+type ListConsoleAccountsResponse struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Accounts []*ConsoleAccount      `protobuf:"bytes,1,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	// The account the caller is signed in as, if a password account.
+	You           string `protobuf:"bytes,2,opt,name=you,proto3" json:"you,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConsoleAccountsResponse) Reset() {
+	*x = ListConsoleAccountsResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConsoleAccountsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConsoleAccountsResponse) ProtoMessage() {}
+
+func (x *ListConsoleAccountsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConsoleAccountsResponse.ProtoReflect.Descriptor instead.
+func (*ListConsoleAccountsResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListConsoleAccountsResponse) GetAccounts() []*ConsoleAccount {
+	if x != nil {
+		return x.Accounts
+	}
+	return nil
+}
+
+func (x *ListConsoleAccountsResponse) GetYou() string {
+	if x != nil {
+		return x.You
+	}
+	return ""
+}
+
+type CreateConsoleAccountRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Lowercase letters, digits and dashes. A user of the same name is
+	// created too, for the member's own machines.
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateConsoleAccountRequest) Reset() {
+	*x = CreateConsoleAccountRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateConsoleAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateConsoleAccountRequest) ProtoMessage() {}
+
+func (x *CreateConsoleAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateConsoleAccountRequest.ProtoReflect.Descriptor instead.
+func (*CreateConsoleAccountRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CreateConsoleAccountRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateConsoleAccountResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Account *ConsoleAccount        `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
+	// A generated password, shown only once; the member changes it after
+	// signing in.
+	Password      string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateConsoleAccountResponse) Reset() {
+	*x = CreateConsoleAccountResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateConsoleAccountResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateConsoleAccountResponse) ProtoMessage() {}
+
+func (x *CreateConsoleAccountResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateConsoleAccountResponse.ProtoReflect.Descriptor instead.
+func (*CreateConsoleAccountResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CreateConsoleAccountResponse) GetAccount() *ConsoleAccount {
+	if x != nil {
+		return x.Account
+	}
+	return nil
+}
+
+func (x *CreateConsoleAccountResponse) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type DeleteConsoleAccountRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteConsoleAccountRequest) Reset() {
+	*x = DeleteConsoleAccountRequest{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteConsoleAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteConsoleAccountRequest) ProtoMessage() {}
+
+func (x *DeleteConsoleAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteConsoleAccountRequest.ProtoReflect.Descriptor instead.
+func (*DeleteConsoleAccountRequest) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *DeleteConsoleAccountRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DeleteConsoleAccountResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteConsoleAccountResponse) Reset() {
+	*x = DeleteConsoleAccountResponse{}
+	mi := &file_whalescale_v1_admin_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteConsoleAccountResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteConsoleAccountResponse) ProtoMessage() {}
+
+func (x *DeleteConsoleAccountResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whalescale_v1_admin_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteConsoleAccountResponse.ProtoReflect.Descriptor instead.
+func (*DeleteConsoleAccountResponse) Descriptor() ([]byte, []int) {
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{11}
+}
+
 type WhoAmIRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -30,7 +650,7 @@ type WhoAmIRequest struct {
 
 func (x *WhoAmIRequest) Reset() {
 	*x = WhoAmIRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[0]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +662,7 @@ func (x *WhoAmIRequest) String() string {
 func (*WhoAmIRequest) ProtoMessage() {}
 
 func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[0]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +675,7 @@ func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WhoAmIRequest.ProtoReflect.Descriptor instead.
 func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{0}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{12}
 }
 
 type WhoAmIResponse struct {
@@ -72,7 +692,7 @@ type WhoAmIResponse struct {
 
 func (x *WhoAmIResponse) Reset() {
 	*x = WhoAmIResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[1]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -84,7 +704,7 @@ func (x *WhoAmIResponse) String() string {
 func (*WhoAmIResponse) ProtoMessage() {}
 
 func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[1]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -97,7 +717,7 @@ func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WhoAmIResponse.ProtoReflect.Descriptor instead.
 func (*WhoAmIResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{1}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *WhoAmIResponse) GetMethod() string {
@@ -143,7 +763,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[2]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -155,7 +775,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[2]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -168,7 +788,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{2}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *User) GetId() uint64 {
@@ -221,7 +841,7 @@ type ListUsersRequest struct {
 
 func (x *ListUsersRequest) Reset() {
 	*x = ListUsersRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[3]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -233,7 +853,7 @@ func (x *ListUsersRequest) String() string {
 func (*ListUsersRequest) ProtoMessage() {}
 
 func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[3]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -246,7 +866,7 @@ func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
 func (*ListUsersRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{3}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{15}
 }
 
 type ListUsersResponse struct {
@@ -258,7 +878,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[4]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -270,7 +890,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[4]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -283,7 +903,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{4}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListUsersResponse) GetUsers() []*User {
@@ -302,7 +922,7 @@ type CreateUserRequest struct {
 
 func (x *CreateUserRequest) Reset() {
 	*x = CreateUserRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[5]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -314,7 +934,7 @@ func (x *CreateUserRequest) String() string {
 func (*CreateUserRequest) ProtoMessage() {}
 
 func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[5]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -327,7 +947,7 @@ func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUserRequest.ProtoReflect.Descriptor instead.
 func (*CreateUserRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{5}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CreateUserRequest) GetName() string {
@@ -346,7 +966,7 @@ type CreateUserResponse struct {
 
 func (x *CreateUserResponse) Reset() {
 	*x = CreateUserResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[6]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -358,7 +978,7 @@ func (x *CreateUserResponse) String() string {
 func (*CreateUserResponse) ProtoMessage() {}
 
 func (x *CreateUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[6]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -371,7 +991,7 @@ func (x *CreateUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUserResponse.ProtoReflect.Descriptor instead.
 func (*CreateUserResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{6}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CreateUserResponse) GetUser() *User {
@@ -390,7 +1010,7 @@ type DeleteUserRequest struct {
 
 func (x *DeleteUserRequest) Reset() {
 	*x = DeleteUserRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[7]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -402,7 +1022,7 @@ func (x *DeleteUserRequest) String() string {
 func (*DeleteUserRequest) ProtoMessage() {}
 
 func (x *DeleteUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[7]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -415,7 +1035,7 @@ func (x *DeleteUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRequest.ProtoReflect.Descriptor instead.
 func (*DeleteUserRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{7}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeleteUserRequest) GetName() string {
@@ -433,7 +1053,7 @@ type DeleteUserResponse struct {
 
 func (x *DeleteUserResponse) Reset() {
 	*x = DeleteUserResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[8]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +1065,7 @@ func (x *DeleteUserResponse) String() string {
 func (*DeleteUserResponse) ProtoMessage() {}
 
 func (x *DeleteUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[8]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +1078,7 @@ func (x *DeleteUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserResponse.ProtoReflect.Descriptor instead.
 func (*DeleteUserResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{8}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{20}
 }
 
 type ListNodesRequest struct {
@@ -470,7 +1090,7 @@ type ListNodesRequest struct {
 
 func (x *ListNodesRequest) Reset() {
 	*x = ListNodesRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[9]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -482,7 +1102,7 @@ func (x *ListNodesRequest) String() string {
 func (*ListNodesRequest) ProtoMessage() {}
 
 func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[9]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -495,7 +1115,7 @@ func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
 func (*ListNodesRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{9}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListNodesRequest) GetUser() string {
@@ -514,7 +1134,7 @@ type ListNodesResponse struct {
 
 func (x *ListNodesResponse) Reset() {
 	*x = ListNodesResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[10]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -526,7 +1146,7 @@ func (x *ListNodesResponse) String() string {
 func (*ListNodesResponse) ProtoMessage() {}
 
 func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[10]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -539,7 +1159,7 @@ func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
 func (*ListNodesResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{10}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListNodesResponse) GetNodes() []*Node {
@@ -558,7 +1178,7 @@ type DeleteNodeRequest struct {
 
 func (x *DeleteNodeRequest) Reset() {
 	*x = DeleteNodeRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[11]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -570,7 +1190,7 @@ func (x *DeleteNodeRequest) String() string {
 func (*DeleteNodeRequest) ProtoMessage() {}
 
 func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[11]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -583,7 +1203,7 @@ func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNodeRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{11}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeleteNodeRequest) GetId() uint64 {
@@ -601,7 +1221,7 @@ type DeleteNodeResponse struct {
 
 func (x *DeleteNodeResponse) Reset() {
 	*x = DeleteNodeResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[12]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -613,7 +1233,7 @@ func (x *DeleteNodeResponse) String() string {
 func (*DeleteNodeResponse) ProtoMessage() {}
 
 func (x *DeleteNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[12]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -626,7 +1246,7 @@ func (x *DeleteNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeResponse.ProtoReflect.Descriptor instead.
 func (*DeleteNodeResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{12}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{24}
 }
 
 type PreAuthKey struct {
@@ -646,7 +1266,7 @@ type PreAuthKey struct {
 
 func (x *PreAuthKey) Reset() {
 	*x = PreAuthKey{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[13]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -658,7 +1278,7 @@ func (x *PreAuthKey) String() string {
 func (*PreAuthKey) ProtoMessage() {}
 
 func (x *PreAuthKey) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[13]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -671,7 +1291,7 @@ func (x *PreAuthKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreAuthKey.ProtoReflect.Descriptor instead.
 func (*PreAuthKey) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{13}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *PreAuthKey) GetId() uint64 {
@@ -745,7 +1365,7 @@ type ListPreAuthKeysRequest struct {
 
 func (x *ListPreAuthKeysRequest) Reset() {
 	*x = ListPreAuthKeysRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[14]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -757,7 +1377,7 @@ func (x *ListPreAuthKeysRequest) String() string {
 func (*ListPreAuthKeysRequest) ProtoMessage() {}
 
 func (x *ListPreAuthKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[14]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,7 +1390,7 @@ func (x *ListPreAuthKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPreAuthKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListPreAuthKeysRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{14}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{26}
 }
 
 type ListPreAuthKeysResponse struct {
@@ -782,7 +1402,7 @@ type ListPreAuthKeysResponse struct {
 
 func (x *ListPreAuthKeysResponse) Reset() {
 	*x = ListPreAuthKeysResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[15]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -794,7 +1414,7 @@ func (x *ListPreAuthKeysResponse) String() string {
 func (*ListPreAuthKeysResponse) ProtoMessage() {}
 
 func (x *ListPreAuthKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[15]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -807,7 +1427,7 @@ func (x *ListPreAuthKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPreAuthKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListPreAuthKeysResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{15}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListPreAuthKeysResponse) GetKeys() []*PreAuthKey {
@@ -830,7 +1450,7 @@ type CreatePreAuthKeyRequest struct {
 
 func (x *CreatePreAuthKeyRequest) Reset() {
 	*x = CreatePreAuthKeyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[16]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -842,7 +1462,7 @@ func (x *CreatePreAuthKeyRequest) String() string {
 func (*CreatePreAuthKeyRequest) ProtoMessage() {}
 
 func (x *CreatePreAuthKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[16]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -855,7 +1475,7 @@ func (x *CreatePreAuthKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePreAuthKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreatePreAuthKeyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{16}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreatePreAuthKeyRequest) GetUser() string {
@@ -902,7 +1522,7 @@ type CreatePreAuthKeyResponse struct {
 
 func (x *CreatePreAuthKeyResponse) Reset() {
 	*x = CreatePreAuthKeyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[17]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +1534,7 @@ func (x *CreatePreAuthKeyResponse) String() string {
 func (*CreatePreAuthKeyResponse) ProtoMessage() {}
 
 func (x *CreatePreAuthKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[17]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1547,7 @@ func (x *CreatePreAuthKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePreAuthKeyResponse.ProtoReflect.Descriptor instead.
 func (*CreatePreAuthKeyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{17}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreatePreAuthKeyResponse) GetKey() *PreAuthKey {
@@ -967,7 +1587,7 @@ type ExpirePreAuthKeyRequest struct {
 
 func (x *ExpirePreAuthKeyRequest) Reset() {
 	*x = ExpirePreAuthKeyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[18]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -979,7 +1599,7 @@ func (x *ExpirePreAuthKeyRequest) String() string {
 func (*ExpirePreAuthKeyRequest) ProtoMessage() {}
 
 func (x *ExpirePreAuthKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[18]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -992,7 +1612,7 @@ func (x *ExpirePreAuthKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpirePreAuthKeyRequest.ProtoReflect.Descriptor instead.
 func (*ExpirePreAuthKeyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{18}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ExpirePreAuthKeyRequest) GetPrefix() string {
@@ -1010,7 +1630,7 @@ type ExpirePreAuthKeyResponse struct {
 
 func (x *ExpirePreAuthKeyResponse) Reset() {
 	*x = ExpirePreAuthKeyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[19]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1022,7 +1642,7 @@ func (x *ExpirePreAuthKeyResponse) String() string {
 func (*ExpirePreAuthKeyResponse) ProtoMessage() {}
 
 func (x *ExpirePreAuthKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[19]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1035,7 +1655,7 @@ func (x *ExpirePreAuthKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpirePreAuthKeyResponse.ProtoReflect.Descriptor instead.
 func (*ExpirePreAuthKeyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{19}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{31}
 }
 
 type GetPolicyRequest struct {
@@ -1046,7 +1666,7 @@ type GetPolicyRequest struct {
 
 func (x *GetPolicyRequest) Reset() {
 	*x = GetPolicyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[20]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1058,7 +1678,7 @@ func (x *GetPolicyRequest) String() string {
 func (*GetPolicyRequest) ProtoMessage() {}
 
 func (x *GetPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[20]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1071,7 +1691,7 @@ func (x *GetPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{20}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{32}
 }
 
 type GetPolicyResponse struct {
@@ -1092,7 +1712,7 @@ type GetPolicyResponse struct {
 
 func (x *GetPolicyResponse) Reset() {
 	*x = GetPolicyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[21]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1104,7 +1724,7 @@ func (x *GetPolicyResponse) String() string {
 func (*GetPolicyResponse) ProtoMessage() {}
 
 func (x *GetPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[21]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1117,7 +1737,7 @@ func (x *GetPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicyResponse.ProtoReflect.Descriptor instead.
 func (*GetPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{21}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetPolicyResponse) GetPolicy() string {
@@ -1178,7 +1798,7 @@ type CheckPolicyRequest struct {
 
 func (x *CheckPolicyRequest) Reset() {
 	*x = CheckPolicyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[22]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1190,7 +1810,7 @@ func (x *CheckPolicyRequest) String() string {
 func (*CheckPolicyRequest) ProtoMessage() {}
 
 func (x *CheckPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[22]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1203,7 +1823,7 @@ func (x *CheckPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckPolicyRequest.ProtoReflect.Descriptor instead.
 func (*CheckPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{22}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CheckPolicyRequest) GetPolicy() string {
@@ -1223,7 +1843,7 @@ type CheckPolicyResponse struct {
 
 func (x *CheckPolicyResponse) Reset() {
 	*x = CheckPolicyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[23]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1235,7 +1855,7 @@ func (x *CheckPolicyResponse) String() string {
 func (*CheckPolicyResponse) ProtoMessage() {}
 
 func (x *CheckPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[23]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1248,7 +1868,7 @@ func (x *CheckPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckPolicyResponse.ProtoReflect.Descriptor instead.
 func (*CheckPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{23}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CheckPolicyResponse) GetErrors() []string {
@@ -1274,7 +1894,7 @@ type SetPolicyRequest struct {
 
 func (x *SetPolicyRequest) Reset() {
 	*x = SetPolicyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[24]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1906,7 @@ func (x *SetPolicyRequest) String() string {
 func (*SetPolicyRequest) ProtoMessage() {}
 
 func (x *SetPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[24]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1299,7 +1919,7 @@ func (x *SetPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPolicyRequest.ProtoReflect.Descriptor instead.
 func (*SetPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{24}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SetPolicyRequest) GetPolicy() string {
@@ -1318,7 +1938,7 @@ type SetPolicyResponse struct {
 
 func (x *SetPolicyResponse) Reset() {
 	*x = SetPolicyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[25]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1330,7 +1950,7 @@ func (x *SetPolicyResponse) String() string {
 func (*SetPolicyResponse) ProtoMessage() {}
 
 func (x *SetPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[25]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1343,7 +1963,7 @@ func (x *SetPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPolicyResponse.ProtoReflect.Descriptor instead.
 func (*SetPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{25}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SetPolicyResponse) GetWarnings() []string {
@@ -1367,7 +1987,7 @@ type Route struct {
 
 func (x *Route) Reset() {
 	*x = Route{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[26]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1999,7 @@ func (x *Route) String() string {
 func (*Route) ProtoMessage() {}
 
 func (x *Route) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[26]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +2012,7 @@ func (x *Route) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Route.ProtoReflect.Descriptor instead.
 func (*Route) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{26}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Route) GetNodeId() uint64 {
@@ -1438,7 +2058,7 @@ type ListRoutesRequest struct {
 
 func (x *ListRoutesRequest) Reset() {
 	*x = ListRoutesRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[27]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1450,7 +2070,7 @@ func (x *ListRoutesRequest) String() string {
 func (*ListRoutesRequest) ProtoMessage() {}
 
 func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[27]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1463,7 +2083,7 @@ func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
 func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{27}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{39}
 }
 
 type ListRoutesResponse struct {
@@ -1475,7 +2095,7 @@ type ListRoutesResponse struct {
 
 func (x *ListRoutesResponse) Reset() {
 	*x = ListRoutesResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[28]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +2107,7 @@ func (x *ListRoutesResponse) String() string {
 func (*ListRoutesResponse) ProtoMessage() {}
 
 func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[28]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1500,7 +2120,7 @@ func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
 func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{28}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListRoutesResponse) GetRoutes() []*Route {
@@ -1521,7 +2141,7 @@ type SetRouteApprovedRequest struct {
 
 func (x *SetRouteApprovedRequest) Reset() {
 	*x = SetRouteApprovedRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[29]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1533,7 +2153,7 @@ func (x *SetRouteApprovedRequest) String() string {
 func (*SetRouteApprovedRequest) ProtoMessage() {}
 
 func (x *SetRouteApprovedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[29]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1546,7 +2166,7 @@ func (x *SetRouteApprovedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRouteApprovedRequest.ProtoReflect.Descriptor instead.
 func (*SetRouteApprovedRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{29}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SetRouteApprovedRequest) GetNodeId() uint64 {
@@ -1578,7 +2198,7 @@ type SetRouteApprovedResponse struct {
 
 func (x *SetRouteApprovedResponse) Reset() {
 	*x = SetRouteApprovedResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[30]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1590,7 +2210,7 @@ func (x *SetRouteApprovedResponse) String() string {
 func (*SetRouteApprovedResponse) ProtoMessage() {}
 
 func (x *SetRouteApprovedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[30]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1603,7 +2223,7 @@ func (x *SetRouteApprovedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRouteApprovedResponse.ProtoReflect.Descriptor instead.
 func (*SetRouteApprovedResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{30}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{42}
 }
 
 type GetTopologyRequest struct {
@@ -1614,7 +2234,7 @@ type GetTopologyRequest struct {
 
 func (x *GetTopologyRequest) Reset() {
 	*x = GetTopologyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[31]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1626,7 +2246,7 @@ func (x *GetTopologyRequest) String() string {
 func (*GetTopologyRequest) ProtoMessage() {}
 
 func (x *GetTopologyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[31]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1639,7 +2259,7 @@ func (x *GetTopologyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTopologyRequest.ProtoReflect.Descriptor instead.
 func (*GetTopologyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{31}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{43}
 }
 
 type GetTopologyResponse struct {
@@ -1651,7 +2271,7 @@ type GetTopologyResponse struct {
 
 func (x *GetTopologyResponse) Reset() {
 	*x = GetTopologyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[32]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +2283,7 @@ func (x *GetTopologyResponse) String() string {
 func (*GetTopologyResponse) ProtoMessage() {}
 
 func (x *GetTopologyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[32]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +2296,7 @@ func (x *GetTopologyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTopologyResponse.ProtoReflect.Descriptor instead.
 func (*GetTopologyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{32}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetTopologyResponse) GetPaths() []*PathReport {
@@ -1702,7 +2322,7 @@ type APIKey struct {
 
 func (x *APIKey) Reset() {
 	*x = APIKey{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[33]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1714,7 +2334,7 @@ func (x *APIKey) String() string {
 func (*APIKey) ProtoMessage() {}
 
 func (x *APIKey) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[33]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1727,7 +2347,7 @@ func (x *APIKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APIKey.ProtoReflect.Descriptor instead.
 func (*APIKey) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{33}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *APIKey) GetId() uint64 {
@@ -1787,7 +2407,7 @@ type ListAPIKeysRequest struct {
 
 func (x *ListAPIKeysRequest) Reset() {
 	*x = ListAPIKeysRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[34]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1799,7 +2419,7 @@ func (x *ListAPIKeysRequest) String() string {
 func (*ListAPIKeysRequest) ProtoMessage() {}
 
 func (x *ListAPIKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[34]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1812,7 +2432,7 @@ func (x *ListAPIKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListAPIKeysRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{34}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{46}
 }
 
 type ListAPIKeysResponse struct {
@@ -1824,7 +2444,7 @@ type ListAPIKeysResponse struct {
 
 func (x *ListAPIKeysResponse) Reset() {
 	*x = ListAPIKeysResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[35]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1836,7 +2456,7 @@ func (x *ListAPIKeysResponse) String() string {
 func (*ListAPIKeysResponse) ProtoMessage() {}
 
 func (x *ListAPIKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[35]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1849,7 +2469,7 @@ func (x *ListAPIKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListAPIKeysResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{35}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListAPIKeysResponse) GetKeys() []*APIKey {
@@ -1871,7 +2491,7 @@ type CreateAPIKeyRequest struct {
 
 func (x *CreateAPIKeyRequest) Reset() {
 	*x = CreateAPIKeyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[36]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1883,7 +2503,7 @@ func (x *CreateAPIKeyRequest) String() string {
 func (*CreateAPIKeyRequest) ProtoMessage() {}
 
 func (x *CreateAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[36]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1896,7 +2516,7 @@ func (x *CreateAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{36}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CreateAPIKeyRequest) GetExpirationSeconds() uint64 {
@@ -1923,7 +2543,7 @@ type CreateAPIKeyResponse struct {
 
 func (x *CreateAPIKeyResponse) Reset() {
 	*x = CreateAPIKeyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[37]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1935,7 +2555,7 @@ func (x *CreateAPIKeyResponse) String() string {
 func (*CreateAPIKeyResponse) ProtoMessage() {}
 
 func (x *CreateAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[37]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1948,7 +2568,7 @@ func (x *CreateAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*CreateAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{37}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CreateAPIKeyResponse) GetKey() *APIKey {
@@ -1974,7 +2594,7 @@ type ExpireAPIKeyRequest struct {
 
 func (x *ExpireAPIKeyRequest) Reset() {
 	*x = ExpireAPIKeyRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[38]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1986,7 +2606,7 @@ func (x *ExpireAPIKeyRequest) String() string {
 func (*ExpireAPIKeyRequest) ProtoMessage() {}
 
 func (x *ExpireAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[38]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1999,7 +2619,7 @@ func (x *ExpireAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpireAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*ExpireAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{38}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ExpireAPIKeyRequest) GetPrefix() string {
@@ -2017,7 +2637,7 @@ type ExpireAPIKeyResponse struct {
 
 func (x *ExpireAPIKeyResponse) Reset() {
 	*x = ExpireAPIKeyResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[39]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2029,7 +2649,7 @@ func (x *ExpireAPIKeyResponse) String() string {
 func (*ExpireAPIKeyResponse) ProtoMessage() {}
 
 func (x *ExpireAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[39]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2042,7 +2662,7 @@ func (x *ExpireAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpireAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*ExpireAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{39}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{51}
 }
 
 type AdminExposure struct {
@@ -2061,7 +2681,7 @@ type AdminExposure struct {
 
 func (x *AdminExposure) Reset() {
 	*x = AdminExposure{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2073,7 +2693,7 @@ func (x *AdminExposure) String() string {
 func (*AdminExposure) ProtoMessage() {}
 
 func (x *AdminExposure) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[40]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2086,7 +2706,7 @@ func (x *AdminExposure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminExposure.ProtoReflect.Descriptor instead.
 func (*AdminExposure) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{40}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AdminExposure) GetNodeId() uint64 {
@@ -2146,7 +2766,7 @@ type ListExposuresRequest struct {
 
 func (x *ListExposuresRequest) Reset() {
 	*x = ListExposuresRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2158,7 +2778,7 @@ func (x *ListExposuresRequest) String() string {
 func (*ListExposuresRequest) ProtoMessage() {}
 
 func (x *ListExposuresRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[41]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2171,7 +2791,7 @@ func (x *ListExposuresRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListExposuresRequest.ProtoReflect.Descriptor instead.
 func (*ListExposuresRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{41}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{53}
 }
 
 type ListExposuresResponse struct {
@@ -2185,7 +2805,7 @@ type ListExposuresResponse struct {
 
 func (x *ListExposuresResponse) Reset() {
 	*x = ListExposuresResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2197,7 +2817,7 @@ func (x *ListExposuresResponse) String() string {
 func (*ListExposuresResponse) ProtoMessage() {}
 
 func (x *ListExposuresResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[42]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2210,7 +2830,7 @@ func (x *ListExposuresResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListExposuresResponse.ProtoReflect.Descriptor instead.
 func (*ListExposuresResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{42}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ListExposuresResponse) GetExposures() []*AdminExposure {
@@ -2238,7 +2858,7 @@ type SetExposureApprovedRequest struct {
 
 func (x *SetExposureApprovedRequest) Reset() {
 	*x = SetExposureApprovedRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2250,7 +2870,7 @@ func (x *SetExposureApprovedRequest) String() string {
 func (*SetExposureApprovedRequest) ProtoMessage() {}
 
 func (x *SetExposureApprovedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[43]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2263,7 +2883,7 @@ func (x *SetExposureApprovedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetExposureApprovedRequest.ProtoReflect.Descriptor instead.
 func (*SetExposureApprovedRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{43}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SetExposureApprovedRequest) GetNodeId() uint64 {
@@ -2295,7 +2915,7 @@ type SetExposureApprovedResponse struct {
 
 func (x *SetExposureApprovedResponse) Reset() {
 	*x = SetExposureApprovedResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2307,7 +2927,7 @@ func (x *SetExposureApprovedResponse) String() string {
 func (*SetExposureApprovedResponse) ProtoMessage() {}
 
 func (x *SetExposureApprovedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[44]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2320,7 +2940,7 @@ func (x *SetExposureApprovedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetExposureApprovedResponse.ProtoReflect.Descriptor instead.
 func (*SetExposureApprovedResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{44}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{56}
 }
 
 type ExplainAccessRequest struct {
@@ -2337,7 +2957,7 @@ type ExplainAccessRequest struct {
 
 func (x *ExplainAccessRequest) Reset() {
 	*x = ExplainAccessRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[45]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2349,7 +2969,7 @@ func (x *ExplainAccessRequest) String() string {
 func (*ExplainAccessRequest) ProtoMessage() {}
 
 func (x *ExplainAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[45]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2362,7 +2982,7 @@ func (x *ExplainAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAccessRequest.ProtoReflect.Descriptor instead.
 func (*ExplainAccessRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{45}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ExplainAccessRequest) GetSrc() string {
@@ -2396,7 +3016,7 @@ type ExplainAccessResponse struct {
 
 func (x *ExplainAccessResponse) Reset() {
 	*x = ExplainAccessResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[46]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2408,7 +3028,7 @@ func (x *ExplainAccessResponse) String() string {
 func (*ExplainAccessResponse) ProtoMessage() {}
 
 func (x *ExplainAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[46]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2421,7 +3041,7 @@ func (x *ExplainAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAccessResponse.ProtoReflect.Descriptor instead.
 func (*ExplainAccessResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{46}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ExplainAccessResponse) GetAllowed() bool {
@@ -2450,7 +3070,7 @@ type AdminPeerRelay struct {
 
 func (x *AdminPeerRelay) Reset() {
 	*x = AdminPeerRelay{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[47]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2462,7 +3082,7 @@ func (x *AdminPeerRelay) String() string {
 func (*AdminPeerRelay) ProtoMessage() {}
 
 func (x *AdminPeerRelay) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[47]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2475,7 +3095,7 @@ func (x *AdminPeerRelay) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminPeerRelay.ProtoReflect.Descriptor instead.
 func (*AdminPeerRelay) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{47}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *AdminPeerRelay) GetNodeId() uint64 {
@@ -2514,7 +3134,7 @@ type ListPeerRelaysRequest struct {
 
 func (x *ListPeerRelaysRequest) Reset() {
 	*x = ListPeerRelaysRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[48]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2526,7 +3146,7 @@ func (x *ListPeerRelaysRequest) String() string {
 func (*ListPeerRelaysRequest) ProtoMessage() {}
 
 func (x *ListPeerRelaysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[48]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2539,7 +3159,7 @@ func (x *ListPeerRelaysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPeerRelaysRequest.ProtoReflect.Descriptor instead.
 func (*ListPeerRelaysRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{48}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{60}
 }
 
 type ListPeerRelaysResponse struct {
@@ -2551,7 +3171,7 @@ type ListPeerRelaysResponse struct {
 
 func (x *ListPeerRelaysResponse) Reset() {
 	*x = ListPeerRelaysResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[49]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2563,7 +3183,7 @@ func (x *ListPeerRelaysResponse) String() string {
 func (*ListPeerRelaysResponse) ProtoMessage() {}
 
 func (x *ListPeerRelaysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[49]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2576,7 +3196,7 @@ func (x *ListPeerRelaysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPeerRelaysResponse.ProtoReflect.Descriptor instead.
 func (*ListPeerRelaysResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{49}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ListPeerRelaysResponse) GetRelays() []*AdminPeerRelay {
@@ -2596,7 +3216,7 @@ type SetPeerRelayApprovedRequest struct {
 
 func (x *SetPeerRelayApprovedRequest) Reset() {
 	*x = SetPeerRelayApprovedRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[50]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2608,7 +3228,7 @@ func (x *SetPeerRelayApprovedRequest) String() string {
 func (*SetPeerRelayApprovedRequest) ProtoMessage() {}
 
 func (x *SetPeerRelayApprovedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[50]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2621,7 +3241,7 @@ func (x *SetPeerRelayApprovedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPeerRelayApprovedRequest.ProtoReflect.Descriptor instead.
 func (*SetPeerRelayApprovedRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{50}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *SetPeerRelayApprovedRequest) GetNodeId() uint64 {
@@ -2646,7 +3266,7 @@ type SetPeerRelayApprovedResponse struct {
 
 func (x *SetPeerRelayApprovedResponse) Reset() {
 	*x = SetPeerRelayApprovedResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[51]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2658,7 +3278,7 @@ func (x *SetPeerRelayApprovedResponse) String() string {
 func (*SetPeerRelayApprovedResponse) ProtoMessage() {}
 
 func (x *SetPeerRelayApprovedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[51]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2671,7 +3291,7 @@ func (x *SetPeerRelayApprovedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPeerRelayApprovedResponse.ProtoReflect.Descriptor instead.
 func (*SetPeerRelayApprovedResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{51}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{63}
 }
 
 type Recording struct {
@@ -2690,7 +3310,7 @@ type Recording struct {
 
 func (x *Recording) Reset() {
 	*x = Recording{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[52]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2702,7 +3322,7 @@ func (x *Recording) String() string {
 func (*Recording) ProtoMessage() {}
 
 func (x *Recording) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[52]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2715,7 +3335,7 @@ func (x *Recording) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Recording.ProtoReflect.Descriptor instead.
 func (*Recording) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{52}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *Recording) GetId() uint64 {
@@ -2782,7 +3402,7 @@ type ListRecordingsRequest struct {
 
 func (x *ListRecordingsRequest) Reset() {
 	*x = ListRecordingsRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[53]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2794,7 +3414,7 @@ func (x *ListRecordingsRequest) String() string {
 func (*ListRecordingsRequest) ProtoMessage() {}
 
 func (x *ListRecordingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[53]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2807,7 +3427,7 @@ func (x *ListRecordingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRecordingsRequest.ProtoReflect.Descriptor instead.
 func (*ListRecordingsRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{53}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{65}
 }
 
 type ListRecordingsResponse struct {
@@ -2819,7 +3439,7 @@ type ListRecordingsResponse struct {
 
 func (x *ListRecordingsResponse) Reset() {
 	*x = ListRecordingsResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[54]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2831,7 +3451,7 @@ func (x *ListRecordingsResponse) String() string {
 func (*ListRecordingsResponse) ProtoMessage() {}
 
 func (x *ListRecordingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[54]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2844,7 +3464,7 @@ func (x *ListRecordingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRecordingsResponse.ProtoReflect.Descriptor instead.
 func (*ListRecordingsResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{54}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListRecordingsResponse) GetRecordings() []*Recording {
@@ -2863,7 +3483,7 @@ type GetRecordingRequest struct {
 
 func (x *GetRecordingRequest) Reset() {
 	*x = GetRecordingRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[55]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2875,7 +3495,7 @@ func (x *GetRecordingRequest) String() string {
 func (*GetRecordingRequest) ProtoMessage() {}
 
 func (x *GetRecordingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[55]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2888,7 +3508,7 @@ func (x *GetRecordingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRecordingRequest.ProtoReflect.Descriptor instead.
 func (*GetRecordingRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{55}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *GetRecordingRequest) GetId() uint64 {
@@ -2908,7 +3528,7 @@ type GetRecordingResponse struct {
 
 func (x *GetRecordingResponse) Reset() {
 	*x = GetRecordingResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[56]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2920,7 +3540,7 @@ func (x *GetRecordingResponse) String() string {
 func (*GetRecordingResponse) ProtoMessage() {}
 
 func (x *GetRecordingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[56]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2933,7 +3553,7 @@ func (x *GetRecordingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRecordingResponse.ProtoReflect.Descriptor instead.
 func (*GetRecordingResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{56}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GetRecordingResponse) GetRecording() *Recording {
@@ -2959,7 +3579,7 @@ type DeleteRecordingRequest struct {
 
 func (x *DeleteRecordingRequest) Reset() {
 	*x = DeleteRecordingRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[57]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2971,7 +3591,7 @@ func (x *DeleteRecordingRequest) String() string {
 func (*DeleteRecordingRequest) ProtoMessage() {}
 
 func (x *DeleteRecordingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[57]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2984,7 +3604,7 @@ func (x *DeleteRecordingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRecordingRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRecordingRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{57}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *DeleteRecordingRequest) GetId() uint64 {
@@ -3002,7 +3622,7 @@ type DeleteRecordingResponse struct {
 
 func (x *DeleteRecordingResponse) Reset() {
 	*x = DeleteRecordingResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[58]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3014,7 +3634,7 @@ func (x *DeleteRecordingResponse) String() string {
 func (*DeleteRecordingResponse) ProtoMessage() {}
 
 func (x *DeleteRecordingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[58]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3027,7 +3647,7 @@ func (x *DeleteRecordingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRecordingResponse.ProtoReflect.Descriptor instead.
 func (*DeleteRecordingResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{58}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{70}
 }
 
 type GetLockRequest struct {
@@ -3038,7 +3658,7 @@ type GetLockRequest struct {
 
 func (x *GetLockRequest) Reset() {
 	*x = GetLockRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[59]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3050,7 +3670,7 @@ func (x *GetLockRequest) String() string {
 func (*GetLockRequest) ProtoMessage() {}
 
 func (x *GetLockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[59]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3063,7 +3683,7 @@ func (x *GetLockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLockRequest.ProtoReflect.Descriptor instead.
 func (*GetLockRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{59}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{71}
 }
 
 type GetLockResponse struct {
@@ -3075,7 +3695,7 @@ type GetLockResponse struct {
 
 func (x *GetLockResponse) Reset() {
 	*x = GetLockResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[60]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3087,7 +3707,7 @@ func (x *GetLockResponse) String() string {
 func (*GetLockResponse) ProtoMessage() {}
 
 func (x *GetLockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[60]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3100,7 +3720,7 @@ func (x *GetLockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLockResponse.ProtoReflect.Descriptor instead.
 func (*GetLockResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{60}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *GetLockResponse) GetChain() []*LockState {
@@ -3120,7 +3740,7 @@ type UpdateLockRequest struct {
 
 func (x *UpdateLockRequest) Reset() {
 	*x = UpdateLockRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[61]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3132,7 +3752,7 @@ func (x *UpdateLockRequest) String() string {
 func (*UpdateLockRequest) ProtoMessage() {}
 
 func (x *UpdateLockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[61]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3145,7 +3765,7 @@ func (x *UpdateLockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLockRequest.ProtoReflect.Descriptor instead.
 func (*UpdateLockRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{61}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *UpdateLockRequest) GetState() *LockState {
@@ -3163,7 +3783,7 @@ type UpdateLockResponse struct {
 
 func (x *UpdateLockResponse) Reset() {
 	*x = UpdateLockResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[62]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3175,7 +3795,7 @@ func (x *UpdateLockResponse) String() string {
 func (*UpdateLockResponse) ProtoMessage() {}
 
 func (x *UpdateLockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[62]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3188,7 +3808,7 @@ func (x *UpdateLockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateLockResponse.ProtoReflect.Descriptor instead.
 func (*UpdateLockResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{62}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{74}
 }
 
 type SignNodesRequest struct {
@@ -3200,7 +3820,7 @@ type SignNodesRequest struct {
 
 func (x *SignNodesRequest) Reset() {
 	*x = SignNodesRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[63]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3212,7 +3832,7 @@ func (x *SignNodesRequest) String() string {
 func (*SignNodesRequest) ProtoMessage() {}
 
 func (x *SignNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[63]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3225,7 +3845,7 @@ func (x *SignNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignNodesRequest.ProtoReflect.Descriptor instead.
 func (*SignNodesRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{63}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *SignNodesRequest) GetSignatures() []*SignedNodeKey {
@@ -3245,7 +3865,7 @@ type SignedNodeKey struct {
 
 func (x *SignedNodeKey) Reset() {
 	*x = SignedNodeKey{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[64]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3257,7 +3877,7 @@ func (x *SignedNodeKey) String() string {
 func (*SignedNodeKey) ProtoMessage() {}
 
 func (x *SignedNodeKey) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[64]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3270,7 +3890,7 @@ func (x *SignedNodeKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignedNodeKey.ProtoReflect.Descriptor instead.
 func (*SignedNodeKey) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{64}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *SignedNodeKey) GetNodeKey() string {
@@ -3295,7 +3915,7 @@ type SignNodesResponse struct {
 
 func (x *SignNodesResponse) Reset() {
 	*x = SignNodesResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[65]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3307,7 +3927,7 @@ func (x *SignNodesResponse) String() string {
 func (*SignNodesResponse) ProtoMessage() {}
 
 func (x *SignNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[65]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3320,7 +3940,7 @@ func (x *SignNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignNodesResponse.ProtoReflect.Descriptor instead.
 func (*SignNodesResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{65}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{77}
 }
 
 type ListAccessRequestsRequest struct {
@@ -3333,7 +3953,7 @@ type ListAccessRequestsRequest struct {
 
 func (x *ListAccessRequestsRequest) Reset() {
 	*x = ListAccessRequestsRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[66]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3345,7 +3965,7 @@ func (x *ListAccessRequestsRequest) String() string {
 func (*ListAccessRequestsRequest) ProtoMessage() {}
 
 func (x *ListAccessRequestsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[66]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3358,7 +3978,7 @@ func (x *ListAccessRequestsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessRequestsRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessRequestsRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{66}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ListAccessRequestsRequest) GetIncludeClosed() bool {
@@ -3377,7 +3997,7 @@ type ListAccessRequestsResponse struct {
 
 func (x *ListAccessRequestsResponse) Reset() {
 	*x = ListAccessRequestsResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[67]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3389,7 +4009,7 @@ func (x *ListAccessRequestsResponse) String() string {
 func (*ListAccessRequestsResponse) ProtoMessage() {}
 
 func (x *ListAccessRequestsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[67]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3402,7 +4022,7 @@ func (x *ListAccessRequestsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessRequestsResponse.ProtoReflect.Descriptor instead.
 func (*ListAccessRequestsResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{67}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ListAccessRequestsResponse) GetRequests() []*AccessRequest {
@@ -3422,7 +4042,7 @@ type DecideAccessRequest struct {
 
 func (x *DecideAccessRequest) Reset() {
 	*x = DecideAccessRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[68]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3434,7 +4054,7 @@ func (x *DecideAccessRequest) String() string {
 func (*DecideAccessRequest) ProtoMessage() {}
 
 func (x *DecideAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[68]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3447,7 +4067,7 @@ func (x *DecideAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideAccessRequest.ProtoReflect.Descriptor instead.
 func (*DecideAccessRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{68}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *DecideAccessRequest) GetId() uint64 {
@@ -3473,7 +4093,7 @@ type DecideAccessResponse struct {
 
 func (x *DecideAccessResponse) Reset() {
 	*x = DecideAccessResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[69]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3485,7 +4105,7 @@ func (x *DecideAccessResponse) String() string {
 func (*DecideAccessResponse) ProtoMessage() {}
 
 func (x *DecideAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[69]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3498,7 +4118,7 @@ func (x *DecideAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideAccessResponse.ProtoReflect.Descriptor instead.
 func (*DecideAccessResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{69}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *DecideAccessResponse) GetRequest() *AccessRequest {
@@ -3517,7 +4137,7 @@ type RevokeAccessRequest struct {
 
 func (x *RevokeAccessRequest) Reset() {
 	*x = RevokeAccessRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[70]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3529,7 +4149,7 @@ func (x *RevokeAccessRequest) String() string {
 func (*RevokeAccessRequest) ProtoMessage() {}
 
 func (x *RevokeAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[70]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3542,7 +4162,7 @@ func (x *RevokeAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessRequest.ProtoReflect.Descriptor instead.
 func (*RevokeAccessRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{70}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *RevokeAccessRequest) GetId() uint64 {
@@ -3560,7 +4180,7 @@ type RevokeAccessResponse struct {
 
 func (x *RevokeAccessResponse) Reset() {
 	*x = RevokeAccessResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[71]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3572,7 +4192,7 @@ func (x *RevokeAccessResponse) String() string {
 func (*RevokeAccessResponse) ProtoMessage() {}
 
 func (x *RevokeAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[71]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3585,7 +4205,7 @@ func (x *RevokeAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessResponse.ProtoReflect.Descriptor instead.
 func (*RevokeAccessResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{71}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{83}
 }
 
 type ListAuditEventsRequest struct {
@@ -3605,7 +4225,7 @@ type ListAuditEventsRequest struct {
 
 func (x *ListAuditEventsRequest) Reset() {
 	*x = ListAuditEventsRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[72]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3617,7 +4237,7 @@ func (x *ListAuditEventsRequest) String() string {
 func (*ListAuditEventsRequest) ProtoMessage() {}
 
 func (x *ListAuditEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[72]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3630,7 +4250,7 @@ func (x *ListAuditEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditEventsRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{72}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ListAuditEventsRequest) GetSinceSeconds() uint64 {
@@ -3683,7 +4303,7 @@ type AuditEvent struct {
 
 func (x *AuditEvent) Reset() {
 	*x = AuditEvent{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[73]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3695,7 +4315,7 @@ func (x *AuditEvent) String() string {
 func (*AuditEvent) ProtoMessage() {}
 
 func (x *AuditEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[73]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3708,7 +4328,7 @@ func (x *AuditEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
 func (*AuditEvent) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{73}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *AuditEvent) GetId() uint64 {
@@ -3757,7 +4377,7 @@ type ListAuditEventsResponse struct {
 
 func (x *ListAuditEventsResponse) Reset() {
 	*x = ListAuditEventsResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[74]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3769,7 +4389,7 @@ func (x *ListAuditEventsResponse) String() string {
 func (*ListAuditEventsResponse) ProtoMessage() {}
 
 func (x *ListAuditEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[74]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3782,7 +4402,7 @@ func (x *ListAuditEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListAuditEventsResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{74}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ListAuditEventsResponse) GetEvents() []*AuditEvent {
@@ -3814,7 +4434,7 @@ type AuditVerification struct {
 
 func (x *AuditVerification) Reset() {
 	*x = AuditVerification{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[75]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3826,7 +4446,7 @@ func (x *AuditVerification) String() string {
 func (*AuditVerification) ProtoMessage() {}
 
 func (x *AuditVerification) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[75]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3839,7 +4459,7 @@ func (x *AuditVerification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditVerification.ProtoReflect.Descriptor instead.
 func (*AuditVerification) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{75}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *AuditVerification) GetOk() bool {
@@ -3885,7 +4505,7 @@ type QueryFlowsRequest struct {
 
 func (x *QueryFlowsRequest) Reset() {
 	*x = QueryFlowsRequest{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[76]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3897,7 +4517,7 @@ func (x *QueryFlowsRequest) String() string {
 func (*QueryFlowsRequest) ProtoMessage() {}
 
 func (x *QueryFlowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[76]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3910,7 +4530,7 @@ func (x *QueryFlowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryFlowsRequest.ProtoReflect.Descriptor instead.
 func (*QueryFlowsRequest) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{76}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *QueryFlowsRequest) GetNode() string {
@@ -3964,7 +4584,7 @@ type AdminFlow struct {
 
 func (x *AdminFlow) Reset() {
 	*x = AdminFlow{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[77]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3976,7 +4596,7 @@ func (x *AdminFlow) String() string {
 func (*AdminFlow) ProtoMessage() {}
 
 func (x *AdminFlow) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[77]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3989,7 +4609,7 @@ func (x *AdminFlow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminFlow.ProtoReflect.Descriptor instead.
 func (*AdminFlow) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{77}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *AdminFlow) GetNodeName() string {
@@ -4108,7 +4728,7 @@ type QueryFlowsResponse struct {
 
 func (x *QueryFlowsResponse) Reset() {
 	*x = QueryFlowsResponse{}
-	mi := &file_whalescale_v1_admin_proto_msgTypes[78]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4120,7 +4740,7 @@ func (x *QueryFlowsResponse) String() string {
 func (*QueryFlowsResponse) ProtoMessage() {}
 
 func (x *QueryFlowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whalescale_v1_admin_proto_msgTypes[78]
+	mi := &file_whalescale_v1_admin_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4133,7 +4753,7 @@ func (x *QueryFlowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryFlowsResponse.ProtoReflect.Descriptor instead.
 func (*QueryFlowsResponse) Descriptor() ([]byte, []int) {
-	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{78}
+	return file_whalescale_v1_admin_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *QueryFlowsResponse) GetFlows() []*AdminFlow {
@@ -4154,7 +4774,45 @@ var File_whalescale_v1_admin_proto protoreflect.FileDescriptor
 
 const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x19whalescale/v1/admin.proto\x12\rwhalescale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bwhalescale/v1/control.proto\"\x0f\n" +
+	"\x19whalescale/v1/admin.proto\x12\rwhalescale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bwhalescale/v1/control.proto\"y\n" +
+	"\aSetting\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12!\n" +
+	"\fconfig_value\x18\x03 \x01(\tR\vconfigValue\x12!\n" +
+	"\ffrom_console\x18\x04 \x01(\bR\vfromConsole\"\x14\n" +
+	"\x12GetSettingsRequest\"\xb3\x01\n" +
+	"\x13GetSettingsResponse\x122\n" +
+	"\bsettings\x18\x01 \x03(\v2\x16.whalescale.v1.SettingR\bsettings\x12\x1d\n" +
+	"\n" +
+	"dns_suffix\x18\x02 \x01(\tR\tdnsSuffix\x12\x1b\n" +
+	"\tssh_rules\x18\x03 \x01(\rR\bsshRules\x12,\n" +
+	"\x12ssh_recorded_rules\x18\x04 \x01(\rR\x10sshRecordedRules\"_\n" +
+	"\x14UpdateSettingRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1d\n" +
+	"\n" +
+	"use_config\x18\x03 \x01(\bR\tuseConfig\"K\n" +
+	"\x15UpdateSettingResponse\x122\n" +
+	"\bsettings\x18\x01 \x03(\v2\x16.whalescale.v1.SettingR\bsettings\"\x9a\x01\n" +
+	"\x0eConsoleAccount\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x129\n" +
+	"\n" +
+	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"two_factor\x18\x03 \x01(\bR\ttwoFactor\x12\x1a\n" +
+	"\bpasskeys\x18\x04 \x01(\rR\bpasskeys\"\x1c\n" +
+	"\x1aListConsoleAccountsRequest\"j\n" +
+	"\x1bListConsoleAccountsResponse\x129\n" +
+	"\baccounts\x18\x01 \x03(\v2\x1d.whalescale.v1.ConsoleAccountR\baccounts\x12\x10\n" +
+	"\x03you\x18\x02 \x01(\tR\x03you\"1\n" +
+	"\x1bCreateConsoleAccountRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
+	"\x1cCreateConsoleAccountResponse\x127\n" +
+	"\aaccount\x18\x01 \x01(\v2\x1d.whalescale.v1.ConsoleAccountR\aaccount\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"1\n" +
+	"\x1bDeleteConsoleAccountRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x1e\n" +
+	"\x1cDeleteConsoleAccountResponse\"\x0f\n" +
 	"\rWhoAmIRequest\"}\n" +
 	"\x0eWhoAmIResponse\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x1a\n" +
@@ -4412,7 +5070,7 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\fpackets_recv\x18\x0f \x01(\x04R\vpacketsRecv\"^\n" +
 	"\x12QueryFlowsResponse\x12.\n" +
 	"\x05flows\x18\x01 \x03(\v2\x18.whalescale.v1.AdminFlowR\x05flows\x12\x18\n" +
-	"\aenabled\x18\x02 \x01(\bR\aenabled2\xf5\x17\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled2\xf7\x1b\n" +
 	"\fAdminService\x12E\n" +
 	"\x06WhoAmI\x12\x1c.whalescale.v1.WhoAmIRequest\x1a\x1d.whalescale.v1.WhoAmIResponse\x12N\n" +
 	"\tListUsers\x12\x1f.whalescale.v1.ListUsersRequest\x1a .whalescale.v1.ListUsersResponse\x12Q\n" +
@@ -4453,7 +5111,12 @@ const file_whalescale_v1_admin_proto_rawDesc = "" +
 	"\fRevokeAccess\x12\".whalescale.v1.RevokeAccessRequest\x1a#.whalescale.v1.RevokeAccessResponse\x12T\n" +
 	"\vListAPIKeys\x12!.whalescale.v1.ListAPIKeysRequest\x1a\".whalescale.v1.ListAPIKeysResponse\x12W\n" +
 	"\fCreateAPIKey\x12\".whalescale.v1.CreateAPIKeyRequest\x1a#.whalescale.v1.CreateAPIKeyResponse\x12W\n" +
-	"\fExpireAPIKey\x12\".whalescale.v1.ExpireAPIKeyRequest\x1a#.whalescale.v1.ExpireAPIKeyResponseB?Z=github.com/k4ran909/whalescale/gen/whalescale/v1;whalescalev1b\x06proto3"
+	"\fExpireAPIKey\x12\".whalescale.v1.ExpireAPIKeyRequest\x1a#.whalescale.v1.ExpireAPIKeyResponse\x12T\n" +
+	"\vGetSettings\x12!.whalescale.v1.GetSettingsRequest\x1a\".whalescale.v1.GetSettingsResponse\x12Z\n" +
+	"\rUpdateSetting\x12#.whalescale.v1.UpdateSettingRequest\x1a$.whalescale.v1.UpdateSettingResponse\x12l\n" +
+	"\x13ListConsoleAccounts\x12).whalescale.v1.ListConsoleAccountsRequest\x1a*.whalescale.v1.ListConsoleAccountsResponse\x12o\n" +
+	"\x14CreateConsoleAccount\x12*.whalescale.v1.CreateConsoleAccountRequest\x1a+.whalescale.v1.CreateConsoleAccountResponse\x12o\n" +
+	"\x14DeleteConsoleAccount\x12*.whalescale.v1.DeleteConsoleAccountRequest\x1a+.whalescale.v1.DeleteConsoleAccountResponseB?Z=github.com/k4ran909/whalescale/gen/whalescale/v1;whalescalev1b\x06proto3"
 
 var (
 	file_whalescale_v1_admin_proto_rawDescOnce sync.Once
@@ -4467,202 +5130,229 @@ func file_whalescale_v1_admin_proto_rawDescGZIP() []byte {
 	return file_whalescale_v1_admin_proto_rawDescData
 }
 
-var file_whalescale_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 79)
+var file_whalescale_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 91)
 var file_whalescale_v1_admin_proto_goTypes = []any{
-	(*WhoAmIRequest)(nil),                // 0: whalescale.v1.WhoAmIRequest
-	(*WhoAmIResponse)(nil),               // 1: whalescale.v1.WhoAmIResponse
-	(*User)(nil),                         // 2: whalescale.v1.User
-	(*ListUsersRequest)(nil),             // 3: whalescale.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),            // 4: whalescale.v1.ListUsersResponse
-	(*CreateUserRequest)(nil),            // 5: whalescale.v1.CreateUserRequest
-	(*CreateUserResponse)(nil),           // 6: whalescale.v1.CreateUserResponse
-	(*DeleteUserRequest)(nil),            // 7: whalescale.v1.DeleteUserRequest
-	(*DeleteUserResponse)(nil),           // 8: whalescale.v1.DeleteUserResponse
-	(*ListNodesRequest)(nil),             // 9: whalescale.v1.ListNodesRequest
-	(*ListNodesResponse)(nil),            // 10: whalescale.v1.ListNodesResponse
-	(*DeleteNodeRequest)(nil),            // 11: whalescale.v1.DeleteNodeRequest
-	(*DeleteNodeResponse)(nil),           // 12: whalescale.v1.DeleteNodeResponse
-	(*PreAuthKey)(nil),                   // 13: whalescale.v1.PreAuthKey
-	(*ListPreAuthKeysRequest)(nil),       // 14: whalescale.v1.ListPreAuthKeysRequest
-	(*ListPreAuthKeysResponse)(nil),      // 15: whalescale.v1.ListPreAuthKeysResponse
-	(*CreatePreAuthKeyRequest)(nil),      // 16: whalescale.v1.CreatePreAuthKeyRequest
-	(*CreatePreAuthKeyResponse)(nil),     // 17: whalescale.v1.CreatePreAuthKeyResponse
-	(*ExpirePreAuthKeyRequest)(nil),      // 18: whalescale.v1.ExpirePreAuthKeyRequest
-	(*ExpirePreAuthKeyResponse)(nil),     // 19: whalescale.v1.ExpirePreAuthKeyResponse
-	(*GetPolicyRequest)(nil),             // 20: whalescale.v1.GetPolicyRequest
-	(*GetPolicyResponse)(nil),            // 21: whalescale.v1.GetPolicyResponse
-	(*CheckPolicyRequest)(nil),           // 22: whalescale.v1.CheckPolicyRequest
-	(*CheckPolicyResponse)(nil),          // 23: whalescale.v1.CheckPolicyResponse
-	(*SetPolicyRequest)(nil),             // 24: whalescale.v1.SetPolicyRequest
-	(*SetPolicyResponse)(nil),            // 25: whalescale.v1.SetPolicyResponse
-	(*Route)(nil),                        // 26: whalescale.v1.Route
-	(*ListRoutesRequest)(nil),            // 27: whalescale.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),           // 28: whalescale.v1.ListRoutesResponse
-	(*SetRouteApprovedRequest)(nil),      // 29: whalescale.v1.SetRouteApprovedRequest
-	(*SetRouteApprovedResponse)(nil),     // 30: whalescale.v1.SetRouteApprovedResponse
-	(*GetTopologyRequest)(nil),           // 31: whalescale.v1.GetTopologyRequest
-	(*GetTopologyResponse)(nil),          // 32: whalescale.v1.GetTopologyResponse
-	(*APIKey)(nil),                       // 33: whalescale.v1.APIKey
-	(*ListAPIKeysRequest)(nil),           // 34: whalescale.v1.ListAPIKeysRequest
-	(*ListAPIKeysResponse)(nil),          // 35: whalescale.v1.ListAPIKeysResponse
-	(*CreateAPIKeyRequest)(nil),          // 36: whalescale.v1.CreateAPIKeyRequest
-	(*CreateAPIKeyResponse)(nil),         // 37: whalescale.v1.CreateAPIKeyResponse
-	(*ExpireAPIKeyRequest)(nil),          // 38: whalescale.v1.ExpireAPIKeyRequest
-	(*ExpireAPIKeyResponse)(nil),         // 39: whalescale.v1.ExpireAPIKeyResponse
-	(*AdminExposure)(nil),                // 40: whalescale.v1.AdminExposure
-	(*ListExposuresRequest)(nil),         // 41: whalescale.v1.ListExposuresRequest
-	(*ListExposuresResponse)(nil),        // 42: whalescale.v1.ListExposuresResponse
-	(*SetExposureApprovedRequest)(nil),   // 43: whalescale.v1.SetExposureApprovedRequest
-	(*SetExposureApprovedResponse)(nil),  // 44: whalescale.v1.SetExposureApprovedResponse
-	(*ExplainAccessRequest)(nil),         // 45: whalescale.v1.ExplainAccessRequest
-	(*ExplainAccessResponse)(nil),        // 46: whalescale.v1.ExplainAccessResponse
-	(*AdminPeerRelay)(nil),               // 47: whalescale.v1.AdminPeerRelay
-	(*ListPeerRelaysRequest)(nil),        // 48: whalescale.v1.ListPeerRelaysRequest
-	(*ListPeerRelaysResponse)(nil),       // 49: whalescale.v1.ListPeerRelaysResponse
-	(*SetPeerRelayApprovedRequest)(nil),  // 50: whalescale.v1.SetPeerRelayApprovedRequest
-	(*SetPeerRelayApprovedResponse)(nil), // 51: whalescale.v1.SetPeerRelayApprovedResponse
-	(*Recording)(nil),                    // 52: whalescale.v1.Recording
-	(*ListRecordingsRequest)(nil),        // 53: whalescale.v1.ListRecordingsRequest
-	(*ListRecordingsResponse)(nil),       // 54: whalescale.v1.ListRecordingsResponse
-	(*GetRecordingRequest)(nil),          // 55: whalescale.v1.GetRecordingRequest
-	(*GetRecordingResponse)(nil),         // 56: whalescale.v1.GetRecordingResponse
-	(*DeleteRecordingRequest)(nil),       // 57: whalescale.v1.DeleteRecordingRequest
-	(*DeleteRecordingResponse)(nil),      // 58: whalescale.v1.DeleteRecordingResponse
-	(*GetLockRequest)(nil),               // 59: whalescale.v1.GetLockRequest
-	(*GetLockResponse)(nil),              // 60: whalescale.v1.GetLockResponse
-	(*UpdateLockRequest)(nil),            // 61: whalescale.v1.UpdateLockRequest
-	(*UpdateLockResponse)(nil),           // 62: whalescale.v1.UpdateLockResponse
-	(*SignNodesRequest)(nil),             // 63: whalescale.v1.SignNodesRequest
-	(*SignedNodeKey)(nil),                // 64: whalescale.v1.SignedNodeKey
-	(*SignNodesResponse)(nil),            // 65: whalescale.v1.SignNodesResponse
-	(*ListAccessRequestsRequest)(nil),    // 66: whalescale.v1.ListAccessRequestsRequest
-	(*ListAccessRequestsResponse)(nil),   // 67: whalescale.v1.ListAccessRequestsResponse
-	(*DecideAccessRequest)(nil),          // 68: whalescale.v1.DecideAccessRequest
-	(*DecideAccessResponse)(nil),         // 69: whalescale.v1.DecideAccessResponse
-	(*RevokeAccessRequest)(nil),          // 70: whalescale.v1.RevokeAccessRequest
-	(*RevokeAccessResponse)(nil),         // 71: whalescale.v1.RevokeAccessResponse
-	(*ListAuditEventsRequest)(nil),       // 72: whalescale.v1.ListAuditEventsRequest
-	(*AuditEvent)(nil),                   // 73: whalescale.v1.AuditEvent
-	(*ListAuditEventsResponse)(nil),      // 74: whalescale.v1.ListAuditEventsResponse
-	(*AuditVerification)(nil),            // 75: whalescale.v1.AuditVerification
-	(*QueryFlowsRequest)(nil),            // 76: whalescale.v1.QueryFlowsRequest
-	(*AdminFlow)(nil),                    // 77: whalescale.v1.AdminFlow
-	(*QueryFlowsResponse)(nil),           // 78: whalescale.v1.QueryFlowsResponse
-	(*timestamppb.Timestamp)(nil),        // 79: google.protobuf.Timestamp
-	(*Node)(nil),                         // 80: whalescale.v1.Node
-	(*PathReport)(nil),                   // 81: whalescale.v1.PathReport
-	(*LockState)(nil),                    // 82: whalescale.v1.LockState
-	(*NodeSignature)(nil),                // 83: whalescale.v1.NodeSignature
-	(*AccessRequest)(nil),                // 84: whalescale.v1.AccessRequest
+	(*Setting)(nil),                      // 0: whalescale.v1.Setting
+	(*GetSettingsRequest)(nil),           // 1: whalescale.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil),          // 2: whalescale.v1.GetSettingsResponse
+	(*UpdateSettingRequest)(nil),         // 3: whalescale.v1.UpdateSettingRequest
+	(*UpdateSettingResponse)(nil),        // 4: whalescale.v1.UpdateSettingResponse
+	(*ConsoleAccount)(nil),               // 5: whalescale.v1.ConsoleAccount
+	(*ListConsoleAccountsRequest)(nil),   // 6: whalescale.v1.ListConsoleAccountsRequest
+	(*ListConsoleAccountsResponse)(nil),  // 7: whalescale.v1.ListConsoleAccountsResponse
+	(*CreateConsoleAccountRequest)(nil),  // 8: whalescale.v1.CreateConsoleAccountRequest
+	(*CreateConsoleAccountResponse)(nil), // 9: whalescale.v1.CreateConsoleAccountResponse
+	(*DeleteConsoleAccountRequest)(nil),  // 10: whalescale.v1.DeleteConsoleAccountRequest
+	(*DeleteConsoleAccountResponse)(nil), // 11: whalescale.v1.DeleteConsoleAccountResponse
+	(*WhoAmIRequest)(nil),                // 12: whalescale.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),               // 13: whalescale.v1.WhoAmIResponse
+	(*User)(nil),                         // 14: whalescale.v1.User
+	(*ListUsersRequest)(nil),             // 15: whalescale.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),            // 16: whalescale.v1.ListUsersResponse
+	(*CreateUserRequest)(nil),            // 17: whalescale.v1.CreateUserRequest
+	(*CreateUserResponse)(nil),           // 18: whalescale.v1.CreateUserResponse
+	(*DeleteUserRequest)(nil),            // 19: whalescale.v1.DeleteUserRequest
+	(*DeleteUserResponse)(nil),           // 20: whalescale.v1.DeleteUserResponse
+	(*ListNodesRequest)(nil),             // 21: whalescale.v1.ListNodesRequest
+	(*ListNodesResponse)(nil),            // 22: whalescale.v1.ListNodesResponse
+	(*DeleteNodeRequest)(nil),            // 23: whalescale.v1.DeleteNodeRequest
+	(*DeleteNodeResponse)(nil),           // 24: whalescale.v1.DeleteNodeResponse
+	(*PreAuthKey)(nil),                   // 25: whalescale.v1.PreAuthKey
+	(*ListPreAuthKeysRequest)(nil),       // 26: whalescale.v1.ListPreAuthKeysRequest
+	(*ListPreAuthKeysResponse)(nil),      // 27: whalescale.v1.ListPreAuthKeysResponse
+	(*CreatePreAuthKeyRequest)(nil),      // 28: whalescale.v1.CreatePreAuthKeyRequest
+	(*CreatePreAuthKeyResponse)(nil),     // 29: whalescale.v1.CreatePreAuthKeyResponse
+	(*ExpirePreAuthKeyRequest)(nil),      // 30: whalescale.v1.ExpirePreAuthKeyRequest
+	(*ExpirePreAuthKeyResponse)(nil),     // 31: whalescale.v1.ExpirePreAuthKeyResponse
+	(*GetPolicyRequest)(nil),             // 32: whalescale.v1.GetPolicyRequest
+	(*GetPolicyResponse)(nil),            // 33: whalescale.v1.GetPolicyResponse
+	(*CheckPolicyRequest)(nil),           // 34: whalescale.v1.CheckPolicyRequest
+	(*CheckPolicyResponse)(nil),          // 35: whalescale.v1.CheckPolicyResponse
+	(*SetPolicyRequest)(nil),             // 36: whalescale.v1.SetPolicyRequest
+	(*SetPolicyResponse)(nil),            // 37: whalescale.v1.SetPolicyResponse
+	(*Route)(nil),                        // 38: whalescale.v1.Route
+	(*ListRoutesRequest)(nil),            // 39: whalescale.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),           // 40: whalescale.v1.ListRoutesResponse
+	(*SetRouteApprovedRequest)(nil),      // 41: whalescale.v1.SetRouteApprovedRequest
+	(*SetRouteApprovedResponse)(nil),     // 42: whalescale.v1.SetRouteApprovedResponse
+	(*GetTopologyRequest)(nil),           // 43: whalescale.v1.GetTopologyRequest
+	(*GetTopologyResponse)(nil),          // 44: whalescale.v1.GetTopologyResponse
+	(*APIKey)(nil),                       // 45: whalescale.v1.APIKey
+	(*ListAPIKeysRequest)(nil),           // 46: whalescale.v1.ListAPIKeysRequest
+	(*ListAPIKeysResponse)(nil),          // 47: whalescale.v1.ListAPIKeysResponse
+	(*CreateAPIKeyRequest)(nil),          // 48: whalescale.v1.CreateAPIKeyRequest
+	(*CreateAPIKeyResponse)(nil),         // 49: whalescale.v1.CreateAPIKeyResponse
+	(*ExpireAPIKeyRequest)(nil),          // 50: whalescale.v1.ExpireAPIKeyRequest
+	(*ExpireAPIKeyResponse)(nil),         // 51: whalescale.v1.ExpireAPIKeyResponse
+	(*AdminExposure)(nil),                // 52: whalescale.v1.AdminExposure
+	(*ListExposuresRequest)(nil),         // 53: whalescale.v1.ListExposuresRequest
+	(*ListExposuresResponse)(nil),        // 54: whalescale.v1.ListExposuresResponse
+	(*SetExposureApprovedRequest)(nil),   // 55: whalescale.v1.SetExposureApprovedRequest
+	(*SetExposureApprovedResponse)(nil),  // 56: whalescale.v1.SetExposureApprovedResponse
+	(*ExplainAccessRequest)(nil),         // 57: whalescale.v1.ExplainAccessRequest
+	(*ExplainAccessResponse)(nil),        // 58: whalescale.v1.ExplainAccessResponse
+	(*AdminPeerRelay)(nil),               // 59: whalescale.v1.AdminPeerRelay
+	(*ListPeerRelaysRequest)(nil),        // 60: whalescale.v1.ListPeerRelaysRequest
+	(*ListPeerRelaysResponse)(nil),       // 61: whalescale.v1.ListPeerRelaysResponse
+	(*SetPeerRelayApprovedRequest)(nil),  // 62: whalescale.v1.SetPeerRelayApprovedRequest
+	(*SetPeerRelayApprovedResponse)(nil), // 63: whalescale.v1.SetPeerRelayApprovedResponse
+	(*Recording)(nil),                    // 64: whalescale.v1.Recording
+	(*ListRecordingsRequest)(nil),        // 65: whalescale.v1.ListRecordingsRequest
+	(*ListRecordingsResponse)(nil),       // 66: whalescale.v1.ListRecordingsResponse
+	(*GetRecordingRequest)(nil),          // 67: whalescale.v1.GetRecordingRequest
+	(*GetRecordingResponse)(nil),         // 68: whalescale.v1.GetRecordingResponse
+	(*DeleteRecordingRequest)(nil),       // 69: whalescale.v1.DeleteRecordingRequest
+	(*DeleteRecordingResponse)(nil),      // 70: whalescale.v1.DeleteRecordingResponse
+	(*GetLockRequest)(nil),               // 71: whalescale.v1.GetLockRequest
+	(*GetLockResponse)(nil),              // 72: whalescale.v1.GetLockResponse
+	(*UpdateLockRequest)(nil),            // 73: whalescale.v1.UpdateLockRequest
+	(*UpdateLockResponse)(nil),           // 74: whalescale.v1.UpdateLockResponse
+	(*SignNodesRequest)(nil),             // 75: whalescale.v1.SignNodesRequest
+	(*SignedNodeKey)(nil),                // 76: whalescale.v1.SignedNodeKey
+	(*SignNodesResponse)(nil),            // 77: whalescale.v1.SignNodesResponse
+	(*ListAccessRequestsRequest)(nil),    // 78: whalescale.v1.ListAccessRequestsRequest
+	(*ListAccessRequestsResponse)(nil),   // 79: whalescale.v1.ListAccessRequestsResponse
+	(*DecideAccessRequest)(nil),          // 80: whalescale.v1.DecideAccessRequest
+	(*DecideAccessResponse)(nil),         // 81: whalescale.v1.DecideAccessResponse
+	(*RevokeAccessRequest)(nil),          // 82: whalescale.v1.RevokeAccessRequest
+	(*RevokeAccessResponse)(nil),         // 83: whalescale.v1.RevokeAccessResponse
+	(*ListAuditEventsRequest)(nil),       // 84: whalescale.v1.ListAuditEventsRequest
+	(*AuditEvent)(nil),                   // 85: whalescale.v1.AuditEvent
+	(*ListAuditEventsResponse)(nil),      // 86: whalescale.v1.ListAuditEventsResponse
+	(*AuditVerification)(nil),            // 87: whalescale.v1.AuditVerification
+	(*QueryFlowsRequest)(nil),            // 88: whalescale.v1.QueryFlowsRequest
+	(*AdminFlow)(nil),                    // 89: whalescale.v1.AdminFlow
+	(*QueryFlowsResponse)(nil),           // 90: whalescale.v1.QueryFlowsResponse
+	(*timestamppb.Timestamp)(nil),        // 91: google.protobuf.Timestamp
+	(*Node)(nil),                         // 92: whalescale.v1.Node
+	(*PathReport)(nil),                   // 93: whalescale.v1.PathReport
+	(*LockState)(nil),                    // 94: whalescale.v1.LockState
+	(*NodeSignature)(nil),                // 95: whalescale.v1.NodeSignature
+	(*AccessRequest)(nil),                // 96: whalescale.v1.AccessRequest
 }
 var file_whalescale_v1_admin_proto_depIdxs = []int32{
-	79, // 0: whalescale.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	2,  // 1: whalescale.v1.ListUsersResponse.users:type_name -> whalescale.v1.User
-	2,  // 2: whalescale.v1.CreateUserResponse.user:type_name -> whalescale.v1.User
-	80, // 3: whalescale.v1.ListNodesResponse.nodes:type_name -> whalescale.v1.Node
-	79, // 4: whalescale.v1.PreAuthKey.expires_at:type_name -> google.protobuf.Timestamp
-	79, // 5: whalescale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
-	13, // 6: whalescale.v1.ListPreAuthKeysResponse.keys:type_name -> whalescale.v1.PreAuthKey
-	13, // 7: whalescale.v1.CreatePreAuthKeyResponse.key:type_name -> whalescale.v1.PreAuthKey
-	79, // 8: whalescale.v1.GetPolicyResponse.last_sync:type_name -> google.protobuf.Timestamp
-	26, // 9: whalescale.v1.ListRoutesResponse.routes:type_name -> whalescale.v1.Route
-	81, // 10: whalescale.v1.GetTopologyResponse.paths:type_name -> whalescale.v1.PathReport
-	79, // 11: whalescale.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
-	79, // 12: whalescale.v1.APIKey.expires_at:type_name -> google.protobuf.Timestamp
-	79, // 13: whalescale.v1.APIKey.last_used:type_name -> google.protobuf.Timestamp
-	33, // 14: whalescale.v1.ListAPIKeysResponse.keys:type_name -> whalescale.v1.APIKey
-	33, // 15: whalescale.v1.CreateAPIKeyResponse.key:type_name -> whalescale.v1.APIKey
-	40, // 16: whalescale.v1.ListExposuresResponse.exposures:type_name -> whalescale.v1.AdminExposure
-	47, // 17: whalescale.v1.ListPeerRelaysResponse.relays:type_name -> whalescale.v1.AdminPeerRelay
-	79, // 18: whalescale.v1.Recording.started_at:type_name -> google.protobuf.Timestamp
-	79, // 19: whalescale.v1.Recording.ended_at:type_name -> google.protobuf.Timestamp
-	52, // 20: whalescale.v1.ListRecordingsResponse.recordings:type_name -> whalescale.v1.Recording
-	52, // 21: whalescale.v1.GetRecordingResponse.recording:type_name -> whalescale.v1.Recording
-	82, // 22: whalescale.v1.GetLockResponse.chain:type_name -> whalescale.v1.LockState
-	82, // 23: whalescale.v1.UpdateLockRequest.state:type_name -> whalescale.v1.LockState
-	64, // 24: whalescale.v1.SignNodesRequest.signatures:type_name -> whalescale.v1.SignedNodeKey
-	83, // 25: whalescale.v1.SignedNodeKey.signature:type_name -> whalescale.v1.NodeSignature
-	84, // 26: whalescale.v1.ListAccessRequestsResponse.requests:type_name -> whalescale.v1.AccessRequest
-	84, // 27: whalescale.v1.DecideAccessResponse.request:type_name -> whalescale.v1.AccessRequest
-	79, // 28: whalescale.v1.AuditEvent.at:type_name -> google.protobuf.Timestamp
-	73, // 29: whalescale.v1.ListAuditEventsResponse.events:type_name -> whalescale.v1.AuditEvent
-	75, // 30: whalescale.v1.ListAuditEventsResponse.verification:type_name -> whalescale.v1.AuditVerification
-	79, // 31: whalescale.v1.AdminFlow.start:type_name -> google.protobuf.Timestamp
-	79, // 32: whalescale.v1.AdminFlow.end:type_name -> google.protobuf.Timestamp
-	77, // 33: whalescale.v1.QueryFlowsResponse.flows:type_name -> whalescale.v1.AdminFlow
-	0,  // 34: whalescale.v1.AdminService.WhoAmI:input_type -> whalescale.v1.WhoAmIRequest
-	3,  // 35: whalescale.v1.AdminService.ListUsers:input_type -> whalescale.v1.ListUsersRequest
-	5,  // 36: whalescale.v1.AdminService.CreateUser:input_type -> whalescale.v1.CreateUserRequest
-	7,  // 37: whalescale.v1.AdminService.DeleteUser:input_type -> whalescale.v1.DeleteUserRequest
-	9,  // 38: whalescale.v1.AdminService.ListNodes:input_type -> whalescale.v1.ListNodesRequest
-	11, // 39: whalescale.v1.AdminService.DeleteNode:input_type -> whalescale.v1.DeleteNodeRequest
-	14, // 40: whalescale.v1.AdminService.ListPreAuthKeys:input_type -> whalescale.v1.ListPreAuthKeysRequest
-	16, // 41: whalescale.v1.AdminService.CreatePreAuthKey:input_type -> whalescale.v1.CreatePreAuthKeyRequest
-	18, // 42: whalescale.v1.AdminService.ExpirePreAuthKey:input_type -> whalescale.v1.ExpirePreAuthKeyRequest
-	20, // 43: whalescale.v1.AdminService.GetPolicy:input_type -> whalescale.v1.GetPolicyRequest
-	22, // 44: whalescale.v1.AdminService.CheckPolicy:input_type -> whalescale.v1.CheckPolicyRequest
-	24, // 45: whalescale.v1.AdminService.SetPolicy:input_type -> whalescale.v1.SetPolicyRequest
-	45, // 46: whalescale.v1.AdminService.ExplainAccess:input_type -> whalescale.v1.ExplainAccessRequest
-	27, // 47: whalescale.v1.AdminService.ListRoutes:input_type -> whalescale.v1.ListRoutesRequest
-	29, // 48: whalescale.v1.AdminService.SetRouteApproved:input_type -> whalescale.v1.SetRouteApprovedRequest
-	31, // 49: whalescale.v1.AdminService.GetTopology:input_type -> whalescale.v1.GetTopologyRequest
-	48, // 50: whalescale.v1.AdminService.ListPeerRelays:input_type -> whalescale.v1.ListPeerRelaysRequest
-	50, // 51: whalescale.v1.AdminService.SetPeerRelayApproved:input_type -> whalescale.v1.SetPeerRelayApprovedRequest
-	41, // 52: whalescale.v1.AdminService.ListExposures:input_type -> whalescale.v1.ListExposuresRequest
-	43, // 53: whalescale.v1.AdminService.SetExposureApproved:input_type -> whalescale.v1.SetExposureApprovedRequest
-	76, // 54: whalescale.v1.AdminService.QueryFlows:input_type -> whalescale.v1.QueryFlowsRequest
-	53, // 55: whalescale.v1.AdminService.ListRecordings:input_type -> whalescale.v1.ListRecordingsRequest
-	55, // 56: whalescale.v1.AdminService.GetRecording:input_type -> whalescale.v1.GetRecordingRequest
-	57, // 57: whalescale.v1.AdminService.DeleteRecording:input_type -> whalescale.v1.DeleteRecordingRequest
-	72, // 58: whalescale.v1.AdminService.ListAuditEvents:input_type -> whalescale.v1.ListAuditEventsRequest
-	59, // 59: whalescale.v1.AdminService.GetLock:input_type -> whalescale.v1.GetLockRequest
-	61, // 60: whalescale.v1.AdminService.UpdateLock:input_type -> whalescale.v1.UpdateLockRequest
-	63, // 61: whalescale.v1.AdminService.SignNodes:input_type -> whalescale.v1.SignNodesRequest
-	66, // 62: whalescale.v1.AdminService.ListAccessRequests:input_type -> whalescale.v1.ListAccessRequestsRequest
-	68, // 63: whalescale.v1.AdminService.DecideAccess:input_type -> whalescale.v1.DecideAccessRequest
-	70, // 64: whalescale.v1.AdminService.RevokeAccess:input_type -> whalescale.v1.RevokeAccessRequest
-	34, // 65: whalescale.v1.AdminService.ListAPIKeys:input_type -> whalescale.v1.ListAPIKeysRequest
-	36, // 66: whalescale.v1.AdminService.CreateAPIKey:input_type -> whalescale.v1.CreateAPIKeyRequest
-	38, // 67: whalescale.v1.AdminService.ExpireAPIKey:input_type -> whalescale.v1.ExpireAPIKeyRequest
-	1,  // 68: whalescale.v1.AdminService.WhoAmI:output_type -> whalescale.v1.WhoAmIResponse
-	4,  // 69: whalescale.v1.AdminService.ListUsers:output_type -> whalescale.v1.ListUsersResponse
-	6,  // 70: whalescale.v1.AdminService.CreateUser:output_type -> whalescale.v1.CreateUserResponse
-	8,  // 71: whalescale.v1.AdminService.DeleteUser:output_type -> whalescale.v1.DeleteUserResponse
-	10, // 72: whalescale.v1.AdminService.ListNodes:output_type -> whalescale.v1.ListNodesResponse
-	12, // 73: whalescale.v1.AdminService.DeleteNode:output_type -> whalescale.v1.DeleteNodeResponse
-	15, // 74: whalescale.v1.AdminService.ListPreAuthKeys:output_type -> whalescale.v1.ListPreAuthKeysResponse
-	17, // 75: whalescale.v1.AdminService.CreatePreAuthKey:output_type -> whalescale.v1.CreatePreAuthKeyResponse
-	19, // 76: whalescale.v1.AdminService.ExpirePreAuthKey:output_type -> whalescale.v1.ExpirePreAuthKeyResponse
-	21, // 77: whalescale.v1.AdminService.GetPolicy:output_type -> whalescale.v1.GetPolicyResponse
-	23, // 78: whalescale.v1.AdminService.CheckPolicy:output_type -> whalescale.v1.CheckPolicyResponse
-	25, // 79: whalescale.v1.AdminService.SetPolicy:output_type -> whalescale.v1.SetPolicyResponse
-	46, // 80: whalescale.v1.AdminService.ExplainAccess:output_type -> whalescale.v1.ExplainAccessResponse
-	28, // 81: whalescale.v1.AdminService.ListRoutes:output_type -> whalescale.v1.ListRoutesResponse
-	30, // 82: whalescale.v1.AdminService.SetRouteApproved:output_type -> whalescale.v1.SetRouteApprovedResponse
-	32, // 83: whalescale.v1.AdminService.GetTopology:output_type -> whalescale.v1.GetTopologyResponse
-	49, // 84: whalescale.v1.AdminService.ListPeerRelays:output_type -> whalescale.v1.ListPeerRelaysResponse
-	51, // 85: whalescale.v1.AdminService.SetPeerRelayApproved:output_type -> whalescale.v1.SetPeerRelayApprovedResponse
-	42, // 86: whalescale.v1.AdminService.ListExposures:output_type -> whalescale.v1.ListExposuresResponse
-	44, // 87: whalescale.v1.AdminService.SetExposureApproved:output_type -> whalescale.v1.SetExposureApprovedResponse
-	78, // 88: whalescale.v1.AdminService.QueryFlows:output_type -> whalescale.v1.QueryFlowsResponse
-	54, // 89: whalescale.v1.AdminService.ListRecordings:output_type -> whalescale.v1.ListRecordingsResponse
-	56, // 90: whalescale.v1.AdminService.GetRecording:output_type -> whalescale.v1.GetRecordingResponse
-	58, // 91: whalescale.v1.AdminService.DeleteRecording:output_type -> whalescale.v1.DeleteRecordingResponse
-	74, // 92: whalescale.v1.AdminService.ListAuditEvents:output_type -> whalescale.v1.ListAuditEventsResponse
-	60, // 93: whalescale.v1.AdminService.GetLock:output_type -> whalescale.v1.GetLockResponse
-	62, // 94: whalescale.v1.AdminService.UpdateLock:output_type -> whalescale.v1.UpdateLockResponse
-	65, // 95: whalescale.v1.AdminService.SignNodes:output_type -> whalescale.v1.SignNodesResponse
-	67, // 96: whalescale.v1.AdminService.ListAccessRequests:output_type -> whalescale.v1.ListAccessRequestsResponse
-	69, // 97: whalescale.v1.AdminService.DecideAccess:output_type -> whalescale.v1.DecideAccessResponse
-	71, // 98: whalescale.v1.AdminService.RevokeAccess:output_type -> whalescale.v1.RevokeAccessResponse
-	35, // 99: whalescale.v1.AdminService.ListAPIKeys:output_type -> whalescale.v1.ListAPIKeysResponse
-	37, // 100: whalescale.v1.AdminService.CreateAPIKey:output_type -> whalescale.v1.CreateAPIKeyResponse
-	39, // 101: whalescale.v1.AdminService.ExpireAPIKey:output_type -> whalescale.v1.ExpireAPIKeyResponse
-	68, // [68:102] is the sub-list for method output_type
-	34, // [34:68] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	0,  // 0: whalescale.v1.GetSettingsResponse.settings:type_name -> whalescale.v1.Setting
+	0,  // 1: whalescale.v1.UpdateSettingResponse.settings:type_name -> whalescale.v1.Setting
+	91, // 2: whalescale.v1.ConsoleAccount.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 3: whalescale.v1.ListConsoleAccountsResponse.accounts:type_name -> whalescale.v1.ConsoleAccount
+	5,  // 4: whalescale.v1.CreateConsoleAccountResponse.account:type_name -> whalescale.v1.ConsoleAccount
+	91, // 5: whalescale.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	14, // 6: whalescale.v1.ListUsersResponse.users:type_name -> whalescale.v1.User
+	14, // 7: whalescale.v1.CreateUserResponse.user:type_name -> whalescale.v1.User
+	92, // 8: whalescale.v1.ListNodesResponse.nodes:type_name -> whalescale.v1.Node
+	91, // 9: whalescale.v1.PreAuthKey.expires_at:type_name -> google.protobuf.Timestamp
+	91, // 10: whalescale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
+	25, // 11: whalescale.v1.ListPreAuthKeysResponse.keys:type_name -> whalescale.v1.PreAuthKey
+	25, // 12: whalescale.v1.CreatePreAuthKeyResponse.key:type_name -> whalescale.v1.PreAuthKey
+	91, // 13: whalescale.v1.GetPolicyResponse.last_sync:type_name -> google.protobuf.Timestamp
+	38, // 14: whalescale.v1.ListRoutesResponse.routes:type_name -> whalescale.v1.Route
+	93, // 15: whalescale.v1.GetTopologyResponse.paths:type_name -> whalescale.v1.PathReport
+	91, // 16: whalescale.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
+	91, // 17: whalescale.v1.APIKey.expires_at:type_name -> google.protobuf.Timestamp
+	91, // 18: whalescale.v1.APIKey.last_used:type_name -> google.protobuf.Timestamp
+	45, // 19: whalescale.v1.ListAPIKeysResponse.keys:type_name -> whalescale.v1.APIKey
+	45, // 20: whalescale.v1.CreateAPIKeyResponse.key:type_name -> whalescale.v1.APIKey
+	52, // 21: whalescale.v1.ListExposuresResponse.exposures:type_name -> whalescale.v1.AdminExposure
+	59, // 22: whalescale.v1.ListPeerRelaysResponse.relays:type_name -> whalescale.v1.AdminPeerRelay
+	91, // 23: whalescale.v1.Recording.started_at:type_name -> google.protobuf.Timestamp
+	91, // 24: whalescale.v1.Recording.ended_at:type_name -> google.protobuf.Timestamp
+	64, // 25: whalescale.v1.ListRecordingsResponse.recordings:type_name -> whalescale.v1.Recording
+	64, // 26: whalescale.v1.GetRecordingResponse.recording:type_name -> whalescale.v1.Recording
+	94, // 27: whalescale.v1.GetLockResponse.chain:type_name -> whalescale.v1.LockState
+	94, // 28: whalescale.v1.UpdateLockRequest.state:type_name -> whalescale.v1.LockState
+	76, // 29: whalescale.v1.SignNodesRequest.signatures:type_name -> whalescale.v1.SignedNodeKey
+	95, // 30: whalescale.v1.SignedNodeKey.signature:type_name -> whalescale.v1.NodeSignature
+	96, // 31: whalescale.v1.ListAccessRequestsResponse.requests:type_name -> whalescale.v1.AccessRequest
+	96, // 32: whalescale.v1.DecideAccessResponse.request:type_name -> whalescale.v1.AccessRequest
+	91, // 33: whalescale.v1.AuditEvent.at:type_name -> google.protobuf.Timestamp
+	85, // 34: whalescale.v1.ListAuditEventsResponse.events:type_name -> whalescale.v1.AuditEvent
+	87, // 35: whalescale.v1.ListAuditEventsResponse.verification:type_name -> whalescale.v1.AuditVerification
+	91, // 36: whalescale.v1.AdminFlow.start:type_name -> google.protobuf.Timestamp
+	91, // 37: whalescale.v1.AdminFlow.end:type_name -> google.protobuf.Timestamp
+	89, // 38: whalescale.v1.QueryFlowsResponse.flows:type_name -> whalescale.v1.AdminFlow
+	12, // 39: whalescale.v1.AdminService.WhoAmI:input_type -> whalescale.v1.WhoAmIRequest
+	15, // 40: whalescale.v1.AdminService.ListUsers:input_type -> whalescale.v1.ListUsersRequest
+	17, // 41: whalescale.v1.AdminService.CreateUser:input_type -> whalescale.v1.CreateUserRequest
+	19, // 42: whalescale.v1.AdminService.DeleteUser:input_type -> whalescale.v1.DeleteUserRequest
+	21, // 43: whalescale.v1.AdminService.ListNodes:input_type -> whalescale.v1.ListNodesRequest
+	23, // 44: whalescale.v1.AdminService.DeleteNode:input_type -> whalescale.v1.DeleteNodeRequest
+	26, // 45: whalescale.v1.AdminService.ListPreAuthKeys:input_type -> whalescale.v1.ListPreAuthKeysRequest
+	28, // 46: whalescale.v1.AdminService.CreatePreAuthKey:input_type -> whalescale.v1.CreatePreAuthKeyRequest
+	30, // 47: whalescale.v1.AdminService.ExpirePreAuthKey:input_type -> whalescale.v1.ExpirePreAuthKeyRequest
+	32, // 48: whalescale.v1.AdminService.GetPolicy:input_type -> whalescale.v1.GetPolicyRequest
+	34, // 49: whalescale.v1.AdminService.CheckPolicy:input_type -> whalescale.v1.CheckPolicyRequest
+	36, // 50: whalescale.v1.AdminService.SetPolicy:input_type -> whalescale.v1.SetPolicyRequest
+	57, // 51: whalescale.v1.AdminService.ExplainAccess:input_type -> whalescale.v1.ExplainAccessRequest
+	39, // 52: whalescale.v1.AdminService.ListRoutes:input_type -> whalescale.v1.ListRoutesRequest
+	41, // 53: whalescale.v1.AdminService.SetRouteApproved:input_type -> whalescale.v1.SetRouteApprovedRequest
+	43, // 54: whalescale.v1.AdminService.GetTopology:input_type -> whalescale.v1.GetTopologyRequest
+	60, // 55: whalescale.v1.AdminService.ListPeerRelays:input_type -> whalescale.v1.ListPeerRelaysRequest
+	62, // 56: whalescale.v1.AdminService.SetPeerRelayApproved:input_type -> whalescale.v1.SetPeerRelayApprovedRequest
+	53, // 57: whalescale.v1.AdminService.ListExposures:input_type -> whalescale.v1.ListExposuresRequest
+	55, // 58: whalescale.v1.AdminService.SetExposureApproved:input_type -> whalescale.v1.SetExposureApprovedRequest
+	88, // 59: whalescale.v1.AdminService.QueryFlows:input_type -> whalescale.v1.QueryFlowsRequest
+	65, // 60: whalescale.v1.AdminService.ListRecordings:input_type -> whalescale.v1.ListRecordingsRequest
+	67, // 61: whalescale.v1.AdminService.GetRecording:input_type -> whalescale.v1.GetRecordingRequest
+	69, // 62: whalescale.v1.AdminService.DeleteRecording:input_type -> whalescale.v1.DeleteRecordingRequest
+	84, // 63: whalescale.v1.AdminService.ListAuditEvents:input_type -> whalescale.v1.ListAuditEventsRequest
+	71, // 64: whalescale.v1.AdminService.GetLock:input_type -> whalescale.v1.GetLockRequest
+	73, // 65: whalescale.v1.AdminService.UpdateLock:input_type -> whalescale.v1.UpdateLockRequest
+	75, // 66: whalescale.v1.AdminService.SignNodes:input_type -> whalescale.v1.SignNodesRequest
+	78, // 67: whalescale.v1.AdminService.ListAccessRequests:input_type -> whalescale.v1.ListAccessRequestsRequest
+	80, // 68: whalescale.v1.AdminService.DecideAccess:input_type -> whalescale.v1.DecideAccessRequest
+	82, // 69: whalescale.v1.AdminService.RevokeAccess:input_type -> whalescale.v1.RevokeAccessRequest
+	46, // 70: whalescale.v1.AdminService.ListAPIKeys:input_type -> whalescale.v1.ListAPIKeysRequest
+	48, // 71: whalescale.v1.AdminService.CreateAPIKey:input_type -> whalescale.v1.CreateAPIKeyRequest
+	50, // 72: whalescale.v1.AdminService.ExpireAPIKey:input_type -> whalescale.v1.ExpireAPIKeyRequest
+	1,  // 73: whalescale.v1.AdminService.GetSettings:input_type -> whalescale.v1.GetSettingsRequest
+	3,  // 74: whalescale.v1.AdminService.UpdateSetting:input_type -> whalescale.v1.UpdateSettingRequest
+	6,  // 75: whalescale.v1.AdminService.ListConsoleAccounts:input_type -> whalescale.v1.ListConsoleAccountsRequest
+	8,  // 76: whalescale.v1.AdminService.CreateConsoleAccount:input_type -> whalescale.v1.CreateConsoleAccountRequest
+	10, // 77: whalescale.v1.AdminService.DeleteConsoleAccount:input_type -> whalescale.v1.DeleteConsoleAccountRequest
+	13, // 78: whalescale.v1.AdminService.WhoAmI:output_type -> whalescale.v1.WhoAmIResponse
+	16, // 79: whalescale.v1.AdminService.ListUsers:output_type -> whalescale.v1.ListUsersResponse
+	18, // 80: whalescale.v1.AdminService.CreateUser:output_type -> whalescale.v1.CreateUserResponse
+	20, // 81: whalescale.v1.AdminService.DeleteUser:output_type -> whalescale.v1.DeleteUserResponse
+	22, // 82: whalescale.v1.AdminService.ListNodes:output_type -> whalescale.v1.ListNodesResponse
+	24, // 83: whalescale.v1.AdminService.DeleteNode:output_type -> whalescale.v1.DeleteNodeResponse
+	27, // 84: whalescale.v1.AdminService.ListPreAuthKeys:output_type -> whalescale.v1.ListPreAuthKeysResponse
+	29, // 85: whalescale.v1.AdminService.CreatePreAuthKey:output_type -> whalescale.v1.CreatePreAuthKeyResponse
+	31, // 86: whalescale.v1.AdminService.ExpirePreAuthKey:output_type -> whalescale.v1.ExpirePreAuthKeyResponse
+	33, // 87: whalescale.v1.AdminService.GetPolicy:output_type -> whalescale.v1.GetPolicyResponse
+	35, // 88: whalescale.v1.AdminService.CheckPolicy:output_type -> whalescale.v1.CheckPolicyResponse
+	37, // 89: whalescale.v1.AdminService.SetPolicy:output_type -> whalescale.v1.SetPolicyResponse
+	58, // 90: whalescale.v1.AdminService.ExplainAccess:output_type -> whalescale.v1.ExplainAccessResponse
+	40, // 91: whalescale.v1.AdminService.ListRoutes:output_type -> whalescale.v1.ListRoutesResponse
+	42, // 92: whalescale.v1.AdminService.SetRouteApproved:output_type -> whalescale.v1.SetRouteApprovedResponse
+	44, // 93: whalescale.v1.AdminService.GetTopology:output_type -> whalescale.v1.GetTopologyResponse
+	61, // 94: whalescale.v1.AdminService.ListPeerRelays:output_type -> whalescale.v1.ListPeerRelaysResponse
+	63, // 95: whalescale.v1.AdminService.SetPeerRelayApproved:output_type -> whalescale.v1.SetPeerRelayApprovedResponse
+	54, // 96: whalescale.v1.AdminService.ListExposures:output_type -> whalescale.v1.ListExposuresResponse
+	56, // 97: whalescale.v1.AdminService.SetExposureApproved:output_type -> whalescale.v1.SetExposureApprovedResponse
+	90, // 98: whalescale.v1.AdminService.QueryFlows:output_type -> whalescale.v1.QueryFlowsResponse
+	66, // 99: whalescale.v1.AdminService.ListRecordings:output_type -> whalescale.v1.ListRecordingsResponse
+	68, // 100: whalescale.v1.AdminService.GetRecording:output_type -> whalescale.v1.GetRecordingResponse
+	70, // 101: whalescale.v1.AdminService.DeleteRecording:output_type -> whalescale.v1.DeleteRecordingResponse
+	86, // 102: whalescale.v1.AdminService.ListAuditEvents:output_type -> whalescale.v1.ListAuditEventsResponse
+	72, // 103: whalescale.v1.AdminService.GetLock:output_type -> whalescale.v1.GetLockResponse
+	74, // 104: whalescale.v1.AdminService.UpdateLock:output_type -> whalescale.v1.UpdateLockResponse
+	77, // 105: whalescale.v1.AdminService.SignNodes:output_type -> whalescale.v1.SignNodesResponse
+	79, // 106: whalescale.v1.AdminService.ListAccessRequests:output_type -> whalescale.v1.ListAccessRequestsResponse
+	81, // 107: whalescale.v1.AdminService.DecideAccess:output_type -> whalescale.v1.DecideAccessResponse
+	83, // 108: whalescale.v1.AdminService.RevokeAccess:output_type -> whalescale.v1.RevokeAccessResponse
+	47, // 109: whalescale.v1.AdminService.ListAPIKeys:output_type -> whalescale.v1.ListAPIKeysResponse
+	49, // 110: whalescale.v1.AdminService.CreateAPIKey:output_type -> whalescale.v1.CreateAPIKeyResponse
+	51, // 111: whalescale.v1.AdminService.ExpireAPIKey:output_type -> whalescale.v1.ExpireAPIKeyResponse
+	2,  // 112: whalescale.v1.AdminService.GetSettings:output_type -> whalescale.v1.GetSettingsResponse
+	4,  // 113: whalescale.v1.AdminService.UpdateSetting:output_type -> whalescale.v1.UpdateSettingResponse
+	7,  // 114: whalescale.v1.AdminService.ListConsoleAccounts:output_type -> whalescale.v1.ListConsoleAccountsResponse
+	9,  // 115: whalescale.v1.AdminService.CreateConsoleAccount:output_type -> whalescale.v1.CreateConsoleAccountResponse
+	11, // 116: whalescale.v1.AdminService.DeleteConsoleAccount:output_type -> whalescale.v1.DeleteConsoleAccountResponse
+	78, // [78:117] is the sub-list for method output_type
+	39, // [39:78] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_whalescale_v1_admin_proto_init() }
@@ -4671,14 +5361,14 @@ func file_whalescale_v1_admin_proto_init() {
 		return
 	}
 	file_whalescale_v1_control_proto_init()
-	file_whalescale_v1_admin_proto_msgTypes[2].OneofWrappers = []any{}
+	file_whalescale_v1_admin_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_whalescale_v1_admin_proto_rawDesc), len(file_whalescale_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   79,
+			NumMessages:   91,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

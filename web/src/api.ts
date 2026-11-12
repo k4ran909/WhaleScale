@@ -41,6 +41,8 @@ export interface Node {
   exitNode?: boolean;
   osVersion?: string;
   clientVersion?: string;
+  // Set when the machine runs the mesh SSH server.
+  sshHostKey?: string;
 }
 
 export interface User {
@@ -165,6 +167,28 @@ export interface PathReport {
   updatedAt?: string;
 }
 
+export interface Setting {
+  name: string;
+  value?: string;
+  configValue?: string;
+  // Saved in the console, overriding the server config file.
+  fromConsole?: boolean;
+}
+
+export interface SettingsInfo {
+  settings: Setting[];
+  dnsSuffix: string;
+  sshRules: number;
+  sshRecordedRules: number;
+}
+
+export interface ConsoleAccount {
+  name: string;
+  createdAt?: string;
+  twoFactor?: boolean;
+  passkeys?: number;
+}
+
 export const api = {
   whoAmI: () => call<{ method: string; identity: string; oidcEnabled?: boolean }>("WhoAmI"),
   listNodes: () => call<{ nodes?: Node[] }>("ListNodes").then((r) => r.nodes ?? []),
@@ -222,6 +246,26 @@ export const api = {
     })),
   setExposureApproved: (nodeId: string, name: string, approved: boolean) =>
     call("SetExposureApproved", { nodeId, name, approved }),
+  getSettings: () =>
+    call<{ settings?: Setting[]; dnsSuffix?: string; sshRules?: number; sshRecordedRules?: number }>("GetSettings").then(
+      (r): SettingsInfo => ({
+        settings: r.settings ?? [],
+        dnsSuffix: r.dnsSuffix ?? "",
+        sshRules: r.sshRules ?? 0,
+        sshRecordedRules: r.sshRecordedRules ?? 0,
+      }),
+    ),
+  // useConfig forgets the console's value and goes back to the config file's.
+  updateSetting: (name: string, value: string, useConfig = false) =>
+    call<{ settings?: Setting[] }>("UpdateSetting", { name, value, useConfig }).then((r) => r.settings ?? []),
+  listConsoleAccounts: () =>
+    call<{ accounts?: ConsoleAccount[]; you?: string }>("ListConsoleAccounts").then((r) => ({
+      accounts: r.accounts ?? [],
+      you: r.you ?? "",
+    })),
+  createConsoleAccount: (name: string) =>
+    call<{ account: ConsoleAccount; password: string }>("CreateConsoleAccount", { name }),
+  deleteConsoleAccount: (name: string) => call("DeleteConsoleAccount", { name }),
 };
 
 // ---------- sign-in (plain HTTP endpoints, not AdminService) ----------

@@ -134,14 +134,14 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 	}
 	pu, _ := url.Parse(cfg.PublicURL)
 	ccfg.NodeAuthHosts = append([]string{pu.Host}, cfg.NodeAuthHosts...)
-	if cfg.GatewayDomain != "" {
-		s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, cred, method, path string) (*store.Node, error) {
-			return s.control.NodeFor(ctx, cred, method, path)
-		}, cfg.Log)
-		ccfg.GatewayDomain = s.gateway.Domain()
-		ccfg.GatewayURL = strings.TrimSuffix(relayURL, "/relay") + "/gateway"
-		ccfg.GatewayConnected = s.gateway.Connected
-	}
+	// The gateway always exists so its domain can be set in the console;
+	// with no domain it serves nothing.
+	s.gateway = gateway.NewServer(cfg.GatewayDomain, st, func(ctx context.Context, cred, method, path string) (*store.Node, error) {
+		return s.control.NodeFor(ctx, cred, method, path)
+	}, cfg.Log)
+	ccfg.GatewayDomain = s.gateway.Domain()
+	ccfg.GatewayURL = strings.TrimSuffix(relayURL, "/relay") + "/gateway"
+	ccfg.GatewayConnected = s.gateway.Connected
 	if cfg.RelayQUICAddr != "" {
 		cert, pin, err := loadQUICCert(st)
 		if err != nil {
@@ -151,6 +151,10 @@ func New(st *store.Store, cfg Config) (*Server, error) {
 		ccfg.QUICRelay, ccfg.QUICRelayPin = cfg.RelayQUICAddr, hex.EncodeToString(pin)
 	}
 	s.control = control.New(st, cfg.Log, ccfg)
+	s.control.SetOnSettings(func(live control.Settings) { s.gateway.SetDomain(live.GatewayDomain) })
+	if _, err := s.control.ReloadSettings(context.Background()); err != nil {
+		return nil, fmt.Errorf("load console settings: %w", err)
+	}
 	s.admin = control.NewAdmin(s.control)
 	s.relay = relay.NewServer(s.control.RelayAuth, cfg.Log)
 	if s.auth, err = newAuth(context.Background(), s, cfg.OIDC); err != nil {
@@ -455,7 +459,7 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	last, _ := s.store.Fingerprint(ctx)
-	var lastPrune, lastEphemeral time.Time
+	var lastPrune, lastEphemeral, lastSettings time.Time
 	s.clusterTick(ctx, every)
 	defer s.leaveCluster()
 	go s.syncLoop(ctx, min(every, 250*time.Millisecond))
@@ -469,6 +473,13 @@ func (s *Server) Watch(ctx context.Context, every time.Duration) {
 		case <-t.C:
 		}
 		s.clusterTick(ctx, every)
+		// Settings another server sharing the database saved in its console.
+		if time.Since(lastSettings) > 30*time.Second {
+			lastSettings = time.Now()
+			if _, err := s.control.ReloadSettings(ctx); err != nil {
+				s.log.Error("reload console settings", "err", err)
+			}
+		}
 		if s.Leader() && time.Since(lastEphemeral) > time.Minute {
 			lastEphemeral = time.Now()
 			timeout := s.cfg.EphemeralTimeout

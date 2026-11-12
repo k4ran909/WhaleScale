@@ -323,6 +323,7 @@ func buildFilters(c *policy.Compiled, nodes []store.Node) map[uint64]*nodeFilter
 func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 	n := &snap.nodes[i]
 	relays, controls, quic := s.clusterInfo()
+	live := s.Settings()
 	nm := &v1.NetworkMap{
 		Dns:           snap.dns,
 		Relays:        relays,
@@ -330,11 +331,11 @@ func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 		Stun:          s.cfg.STUN,
 		RelayOffered:  n.RelayOffered,
 		RelayApproved: n.RelayApproved,
-		FlowLogs:      s.cfg.FlowLogs,
+		FlowLogs:      live.FlowLogs,
 		QuicRelay:     quic,
 		SshRules:      snap.filters[n.ID].ssh,
 		LockChain:     snap.lockChain,
-		PostQuantum:   s.cfg.PostQuantum,
+		PostQuantum:   live.PostQuantum,
 		ServerKey:     s.serverKey,
 	}
 	nm.QuicRelayCertSha256 = s.cfg.QUICRelayPin
@@ -350,7 +351,7 @@ func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 			}
 		}
 	}
-	if s.cfg.GatewayDomain != "" {
+	if live.GatewayDomain != "" {
 		nm.GatewayUrl = s.cfg.GatewayURL
 	}
 	for _, e := range snap.exposures[n.ID] {
@@ -359,7 +360,7 @@ func (s *Service) settings(snap *snapshot, i int) *v1.NetworkMap {
 		}
 		x := &v1.Exposure{Name: e.Name, Port: uint32(e.Port), Approved: e.Approved, Url: s.exposureURL(e.Name)}
 		switch {
-		case s.cfg.GatewayDomain == "":
+		case live.GatewayDomain == "":
 			x.Problem = "the server has no gateway domain configured"
 		case !e.Approved:
 			x.Problem = "waiting for an admin to approve it"

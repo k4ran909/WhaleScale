@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -52,7 +53,7 @@ type NodeAuth func(ctx context.Context, credential, method, path string) (*store
 
 // Server routes public traffic to nodes' tunnels.
 type Server struct {
-	domain string // "apps.example.com", lowercase, no dots at either end
+	domain atomic.Pointer[string] // "apps.example.com", lowercase, no dots at either end; "" when off
 	store  *store.Store
 	auth   NodeAuth
 	log    *slog.Logger
@@ -63,8 +64,9 @@ type Server struct {
 }
 
 func NewServer(domain string, st *store.Store, auth NodeAuth, log *slog.Logger) *Server {
-	s := &Server{domain: strings.Trim(strings.ToLower(domain), "."), store: st, auth: auth, log: log,
+	s := &Server{store: st, auth: auth, log: log,
 		sessions: map[uint64]*yamux.Session{}}
+	s.SetDomain(domain)
 	tr := &http.Transport{
 		DialContext:           s.dialExposure,
 		MaxIdleConnsPerHost:   16,
@@ -105,11 +107,18 @@ func NewServer(domain string, st *store.Store, auth NodeAuth, log *slog.Logger) 
 	return s
 }
 
-// Domain is the gateway's DNS suffix.
-func (s *Server) Domain() string { return s.domain }
+// SetDomain changes the gateway domain (a console setting); "" turns the
+// gateway off.
+func (s *Server) SetDomain(domain string) {
+	d := strings.Trim(strings.ToLower(domain), ".")
+	s.domain.Store(&d)
+}
+
+// Domain is the gateway's DNS suffix, "" when the gateway is off.
+func (s *Server) Domain() string { return *s.domain.Load() }
 
 // URL is an exposure's public address.
-func (s *Server) URL(name string) string { return "https://" + name + "." + s.domain }
+func (s *Server) URL(name string) string { return "https://" + name + "." + s.Domain() }
 
 // Match reports whether host (with or without a port) is <name>.<domain>.
 func (s *Server) Match(host string) (string, bool) {
@@ -117,7 +126,11 @@ func (s *Server) Match(host string) (string, bool) {
 		host = h
 	}
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
-	name, ok := strings.CutSuffix(host, "."+s.domain)
+	domain := s.Domain()
+	if domain == "" {
+		return "", false
+	}
+	name, ok := strings.CutSuffix(host, "."+domain)
 	if !ok || name == "" || strings.Contains(name, ".") || !store.ValidExposureName(name) {
 		return "", false
 	}

@@ -42,22 +42,24 @@ type identity struct{ method, name, scope string }
 // changes something (or, like viewing SSH recordings, exposes more than
 // monitoring needs) and takes an admin key.
 var readOnly = map[string]bool{
-	whalescalev1connect.AdminServiceWhoAmIProcedure:             true,
-	whalescalev1connect.AdminServiceListUsersProcedure:          true,
-	whalescalev1connect.AdminServiceListNodesProcedure:          true,
-	whalescalev1connect.AdminServiceListPreAuthKeysProcedure:    true,
-	whalescalev1connect.AdminServiceGetPolicyProcedure:          true,
-	whalescalev1connect.AdminServiceCheckPolicyProcedure:        true,
-	whalescalev1connect.AdminServiceExplainAccessProcedure:      true,
-	whalescalev1connect.AdminServiceListRoutesProcedure:         true,
-	whalescalev1connect.AdminServiceGetTopologyProcedure:        true,
-	whalescalev1connect.AdminServiceListPeerRelaysProcedure:     true,
-	whalescalev1connect.AdminServiceListExposuresProcedure:      true,
-	whalescalev1connect.AdminServiceQueryFlowsProcedure:         true,
-	whalescalev1connect.AdminServiceListAuditEventsProcedure:    true,
-	whalescalev1connect.AdminServiceListAccessRequestsProcedure: true,
-	whalescalev1connect.AdminServiceGetLockProcedure:            true,
-	whalescalev1connect.AdminServiceListAPIKeysProcedure:        true,
+	whalescalev1connect.AdminServiceWhoAmIProcedure:              true,
+	whalescalev1connect.AdminServiceListUsersProcedure:           true,
+	whalescalev1connect.AdminServiceListNodesProcedure:           true,
+	whalescalev1connect.AdminServiceListPreAuthKeysProcedure:     true,
+	whalescalev1connect.AdminServiceGetPolicyProcedure:           true,
+	whalescalev1connect.AdminServiceCheckPolicyProcedure:         true,
+	whalescalev1connect.AdminServiceExplainAccessProcedure:       true,
+	whalescalev1connect.AdminServiceListRoutesProcedure:          true,
+	whalescalev1connect.AdminServiceGetTopologyProcedure:         true,
+	whalescalev1connect.AdminServiceListPeerRelaysProcedure:      true,
+	whalescalev1connect.AdminServiceListExposuresProcedure:       true,
+	whalescalev1connect.AdminServiceQueryFlowsProcedure:          true,
+	whalescalev1connect.AdminServiceListAuditEventsProcedure:     true,
+	whalescalev1connect.AdminServiceListAccessRequestsProcedure:  true,
+	whalescalev1connect.AdminServiceGetLockProcedure:             true,
+	whalescalev1connect.AdminServiceListAPIKeysProcedure:         true,
+	whalescalev1connect.AdminServiceGetSettingsProcedure:         true,
+	whalescalev1connect.AdminServiceListConsoleAccountsProcedure: true,
 }
 
 // auth accepts an API key bearer token, or a session cookie on requests
@@ -498,7 +500,7 @@ func (a *Admin) ListExposures(ctx context.Context, req *connect.Request[v1.ListE
 	if err != nil {
 		return nil, internal(a, "list exposures", err)
 	}
-	resp := &v1.ListExposuresResponse{GatewayDomain: a.svc.cfg.GatewayDomain}
+	resp := &v1.ListExposuresResponse{GatewayDomain: a.svc.Settings().GatewayDomain}
 	for _, e := range list {
 		if !e.Advertised {
 			continue
@@ -585,7 +587,7 @@ func (a *Admin) QueryFlows(ctx context.Context, req *connect.Request[v1.QueryFlo
 			names[n.IPv4.String()], names[n.IPv6.String()] = n.Name, n.Name
 		}
 	}
-	resp := &v1.QueryFlowsResponse{Enabled: a.svc.cfg.FlowLogs}
+	resp := &v1.QueryFlowsResponse{Enabled: a.svc.Settings().FlowLogs}
 	for _, f := range flows {
 		resp.Flows = append(resp.Flows, &v1.AdminFlow{NodeName: f.NodeName, Proto: uint32(f.Proto),
 			Client: f.Client, ClientName: names[f.Client], Server: f.Server, ServerName: names[f.Server], Port: uint32(f.Port),

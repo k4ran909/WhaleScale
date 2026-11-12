@@ -79,6 +79,12 @@ type Service struct {
 	log   *slog.Logger
 	cfg   Config
 
+	// live is cfg's runtime-changeable part with the console's changes
+	// (settings.go); nil until ReloadSettings.
+	live       atomic.Pointer[Settings]
+	settingsMu sync.Mutex
+	onSettings func(Settings)
+
 	policyMu sync.RWMutex
 	// policy is base plus an ACL per active access grant.
 	policy       *policy.Policy
@@ -412,7 +418,7 @@ func (s *Service) ReportStatus(ctx context.Context, req *connect.Request[v1.Repo
 	s.mu.Lock()
 	s.paths[self.ID] = pathSet{reports: reports, at: time.Now()}
 	s.mu.Unlock()
-	if s.cfg.FlowLogs && len(req.Msg.Flows) > 0 {
+	if s.Settings().FlowLogs && len(req.Msg.Flows) > 0 {
 		flows := flowsFromReport(self.Name, req.Msg.Flows)
 		if n := s.takeFlows(self.ID, len(flows), time.Now()); n < len(flows) {
 			s.flowsDropped.Add(uint64(len(flows) - n))
@@ -849,10 +855,11 @@ func parseExposures(in []*v1.Exposure) ([]store.ExposureRequest, error) {
 
 // exposureURL is an exposure's public address, or "" without a gateway.
 func (s *Service) exposureURL(name string) string {
-	if s.cfg.GatewayDomain == "" {
+	d := s.Settings().GatewayDomain
+	if d == "" {
 		return ""
 	}
-	return "https://" + name + "." + s.cfg.GatewayDomain
+	return "https://" + name + "." + d
 }
 
 // parseAdvertised validates routes a node offers. Routes into the mesh's own

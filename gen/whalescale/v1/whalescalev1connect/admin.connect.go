@@ -122,6 +122,21 @@ const (
 	// AdminServiceExpireAPIKeyProcedure is the fully-qualified name of the AdminService's ExpireAPIKey
 	// RPC.
 	AdminServiceExpireAPIKeyProcedure = "/whalescale.v1.AdminService/ExpireAPIKey"
+	// AdminServiceGetSettingsProcedure is the fully-qualified name of the AdminService's GetSettings
+	// RPC.
+	AdminServiceGetSettingsProcedure = "/whalescale.v1.AdminService/GetSettings"
+	// AdminServiceUpdateSettingProcedure is the fully-qualified name of the AdminService's
+	// UpdateSetting RPC.
+	AdminServiceUpdateSettingProcedure = "/whalescale.v1.AdminService/UpdateSetting"
+	// AdminServiceListConsoleAccountsProcedure is the fully-qualified name of the AdminService's
+	// ListConsoleAccounts RPC.
+	AdminServiceListConsoleAccountsProcedure = "/whalescale.v1.AdminService/ListConsoleAccounts"
+	// AdminServiceCreateConsoleAccountProcedure is the fully-qualified name of the AdminService's
+	// CreateConsoleAccount RPC.
+	AdminServiceCreateConsoleAccountProcedure = "/whalescale.v1.AdminService/CreateConsoleAccount"
+	// AdminServiceDeleteConsoleAccountProcedure is the fully-qualified name of the AdminService's
+	// DeleteConsoleAccount RPC.
+	AdminServiceDeleteConsoleAccountProcedure = "/whalescale.v1.AdminService/DeleteConsoleAccount"
 )
 
 // AdminServiceClient is a client for the whalescale.v1.AdminService service.
@@ -167,6 +182,16 @@ type AdminServiceClient interface {
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
+	// Server settings that can change while the server runs (gateway domain,
+	// flow logs, post-quantum keys). A value set here overrides the config
+	// file until reset.
+	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
+	UpdateSetting(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
+	// Console accounts: the team members who sign in to this console with a
+	// password.
+	ListConsoleAccounts(context.Context, *connect.Request[v1.ListConsoleAccountsRequest]) (*connect.Response[v1.ListConsoleAccountsResponse], error)
+	CreateConsoleAccount(context.Context, *connect.Request[v1.CreateConsoleAccountRequest]) (*connect.Response[v1.CreateConsoleAccountResponse], error)
+	DeleteConsoleAccount(context.Context, *connect.Request[v1.DeleteConsoleAccountRequest]) (*connect.Response[v1.DeleteConsoleAccountResponse], error)
 }
 
 // NewAdminServiceClient constructs a client for the whalescale.v1.AdminService service. By default,
@@ -384,6 +409,36 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("ExpireAPIKey")),
 			connect.WithClientOptions(opts...),
 		),
+		getSettings: connect.NewClient[v1.GetSettingsRequest, v1.GetSettingsResponse](
+			httpClient,
+			baseURL+AdminServiceGetSettingsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetSettings")),
+			connect.WithClientOptions(opts...),
+		),
+		updateSetting: connect.NewClient[v1.UpdateSettingRequest, v1.UpdateSettingResponse](
+			httpClient,
+			baseURL+AdminServiceUpdateSettingProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("UpdateSetting")),
+			connect.WithClientOptions(opts...),
+		),
+		listConsoleAccounts: connect.NewClient[v1.ListConsoleAccountsRequest, v1.ListConsoleAccountsResponse](
+			httpClient,
+			baseURL+AdminServiceListConsoleAccountsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListConsoleAccounts")),
+			connect.WithClientOptions(opts...),
+		),
+		createConsoleAccount: connect.NewClient[v1.CreateConsoleAccountRequest, v1.CreateConsoleAccountResponse](
+			httpClient,
+			baseURL+AdminServiceCreateConsoleAccountProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("CreateConsoleAccount")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteConsoleAccount: connect.NewClient[v1.DeleteConsoleAccountRequest, v1.DeleteConsoleAccountResponse](
+			httpClient,
+			baseURL+AdminServiceDeleteConsoleAccountProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("DeleteConsoleAccount")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -423,6 +478,11 @@ type adminServiceClient struct {
 	listAPIKeys          *connect.Client[v1.ListAPIKeysRequest, v1.ListAPIKeysResponse]
 	createAPIKey         *connect.Client[v1.CreateAPIKeyRequest, v1.CreateAPIKeyResponse]
 	expireAPIKey         *connect.Client[v1.ExpireAPIKeyRequest, v1.ExpireAPIKeyResponse]
+	getSettings          *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
+	updateSetting        *connect.Client[v1.UpdateSettingRequest, v1.UpdateSettingResponse]
+	listConsoleAccounts  *connect.Client[v1.ListConsoleAccountsRequest, v1.ListConsoleAccountsResponse]
+	createConsoleAccount *connect.Client[v1.CreateConsoleAccountRequest, v1.CreateConsoleAccountResponse]
+	deleteConsoleAccount *connect.Client[v1.DeleteConsoleAccountRequest, v1.DeleteConsoleAccountResponse]
 }
 
 // WhoAmI calls whalescale.v1.AdminService.WhoAmI.
@@ -595,6 +655,31 @@ func (c *adminServiceClient) ExpireAPIKey(ctx context.Context, req *connect.Requ
 	return c.expireAPIKey.CallUnary(ctx, req)
 }
 
+// GetSettings calls whalescale.v1.AdminService.GetSettings.
+func (c *adminServiceClient) GetSettings(ctx context.Context, req *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error) {
+	return c.getSettings.CallUnary(ctx, req)
+}
+
+// UpdateSetting calls whalescale.v1.AdminService.UpdateSetting.
+func (c *adminServiceClient) UpdateSetting(ctx context.Context, req *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error) {
+	return c.updateSetting.CallUnary(ctx, req)
+}
+
+// ListConsoleAccounts calls whalescale.v1.AdminService.ListConsoleAccounts.
+func (c *adminServiceClient) ListConsoleAccounts(ctx context.Context, req *connect.Request[v1.ListConsoleAccountsRequest]) (*connect.Response[v1.ListConsoleAccountsResponse], error) {
+	return c.listConsoleAccounts.CallUnary(ctx, req)
+}
+
+// CreateConsoleAccount calls whalescale.v1.AdminService.CreateConsoleAccount.
+func (c *adminServiceClient) CreateConsoleAccount(ctx context.Context, req *connect.Request[v1.CreateConsoleAccountRequest]) (*connect.Response[v1.CreateConsoleAccountResponse], error) {
+	return c.createConsoleAccount.CallUnary(ctx, req)
+}
+
+// DeleteConsoleAccount calls whalescale.v1.AdminService.DeleteConsoleAccount.
+func (c *adminServiceClient) DeleteConsoleAccount(ctx context.Context, req *connect.Request[v1.DeleteConsoleAccountRequest]) (*connect.Response[v1.DeleteConsoleAccountResponse], error) {
+	return c.deleteConsoleAccount.CallUnary(ctx, req)
+}
+
 // AdminServiceHandler is an implementation of the whalescale.v1.AdminService service.
 type AdminServiceHandler interface {
 	WhoAmI(context.Context, *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error)
@@ -638,6 +723,16 @@ type AdminServiceHandler interface {
 	ListAPIKeys(context.Context, *connect.Request[v1.ListAPIKeysRequest]) (*connect.Response[v1.ListAPIKeysResponse], error)
 	CreateAPIKey(context.Context, *connect.Request[v1.CreateAPIKeyRequest]) (*connect.Response[v1.CreateAPIKeyResponse], error)
 	ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error)
+	// Server settings that can change while the server runs (gateway domain,
+	// flow logs, post-quantum keys). A value set here overrides the config
+	// file until reset.
+	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
+	UpdateSetting(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
+	// Console accounts: the team members who sign in to this console with a
+	// password.
+	ListConsoleAccounts(context.Context, *connect.Request[v1.ListConsoleAccountsRequest]) (*connect.Response[v1.ListConsoleAccountsResponse], error)
+	CreateConsoleAccount(context.Context, *connect.Request[v1.CreateConsoleAccountRequest]) (*connect.Response[v1.CreateConsoleAccountResponse], error)
+	DeleteConsoleAccount(context.Context, *connect.Request[v1.DeleteConsoleAccountRequest]) (*connect.Response[v1.DeleteConsoleAccountResponse], error)
 }
 
 // NewAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -851,6 +946,36 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("ExpireAPIKey")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceGetSettingsHandler := connect.NewUnaryHandler(
+		AdminServiceGetSettingsProcedure,
+		svc.GetSettings,
+		connect.WithSchema(adminServiceMethods.ByName("GetSettings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceUpdateSettingHandler := connect.NewUnaryHandler(
+		AdminServiceUpdateSettingProcedure,
+		svc.UpdateSetting,
+		connect.WithSchema(adminServiceMethods.ByName("UpdateSetting")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceListConsoleAccountsHandler := connect.NewUnaryHandler(
+		AdminServiceListConsoleAccountsProcedure,
+		svc.ListConsoleAccounts,
+		connect.WithSchema(adminServiceMethods.ByName("ListConsoleAccounts")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceCreateConsoleAccountHandler := connect.NewUnaryHandler(
+		AdminServiceCreateConsoleAccountProcedure,
+		svc.CreateConsoleAccount,
+		connect.WithSchema(adminServiceMethods.ByName("CreateConsoleAccount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceDeleteConsoleAccountHandler := connect.NewUnaryHandler(
+		AdminServiceDeleteConsoleAccountProcedure,
+		svc.DeleteConsoleAccount,
+		connect.WithSchema(adminServiceMethods.ByName("DeleteConsoleAccount")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/whalescale.v1.AdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AdminServiceWhoAmIProcedure:
@@ -921,6 +1046,16 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceCreateAPIKeyHandler.ServeHTTP(w, r)
 		case AdminServiceExpireAPIKeyProcedure:
 			adminServiceExpireAPIKeyHandler.ServeHTTP(w, r)
+		case AdminServiceGetSettingsProcedure:
+			adminServiceGetSettingsHandler.ServeHTTP(w, r)
+		case AdminServiceUpdateSettingProcedure:
+			adminServiceUpdateSettingHandler.ServeHTTP(w, r)
+		case AdminServiceListConsoleAccountsProcedure:
+			adminServiceListConsoleAccountsHandler.ServeHTTP(w, r)
+		case AdminServiceCreateConsoleAccountProcedure:
+			adminServiceCreateConsoleAccountHandler.ServeHTTP(w, r)
+		case AdminServiceDeleteConsoleAccountProcedure:
+			adminServiceDeleteConsoleAccountHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1064,4 +1199,24 @@ func (UnimplementedAdminServiceHandler) CreateAPIKey(context.Context, *connect.R
 
 func (UnimplementedAdminServiceHandler) ExpireAPIKey(context.Context, *connect.Request[v1.ExpireAPIKeyRequest]) (*connect.Response[v1.ExpireAPIKeyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ExpireAPIKey is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.GetSettings is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) UpdateSetting(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.UpdateSetting is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListConsoleAccounts(context.Context, *connect.Request[v1.ListConsoleAccountsRequest]) (*connect.Response[v1.ListConsoleAccountsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.ListConsoleAccounts is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) CreateConsoleAccount(context.Context, *connect.Request[v1.CreateConsoleAccountRequest]) (*connect.Response[v1.CreateConsoleAccountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.CreateConsoleAccount is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) DeleteConsoleAccount(context.Context, *connect.Request[v1.DeleteConsoleAccountRequest]) (*connect.Response[v1.DeleteConsoleAccountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whalescale.v1.AdminService.DeleteConsoleAccount is not implemented"))
 }

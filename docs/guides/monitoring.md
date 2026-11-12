@@ -7,7 +7,7 @@ Flow logs, metrics, rate limits and the commands for running a server day to day
 
 ## Flow logs
 
-Off by default, for privacy. With `flow-logs: true` on the server, every machine reports, every 30 seconds:
+Off by default, for privacy. Turned on in the console (**Settings → Flow logs**) or with `flow-logs: true` in the server config, every machine reports, every 30 seconds:
 
 - each connection it took part in: who opened it, to which address and port, and bytes and packets each way;
 - every inbound attempt the access policy refused.

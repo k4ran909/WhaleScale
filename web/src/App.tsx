@@ -8,8 +8,11 @@ import {
   LockKeyhole,
   LogOut,
   Monitor,
+  LifeBuoy,
   Network,
   PanelLeft,
+  Search,
+  Settings as SettingsIcon,
   Route,
   ScrollText,
   ShieldCheck,
@@ -61,41 +64,53 @@ import {
 } from "./api";
 import { Access, Audit, Flows, Gateway, Keys, Machines, Policy, Recordings, Routes, Topology, Users as UsersPage } from "./pages";
 import { ConfirmButton, errText } from "./ui";
+import { CommandPalette, Help, Settings } from "./extras";
 
 // The sidebar toggles on Ctrl+B, or Cmd+B on a Mac.
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 // The console's pages, grouped as the sidebar shows them.
-const groups = [
+const groups: { label: string; items: { id: string; label: string; about: string; icon: typeof Monitor; view: () => ReactNode }[] }[] = [
   {
     label: "Network",
     items: [
-      { id: "machines", label: "Machines", icon: Monitor, view: Machines },
-      { id: "topology", label: "Topology", icon: Network, view: Topology },
-      { id: "flows", label: "Flows", icon: Activity, view: Flows },
+      { id: "machines", label: "Machines", about: "Every device on the mesh; add a device with a join code.", icon: Monitor, view: Machines },
+      { id: "topology", label: "Topology", about: "Which machines connect directly and which go through a relay.", icon: Network, view: Topology },
+      { id: "flows", label: "Flows", about: "Who talked to whom, on which port, and refused attempts.", icon: Activity, view: Flows },
     ],
   },
   {
     label: "Access",
     items: [
-      { id: "users", label: "Users", icon: Users, view: UsersPage },
-      { id: "keys", label: "Keys", icon: KeyRound, view: Keys },
-      { id: "routes", label: "Routes", icon: Route, view: Routes },
-      { id: "gateway", label: "Gateway", icon: Globe, view: Gateway },
-      { id: "policy", label: "Access policy", icon: ShieldCheck, view: Policy },
-      { id: "access", label: "Access requests", icon: Hourglass, view: Access },
+      { id: "users", label: "Users", about: "Users who own machines, and the team who can sign in here.", icon: Users, view: UsersPage },
+      { id: "keys", label: "Keys", about: "Pre-auth keys to enroll machines; API keys for automation.", icon: KeyRound, view: Keys },
+      { id: "routes", label: "Routes", about: "Approve subnet routes, exit nodes and peer relays.", icon: Route, view: Routes },
+      { id: "gateway", label: "Gateway", about: "Approve web apps machines publish on the internet.", icon: Globe, view: Gateway },
+      { id: "policy", label: "Access policy", about: "Who may reach what, SSH rules and device limits.", icon: ShieldCheck, view: Policy },
+      { id: "access", label: "Access requests", about: "Approve or revoke temporary access.", icon: Hourglass, view: Access },
     ],
   },
   {
     label: "Records",
     items: [
-      { id: "recordings", label: "SSH recordings", icon: SquareTerminal, view: Recordings },
-      { id: "audit", label: "Audit log", icon: ScrollText, view: Audit },
+      { id: "recordings", label: "SSH recordings", about: "Recorded SSH sessions: watch or download.", icon: SquareTerminal, view: Recordings },
+      { id: "audit", label: "Audit log", about: "Every change anyone made, tamper-evident.", icon: ScrollText, view: Audit },
+    ],
+  },
+  {
+    label: "Server",
+    items: [
+      { id: "settings", label: "Settings", about: "Flow logs, post-quantum, the gateway domain; MagicDNS and SSH status.", icon: SettingsIcon, view: Settings },
+      { id: "help", label: "Help", about: "Every guide, linked, and a search.", icon: LifeBuoy, view: HelpPage },
     ],
   },
 ];
 
 const tabs = groups.flatMap((g) => g.items.map((item) => ({ ...item, group: g.label })));
+
+function HelpPage() {
+  return <Help pages={tabs.filter((t) => t.id !== "help")} />;
+}
 
 function currentTab() {
   const id = location.hash.replace(/^#\/?/, "");
@@ -118,6 +133,7 @@ export function App() {
   const [pwOpen, setPwOpen] = useState(false);
   const [tfOpen, setTfOpen] = useState(false);
   const [pkOpen, setPkOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     const onHash = () => setTab(currentTab());
@@ -238,10 +254,13 @@ export function App() {
             <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate font-medium text-foreground">{tab.label}</span>
           </nav>
-          <kbd className="ml-auto hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground sm:block">
-            {isMac ? "⌘B" : "Ctrl B"}
-          </kbd>
+          <button type="button" className="search-button ml-auto" onClick={() => setSearchOpen(true)} aria-label="Search">
+            <Search aria-hidden="true" className="size-4" />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="hidden sm:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
         </header>
+        <CommandPalette open={searchOpen} setOpen={setSearchOpen} pages={tabs} />
         <div className="main">
           {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
           {tfOpen && <TwoFactor onClose={() => setTfOpen(false)} />}

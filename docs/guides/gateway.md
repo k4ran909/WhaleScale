@@ -2,7 +2,7 @@
 
 A self-hosted counterpart to Tailscale Funnel. A machine publishes a local web app at `https://<name>.<gateway domain>`, even from behind CGNAT. No port forwarding is needed.
 
-1. **On the server:** set `gateway-domain: apps.example.com` and add a wildcard DNS record `*.apps.example.com` pointing at the server. For HTTPS, either:
+1. **On the server:** set the domain in the console (**Settings → Gateway**), or `gateway-domain: apps.example.com` in the config file, and add a wildcard DNS record `*.apps.example.com` pointing at the server. For HTTPS, either:
    - set `tls-acme: true`: the server gets Let's Encrypt certificates itself, and port 443 must be reachable; or
    - use the Docker Compose setup with `WS_GATEWAY_DOMAIN`: Caddy gets certificates on demand.
 2. **On the machine:**

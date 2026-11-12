@@ -3,6 +3,7 @@ import { AddDevice } from "./adddevice";
 import { api, Node, PathReport } from "./api";
 import { toast } from "./toast";
 import { Banner, ConfirmButton, Dot, Empty, Page, SecretBox, errText, timeAgo, timeUntil, useErrorToast, useLoad } from "./ui";
+import { DocLink, Team } from "./extras";
 
 // ---------- Machines ----------
 
@@ -201,6 +202,7 @@ export function Users() {
   const [name, setName] = useState("");
   return (
     <Page title="Users" lead="Machines belong to users. Users signing in through OIDC are created automatically.">
+      <h2 className="section-title">Users</h2>
       <form
         className="inline-form"
         onSubmit={async (e) => {
@@ -215,7 +217,7 @@ export function Users() {
           }
         }}
       >
-        <input placeholder="new user name, e.g. karan" value={name} onChange={(e) => setName(e.target.value)} pattern="[a-z0-9][a-z0-9-]*" required />
+        <input placeholder="new user name, e.g. karan" value={name} onChange={(e) => setName(e.target.value)} pattern="[a-z0-9][a-z0-9\-]*" required />
         <button className="btn primary">Add user</button>
       </form>
       <div className="table-wrap">
@@ -255,6 +257,7 @@ export function Users() {
           </tbody>
         </table>
       </div>
+      <Team onChange={reload} />
     </Page>
   );
 }
@@ -667,10 +670,12 @@ export function Gateway() {
       lead="Machines can publish a local web service on the internet with automatic HTTPS. Nothing goes live until you approve it."
     >
       {data && !data.domain && (
-        <Banner kind="warn">
-          The gateway is off. Set <code>gateway-domain</code> (e.g. <code>apps.example.com</code>) in the server config and add a
-          wildcard DNS record <code>*.apps.example.com</code> pointing at the server.
-        </Banner>
+        <div className="callout">
+          <span>The gateway is off.</span>
+          <a className="btn small primary" href="#/settings">
+            Turn it on in Settings
+          </a>
+        </div>
       )}
       {pending > 0 && <Banner kind="warn">{pending} service(s) waiting for approval.</Banner>}
       {data && exposures.length === 0 ? (
@@ -804,8 +809,9 @@ export function Recordings() {
       title="SSH recordings"
       lead={
         <>
-          Sessions on machines running the mesh SSH server, when the policy's ssh rule says <code>"record": true</code>. Only
-          output is recorded, never keystrokes. Downloads play with <code>asciinema play</code>.
+          Recorded SSH sessions: screen output only, never keystrokes. Which sessions are recorded is set by the{" "}
+          <a href="#/policy">access policy</a>'s SSH rules; the <a href="#/settings">Settings</a> page shows how many record.{" "}
+          <DocLink path="guides/ssh.md">Learn more</DocLink>
         </>
       }
     >
@@ -934,10 +940,12 @@ export function Flows() {
       }
     >
       {data && !data.enabled && (
-        <Banner kind="warn">
-          Flow logs are off. Start the server with <code>flow-logs: true</code> to collect them (kept for{" "}
-          <code>flow-log-retention</code>, 7 days by default).
-        </Banner>
+        <div className="callout">
+          <span>Flow logs are off.</span>
+          <a className="btn small primary" href="#/settings">
+            Turn them on in Settings
+          </a>
+        </div>
       )}
       {data && data.flows.length === 0 ? (
         <Empty>No flows in this range.</Empty>
